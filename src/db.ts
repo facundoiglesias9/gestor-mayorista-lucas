@@ -104,6 +104,22 @@ CREATE TABLE IF NOT EXISTS canjes (
   estado TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente','saldado')),
   nota TEXT
 );
+
+-- Historial de conversacion con el cerebro, guardado en la base (no en memoria del proceso):
+-- en Vercel cada mensaje puede caer en una instancia de funcion distinta, asi que la memoria
+-- de RAM no sobrevive entre un mensaje y el siguiente. Esto si.
+CREATE TABLE IF NOT EXISTS conversaciones (
+  usuario_id TEXT PRIMARY KEY,
+  historial TEXT NOT NULL DEFAULT '[]',
+  actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+-- Para no procesar dos veces el mismo mensaje de Telegram si llega reintentado (ej: la
+-- funcion tardo de mas y Telegram reenvia el update).
+CREATE TABLE IF NOT EXISTS updates_procesados (
+  update_id INTEGER PRIMARY KEY,
+  procesado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
 `);
   }
   return migracion;

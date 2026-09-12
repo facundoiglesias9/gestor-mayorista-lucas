@@ -1,5 +1,6 @@
 import { Bot } from "grammy";
 import { procesarMensaje } from "./brain.js";
+import { yaProcesadoUpdate } from "./repo.js";
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const OWNER_ID = process.env.OWNER_TELEGRAM_ID;
@@ -36,6 +37,10 @@ bot.on("message:text", async (ctx) => {
     console.log(`Mensaje ignorado de un ID no autorizado: ${ctx.from?.id}`);
     return;
   }
+  if (await yaProcesadoUpdate(ctx.update.update_id)) {
+    console.log(`Update ${ctx.update.update_id} repetido (Telegram reintento), lo ignoro.`);
+    return;
+  }
   await ctx.replyWithChatAction("typing");
   try {
     const respuesta = await procesarMensaje(String(ctx.from!.id), nombreDe(ctx), ctx.message.text);
@@ -49,6 +54,10 @@ bot.on("message:text", async (ctx) => {
 bot.on("message:photo", async (ctx) => {
   if (!estaAutorizado(ctx.from?.id)) {
     console.log(`Foto ignorada de un ID no autorizado: ${ctx.from?.id}`);
+    return;
+  }
+  if (await yaProcesadoUpdate(ctx.update.update_id)) {
+    console.log(`Update ${ctx.update.update_id} repetido (Telegram reintento), lo ignoro.`);
     return;
   }
   await ctx.replyWithChatAction("typing");

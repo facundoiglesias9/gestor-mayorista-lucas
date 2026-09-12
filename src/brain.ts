@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { toolDefinitions, ejecutarHerramienta } from "./tools.js";
+import { cargarHistorialConversacion, guardarHistorialConversacion } from "./repo.js";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-5";
@@ -40,9 +41,9 @@ interface Turno {
   content: Anthropic.MessageParam["content"];
 }
 
-// Memoria en RAM por persona que escribe (cada quien tiene su propio hilo de conversacion,
-// aunque todos leen/escriben la misma base de datos compartida). Se trunca para no crecer sin limite.
-const historiales = new Map<string, Turno[]>();
+// El historial de cada persona se guarda en la base (Turso), no en memoria del proceso: en
+// Vercel cada mensaje puede caer en una instancia distinta, asi que la RAM no es confiable
+// entre un mensaje y el siguiente. Se trunca para no crecer sin limite.
 const MAX_TURNOS = 30;
 
 export interface ImagenAdjunta {
@@ -56,7 +57,7 @@ export async function procesarMensaje(
   texto: string,
   imagen?: ImagenAdjunta
 ): Promise<string> {
-  const historial = historiales.get(usuarioId) ?? [];
+  const historial: Turno[] = await cargarHistorialConversacion(usuarioId);
 
   if (imagen) {
     const bloques: Array<Anthropic.ImageBlockParam | Anthropic.TextBlockParam> = [
@@ -87,7 +88,7 @@ export async function procesarMensaje(
         .map((b) => b.text)
         .join("\n")
         .trim();
-      guardarHistorial(usuarioId, historial);
+      await guardarHistorial(usuarioId, historial);
       return textoFinal || "Listo.";
     }
 
@@ -105,11 +106,11 @@ export async function procesarMensaje(
     historial.push({ role: "user", content: resultados });
   }
 
-  guardarHistorial(usuarioId, historial);
+  await guardarHistorial(usuarioId, historial);
   return "Me colgue haciendo demasiados pasos para esto. Contame de nuevo mas simple, o de a un tema por vez.";
 }
 
-function guardarHistorial(usuarioId: string, historial: Turno[]) {
+async function guardarHistorial(usuarioId: string, historial: Turno[]) {
   const recortado = historial.length > MAX_TURNOS ? historial.slice(historial.length - MAX_TURNOS) : historial;
-  historiales.set(usuarioId, recortado);
+  await guardarHistorialConversacion(usuarioId, recortado);
 }

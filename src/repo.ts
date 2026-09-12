@@ -555,3 +555,37 @@ export async function listarMovimientosVenta(args: { desde?: string; hasta?: str
     params
   );
 }
+
+// ---------- conversacion (historial del cerebro) e idempotencia de mensajes de Telegram ----------
+// Se guarda en la base (no en memoria) porque en Vercel cada mensaje puede caer en una
+// instancia de funcion distinta.
+
+export async function cargarHistorialConversacion(usuarioId: string): Promise<any[]> {
+  const fila = await get(`SELECT historial FROM conversaciones WHERE usuario_id = ?`, [usuarioId]);
+  if (!fila) return [];
+  try {
+    return JSON.parse(fila.historial);
+  } catch {
+    return [];
+  }
+}
+
+export async function guardarHistorialConversacion(usuarioId: string, historial: any[]): Promise<void> {
+  await run(
+    `INSERT INTO conversaciones (usuario_id, historial, actualizado_en) VALUES (?, ?, datetime('now','localtime'))
+     ON CONFLICT(usuario_id) DO UPDATE SET historial = excluded.historial, actualizado_en = excluded.actualizado_en`,
+    [usuarioId, JSON.stringify(historial)]
+  );
+}
+
+// Devuelve true si YA se habia procesado este update_id de Telegram (para no duplicar
+// acciones si Telegram reintenta un mensaje). Si es la primera vez, lo marca y devuelve false.
+export async function yaProcesadoUpdate(updateId: number): Promise<boolean> {
+  try {
+    await run(`INSERT INTO updates_procesados (update_id) VALUES (?)`, [updateId]);
+    return false;
+  } catch {
+    // Choco con la PRIMARY KEY: ya existia.
+    return true;
+  }
+}
