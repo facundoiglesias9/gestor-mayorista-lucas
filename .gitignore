@@ -1,7 +1,9 @@
 node_modules/
 dist/
 .env
+.env.local
 data/
 *.sqlite
 *.sqlite-journal
 backups/
+.vercel/

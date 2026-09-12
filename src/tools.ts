@@ -186,7 +186,7 @@ const dispatch: Record<string, (args: any) => any | Promise<any>> = {
   ajustar_stock: repo.ajustarStock,
   registrar_venta: repo.registrarVenta,
   agregar_empleado: repo.agregarEmpleado,
-  listar_empleados: () => ({ empleados: repo.listarEmpleados() }),
+  listar_empleados: async () => ({ empleados: await repo.listarEmpleados() }),
   registrar_prestamo: repo.registrarPrestamo,
   registrar_pago_prestamo: repo.registrarPagoPrestamo,
   agregar_canje: repo.agregarCanje,

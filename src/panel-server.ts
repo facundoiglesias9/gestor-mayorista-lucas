@@ -10,7 +10,11 @@ const PANEL_PASSWORD = process.env.PANEL_PASSWORD;
 
 if (!PANEL_PASSWORD) throw new Error("Falta PANEL_PASSWORD en el .env");
 
-const app = express();
+// OJO: esta app NO registra la ruta del webhook de Telegram (eso pasa solo en api/index.ts,
+// el entrypoint de Vercel). Si el webhook se registrara aca, grammy deshabilita bot.start()
+// para siempre en este proceso (es una proteccion propia de la libreria para no correr el
+// bot en los dos modos a la vez) y romperia el modo local con polling que usa index.ts.
+export const app = express();
 app.use(express.json());
 
 // ---------- autenticacion ----------
@@ -18,6 +22,9 @@ app.use(express.json());
 // pagina pide la clave con un formulario propio y la manda como header Authorization en
 // cada llamada a la API; solo /api/* exige esa clave.
 app.use("/api", (req, res, next) => {
+  // El webhook de Telegram (registrado aparte, en api/index.ts) no manda esta clave: Telegram
+  // se autentica solo con su propio secretToken, verificado por grammy en su propio handler.
+  if (req.path === "/telegram-webhook") return next();
   const header = req.headers.authorization;
   if (header?.startsWith("Basic ")) {
     const [, clave] = Buffer.from(header.slice(6), "base64").toString().split(":");
@@ -64,16 +71,17 @@ app.put("/api/canjes/:id", envolver((req) => repo.actualizarCanjePorId(Number(re
 app.post("/api/ventas", envolver((req) => repo.registrarVenta(req.body)));
 app.get(
   "/api/ventas",
-  envolver((req) => {
+  envolver(async (req) => {
     const filtros = {
       desde: typeof req.query.desde === "string" ? req.query.desde : undefined,
       hasta: typeof req.query.hasta === "string" ? req.query.hasta : undefined,
       nombre_producto: typeof req.query.producto === "string" ? req.query.producto : undefined,
       nombre_cliente: typeof req.query.cliente === "string" ? req.query.cliente : undefined,
     };
+    const [ventas, detalle] = await Promise.all([repo.consultarVentas(filtros), repo.listarMovimientosVenta(filtros)]);
     return {
-      resumen: repo.consultarVentas(filtros).resumen_por_moneda,
-      detalle: repo.listarMovimientosVenta(filtros),
+      resumen: ventas.resumen_por_moneda,
+      detalle,
     };
   })
 );

@@ -1,19 +1,39 @@
-import { DatabaseSync } from "node:sqlite";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { createClient } from "@libsql/client";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dataDir = path.join(__dirname, "..", "data");
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+const url = process.env.TURSO_DATABASE_URL;
+const authToken = process.env.TURSO_AUTH_TOKEN;
 
-export const DB_PATH = path.join(dataDir, "gestor.db");
+if (!url) throw new Error("Falta TURSO_DATABASE_URL en las variables de entorno.");
 
-export const db = new DatabaseSync(DB_PATH);
-db.exec("PRAGMA journal_mode = WAL;");
-db.exec("PRAGMA foreign_keys = ON;");
+export const db = createClient({ url, authToken });
 
-db.exec(`
+// ---------- helpers de consulta (async, porque Turso es una base remota) ----------
+
+export async function get(sql: string, params: any[] = []): Promise<any | undefined> {
+  await asegurarTablas();
+  const rs = await db.execute({ sql, args: params });
+  return rs.rows[0] as any;
+}
+
+export async function all(sql: string, params: any[] = []): Promise<any[]> {
+  await asegurarTablas();
+  const rs = await db.execute({ sql, args: params });
+  return rs.rows as any[];
+}
+
+export async function run(sql: string, params: any[] = []): Promise<{ lastInsertRowid: number; changes: number }> {
+  await asegurarTablas();
+  const rs = await db.execute({ sql, args: params });
+  return { lastInsertRowid: Number(rs.lastInsertRowid ?? 0), changes: rs.rowsAffected };
+}
+
+// ---------- esquema ----------
+
+let migracion: Promise<void> | null = null;
+
+export function asegurarTablas(): Promise<void> {
+  if (!migracion) {
+    migracion = db.executeMultiple(`
 CREATE TABLE IF NOT EXISTS personas (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -85,3 +105,6 @@ CREATE TABLE IF NOT EXISTS canjes (
   nota TEXT
 );
 `);
+  }
+  return migracion;
+}
