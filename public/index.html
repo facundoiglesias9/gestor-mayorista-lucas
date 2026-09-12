@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Gestor Mayorista</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="login-overlay">
+  <form id="form-login">
+    <div class="login-marca">
+      <div class="marca-icono">GM</div>
+      <h1>Gestor Mayorista</h1>
+    </div>
+    <input id="login-clave" type="password" placeholder="Clave del panel" autocomplete="current-password" required />
+    <button type="submit">Entrar</button>
+    <p id="login-error" class="oculto">Clave incorrecta.</p>
+  </form>
+</div>
+
+<div id="app-shell" class="oculto">
+
+  <aside class="sidebar">
+    <div class="marca">
+      <div class="marca-icono">GM</div>
+      <div class="marca-texto">
+        <strong>Gestor Mayorista</strong>
+        <span>Panel interno</span>
+      </div>
+    </div>
+    <nav id="tabs">
+      <button data-tab="resumen" class="tab activo">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        Resumen
+      </button>
+      <button data-tab="stock" class="tab">
+        <svg viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
+        Stock
+      </button>
+      <button data-tab="ventas" class="tab">
+        <svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>
+        Ventas
+      </button>
+      <button data-tab="prestamos" class="tab">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10"/><path d="M9.5 9.5a2.5 2.5 0 0 1 2.5-1.5c1.4 0 2.5.9 2.5 2s-1.1 1.8-2.5 2c-1.4.2-2.5.9-2.5 2s1.1 2 2.5 2a2.5 2.5 0 0 0 2.5-1.5"/></svg>
+        Préstamos
+      </button>
+      <button data-tab="prendas" class="tab">
+        <svg viewBox="0 0 24 24"><path d="M20.6 12.3 12.7 20a2 2 0 0 1-2.8 0l-7-7a2 2 0 0 1 0-2.8L10.9 2.5H18a2 2 0 0 1 2 2v7.1z"/><circle cx="15" cy="7" r="1.3"/></svg>
+        Plan Canje
+      </button>
+      <button data-tab="empleados" class="tab">
+        <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17.5" cy="8.5" r="2.4"/><path d="M16 14.2c2.7.4 4.5 2.4 4.5 5.3"/></svg>
+        Empleados
+      </button>
+    </nav>
+  </aside>
+
+  <div class="contenido">
+    <div class="topbar">
+      <h2 id="titulo-seccion">Resumen</h2>
+    </div>
+
+    <main id="app-main">
+
+      <section id="tab-resumen" class="panel">
+        <div class="cards" id="resumen-cards"></div>
+        <h3>Préstamos activos</h3>
+        <div id="resumen-prestamos"></div>
+        <h3>Plan canje en curso</h3>
+        <div id="resumen-prendas"></div>
+      </section>
+
+      <section id="tab-stock" class="panel oculto">
+        <div class="barra-acciones">
+          <h3 class="sin-margen">Inventario</h3>
+          <button type="button" class="btn-primario" onclick="abrirDialogoProducto()">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            Agregar stock
+          </button>
+        </div>
+        <div class="tabla-wrap">
+          <table id="tabla-productos">
+            <thead><tr><th>Nombre</th><th>Categoría</th><th>Cantidad</th><th>Costo</th><th>Precio venta</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <dialog id="dialogo-producto">
+        <form id="form-producto">
+          <input type="hidden" name="id" />
+          <h3 class="sin-margen" id="titulo-dialogo-producto">Agregar stock</h3>
+          <p class="ayuda">La categoría se detecta sola con IA a partir del nombre (por ej. "iPhone 12" → Celulares). Dejala vacía salvo que quieras forzar otra.</p>
+          <label>Nombre del producto<input name="nombre" placeholder="Ej: iPhone 12 128GB" autocomplete="off" required /></label>
+          <label>Cantidad<input name="cantidad" type="number" placeholder="Cantidad" required /></label>
+          <label>Costo unitario<input name="costo" type="number" step="0.01" placeholder="Costo unitario" /></label>
+          <label>Precio de venta<input name="precio_venta" type="number" step="0.01" placeholder="Precio de venta (opcional)" /></label>
+          <label>Categoría<input name="categoria" placeholder="Se detecta sola (opcional)" autocomplete="off" /></label>
+          <div class="dialogo-botones">
+            <button type="button" class="btn-secundario" onclick="document.getElementById('dialogo-producto').close()">Cancelar</button>
+            <button type="submit" class="btn-primario" id="boton-guardar-producto">Generar stock</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="dialogo-venta">
+        <form id="form-venta">
+          <h3 class="sin-margen">Nueva venta</h3>
+          <label>Producto<input name="nombre_producto" placeholder="Producto" autocomplete="off" required list="lista-productos" /></label>
+          <label>Cantidad<input name="cantidad" type="number" placeholder="Cantidad" required /></label>
+          <label>Cliente (opcional)<input name="nombre_cliente" placeholder="Cliente" autocomplete="off" list="lista-personas" /></label>
+          <label>Precio unitario (opcional)<input name="precio_unitario" type="number" step="0.01" placeholder="Se usa el precio de lista si lo dejás vacío" /></label>
+          <label>Moneda<select name="moneda"><option value="ARS">ARS</option><option value="USD">USD</option></select></label>
+          <div class="dialogo-botones">
+            <button type="button" class="btn-secundario" onclick="document.getElementById('dialogo-venta').close()">Cancelar</button>
+            <button type="submit" class="btn-primario">Generar venta</button>
+          </div>
+        </form>
+      </dialog>
+
+      <section id="tab-ventas" class="panel oculto">
+        <div class="barra-acciones">
+          <h3 class="sin-margen">Ventas</h3>
+          <button type="button" class="btn-primario" onclick="document.getElementById('form-venta').reset(); document.getElementById('dialogo-venta').showModal()">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            Nueva venta
+          </button>
+        </div>
+        <div class="surface">
+          <h3 class="sin-margen">Filtrar ventas</h3>
+          <form id="form-filtro-ventas" class="formulario">
+            <input name="desde" type="date" />
+            <input name="hasta" type="date" />
+            <input name="producto" placeholder="Producto" />
+            <input name="cliente" placeholder="Cliente" />
+            <button type="submit">Buscar</button>
+          </form>
+        </div>
+        <div class="cards" id="ventas-resumen"></div>
+        <div class="tabla-wrap">
+          <table id="tabla-ventas">
+            <thead><tr><th>Fecha</th><th>Producto</th><th>Cantidad</th><th>Cliente</th><th>Precio unit.</th><th>Moneda</th><th>Nota</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-prestamos" class="panel oculto">
+        <div class="barra-acciones">
+          <h3 class="sin-margen">Préstamos</h3>
+          <button type="button" class="btn-primario" onclick="document.getElementById('form-prestamo').reset(); document.getElementById('dialogo-prestamo').showModal()">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            Nuevo préstamo
+          </button>
+        </div>
+        <div class="tabla-wrap">
+          <table id="tabla-prestamos">
+            <thead><tr><th>#</th><th>Persona</th><th>Original</th><th>Pendiente</th><th>Moneda</th><th>Estado</th><th>Fecha</th><th>Registrar pago</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <dialog id="dialogo-prestamo">
+        <form id="form-prestamo">
+          <h3 class="sin-margen">Nuevo préstamo</h3>
+          <label>Persona<input name="persona" placeholder="Persona" autocomplete="off" required list="lista-personas" /></label>
+          <label>Monto<input name="monto" type="number" step="0.01" placeholder="Monto" required /></label>
+          <label>Moneda<select name="moneda"><option value="ARS">ARS</option><option value="USD">USD</option></select></label>
+          <label>Interés % (opcional)<input name="interes_pct" type="number" step="0.01" placeholder="Ej: 10" /></label>
+          <label>Nota (opcional)<input name="nota" placeholder="Nota" /></label>
+          <div class="dialogo-botones">
+            <button type="button" class="btn-secundario" onclick="document.getElementById('dialogo-prestamo').close()">Cancelar</button>
+            <button type="submit" class="btn-primario">Generar préstamo</button>
+          </div>
+        </form>
+      </dialog>
+
+      <section id="tab-prendas" class="panel oculto">
+        <div class="barra-acciones">
+          <h3 class="sin-margen">Plan Canje</h3>
+          <button type="button" class="btn-primario" onclick="abrirDialogoCanje()">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            Nuevo canje
+          </button>
+        </div>
+        <div class="tabla-wrap">
+          <table id="tabla-prendas">
+            <thead><tr><th>Persona</th><th>Celular</th><th>Estado del equipo</th><th>Valor tomado</th><th>Entregado</th><th>Saldo</th><th>Situación</th><th>Fecha</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <dialog id="dialogo-canje">
+        <form id="form-canje">
+          <input type="hidden" name="id" />
+          <h3 class="sin-margen" id="titulo-dialogo-canje">Nuevo canje</h3>
+          <p class="ayuda">Recibís un celular en cierto estado, lo tomás a un precio, y de ahí sale una diferencia a favor tuyo o del cliente (en plata o en producto).</p>
+          <label>Persona<input name="persona" placeholder="Persona" autocomplete="off" required list="lista-personas" /></label>
+          <label>Celular que recibís<input name="descripcion" placeholder="Ej: iPhone 11 128GB" autocomplete="off" required /></label>
+          <label>Estado del equipo<input name="condicion" placeholder="Ej: excelente, con detalles, para repuestos" autocomplete="off" /></label>
+          <label>Precio al que lo tomás<input name="valor_tomado" type="number" step="0.01" placeholder="Monto" /></label>
+          <label>Moneda del valor<select name="moneda_valor"><option value="ARS">ARS</option><option value="USD">USD</option></select></label>
+          <label>Producto que entregás a cambio (opcional)<input name="producto_entregado" placeholder="Ej: iPhone 13 128GB" autocomplete="off" /></label>
+          <label>
+            Diferencia en plata (opcional)
+            <input name="saldo_monto" type="number" step="0.01" placeholder="Positivo = te tienen que dar. Negativo = les debés." />
+          </label>
+          <label>Moneda de la diferencia<select name="saldo_moneda"><option value="ARS">ARS</option><option value="USD">USD</option></select></label>
+          <label>Nota (opcional)<input name="nota" placeholder="Nota" /></label>
+          <div class="dialogo-botones">
+            <button type="button" class="btn-secundario" onclick="document.getElementById('dialogo-canje').close()">Cancelar</button>
+            <button type="submit" class="btn-primario" id="boton-guardar-canje">Generar canje</button>
+          </div>
+        </form>
+      </dialog>
+
+      <section id="tab-empleados" class="panel oculto">
+        <div class="barra-acciones">
+          <h3 class="sin-margen">Empleados</h3>
+          <button type="button" class="btn-primario" onclick="document.getElementById('form-empleado').reset(); document.getElementById('dialogo-empleado').showModal()">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            Nuevo usuario
+          </button>
+        </div>
+        <div class="tabla-wrap">
+          <table id="tabla-empleados">
+            <thead><tr><th>Nombre</th><th>Teléfono</th><th>Descuento %</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <dialog id="dialogo-empleado">
+        <form id="form-empleado">
+          <h3 class="sin-margen">Nuevo usuario (precio amigo)</h3>
+          <label>Nombre<input name="nombre" placeholder="Nombre" autocomplete="off" required /></label>
+          <label>Teléfono (opcional)<input name="telefono" placeholder="Teléfono" autocomplete="off" /></label>
+          <label>% descuento<input name="descuento_pct" type="number" step="0.01" placeholder="Ej: 10" /></label>
+          <div class="dialogo-botones">
+            <button type="button" class="btn-secundario" onclick="document.getElementById('dialogo-empleado').close()">Cancelar</button>
+            <button type="submit" class="btn-primario">Generar usuario</button>
+          </div>
+        </form>
+      </dialog>
+
+    </main>
+  </div>
+</div>
+
+<datalist id="lista-personas"></datalist>
+<datalist id="lista-productos"></datalist>
+
+<div id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

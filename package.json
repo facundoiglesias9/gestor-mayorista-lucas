@@ -1,0 +1,27 @@
+{
+  "name": "gestor-mayorista",
+  "version": "1.0.0",
+  "description": "Cerebro de gestion para el emprendimiento mayorista: stock, empleados, prestamos y prendas, manejado por chat de Telegram.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "backup": "tsx src/backup.ts"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "grammy": "^1.30.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
