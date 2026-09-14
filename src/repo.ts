@@ -45,14 +45,15 @@ export async function agregarProducto(args: {
   cantidad: number;
   costo?: number;
   precio_venta?: number;
+  moneda?: string;
   categoria?: string;
   nota?: string;
 }) {
   const existente = await findProducto(args.nombre);
   if (existente) {
     await run(
-      `UPDATE productos SET cantidad = cantidad + ?, costo = COALESCE(?, costo), precio_venta = COALESCE(?, precio_venta), categoria = COALESCE(?, categoria), actualizado_en = datetime('now','localtime') WHERE id = ?`,
-      [args.cantidad, args.costo ?? null, args.precio_venta ?? null, args.categoria ?? null, existente.id]
+      `UPDATE productos SET cantidad = cantidad + ?, costo = COALESCE(?, costo), precio_venta = COALESCE(?, precio_venta), moneda = COALESCE(?, moneda), categoria = COALESCE(?, categoria), actualizado_en = datetime('now','localtime') WHERE id = ?`,
+      [args.cantidad, args.costo ?? null, args.precio_venta ?? null, args.moneda ?? null, args.categoria ?? null, existente.id]
     );
     await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, precio_unitario, nota) VALUES (?, 'entrada', ?, ?, ?)`, [
       existente.id,
@@ -65,12 +66,13 @@ export async function agregarProducto(args: {
   }
   // Producto nuevo: si no vino categoria, se la pedimos a la IA (ej: "iPhone 12" -> Celulares).
   const categoria = args.categoria || (await inferirCategoria(args.nombre));
-  const info = await run(`INSERT INTO productos (nombre, categoria, cantidad, costo, precio_venta, nota) VALUES (?, ?, ?, ?, ?, ?)`, [
+  const info = await run(`INSERT INTO productos (nombre, categoria, cantidad, costo, precio_venta, moneda, nota) VALUES (?, ?, ?, ?, ?, ?, ?)`, [
     args.nombre,
     categoria,
     args.cantidad,
     args.costo ?? null,
     args.precio_venta ?? null,
+    args.moneda ?? "USD",
     args.nota ?? null,
   ]);
   await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, precio_unitario, nota) VALUES (?, 'entrada', ?, ?, 'alta inicial')`, [
@@ -163,18 +165,19 @@ export async function obtenerProducto(id: number) {
 
 export async function actualizarProductoPorId(
   id: number,
-  campos: { nombre?: string; categoria?: string; cantidad?: number; costo?: number; precio_venta?: number; nota?: string }
+  campos: { nombre?: string; categoria?: string; cantidad?: number; costo?: number; precio_venta?: number; moneda?: string; nota?: string }
 ) {
   const actual = await obtenerProducto(id);
   if (!actual) throw new Error(`No existe el producto #${id}.`);
   await run(
-    `UPDATE productos SET nombre = ?, categoria = ?, cantidad = ?, costo = ?, precio_venta = ?, nota = ?, actualizado_en = datetime('now','localtime') WHERE id = ?`,
+    `UPDATE productos SET nombre = ?, categoria = ?, cantidad = ?, costo = ?, precio_venta = ?, moneda = ?, nota = ?, actualizado_en = datetime('now','localtime') WHERE id = ?`,
     [
       campos.nombre ?? actual.nombre,
       campos.categoria ?? actual.categoria,
       campos.cantidad ?? actual.cantidad,
       campos.costo ?? actual.costo,
       campos.precio_venta ?? actual.precio_venta,
+      campos.moneda ?? actual.moneda,
       campos.nota ?? actual.nota,
       id,
     ]

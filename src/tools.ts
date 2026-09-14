@@ -17,6 +17,11 @@ export const toolDefinitions: Anthropic.Tool[] = [
         cantidad: { type: "number", description: "Cantidad de unidades que entran" },
         costo: { type: "number", description: "Costo unitario de compra. Si no te lo dijeron, preguntalo." },
         precio_venta: { type: "number", description: "Precio de venta por unidad, SOLO si te lo dieron espontaneamente. No preguntarlo." },
+        moneda: {
+          type: "string",
+          enum: ["USD", "ARS"],
+          description: "Moneda del costo y precio_venta. Si no se especifica, asumir USD (es lo mas comun en este rubro).",
+        },
         categoria: { type: "string", description: "Dejar vacio salvo que el usuario la mencione explicitamente: se infiere sola con IA." },
         nota: { type: "string", description: "Nota libre opcional" },
       },

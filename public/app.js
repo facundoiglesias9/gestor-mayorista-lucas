@@ -214,8 +214,8 @@ async function cargarProductos() {
         <td data-etiqueta="Nombre">${escapeHtml(p.nombre)}</td>
         <td data-etiqueta="Categoria">${escapeHtml(p.categoria ?? "-")}</td>
         <td data-etiqueta="Cantidad" class="${p.cantidad < 0 ? "negativo" : ""}">${p.cantidad}</td>
-        <td data-etiqueta="Costo">${p.costo != null ? formatoMoneda(p.costo) : "-"}</td>
-        <td data-etiqueta="Precio venta">${p.precio_venta != null ? formatoMoneda(p.precio_venta) : "-"}</td>
+        <td data-etiqueta="Costo">${p.costo != null ? formatoConSimbolo(p.costo, p.moneda) : "-"}</td>
+        <td data-etiqueta="Precio venta">${p.precio_venta != null ? formatoConSimbolo(p.precio_venta, p.moneda) : "-"}</td>
         <td><button class="btn-icono" title="Editar" onclick="editarProducto(${p.id})">${ICONO_LAPIZ}</button></td>
       </tr>`
           )
@@ -246,6 +246,7 @@ function editarProducto(id) {
   form.elements.cantidad.value = p.cantidad;
   form.elements.costo.value = p.costo ?? "";
   form.elements.precio_venta.value = p.precio_venta ?? "";
+  form.elements.moneda.value = p.moneda ?? "USD";
   document.getElementById("titulo-dialogo-producto").textContent = "Editar producto";
   document.getElementById("boton-guardar-producto").textContent = "Guardar cambios";
   document.getElementById("dialogo-producto").showModal();
@@ -294,40 +295,54 @@ document.getElementById("form-venta").addEventListener("submit", async (ev) => {
   }
 });
 const NOMBRE_MONEDA = { USD: "Dólares", ARS: "Pesos" };
-let ultimaCotizacionDolar = null;
+const SIMBOLO_MONEDA = { USD: "U$D", ARS: "$" };
+let ultimaCotizacionDolar = null; // { blue: {compra, venta, fechaActualizacion}, cripto: {...} }
+
+// Formato "a la argentina": simbolo adelante, ej "U$D 8.494,5" o "$ 606.049".
+function formatoConSimbolo(n, moneda) {
+  if (n == null) return "-";
+  const num = Number(n).toLocaleString("es-AR", { maximumFractionDigits: 2 });
+  const simbolo = SIMBOLO_MONEDA[moneda];
+  return simbolo ? `${simbolo} ${num}` : num;
+}
+
+function formatoGanancia(valor, moneda) {
+  if (valor == null) return "-";
+  const clase = valor > 0 ? "a-favor-negocio" : valor < 0 ? "a-favor-cliente" : "";
+  return `<span class="${clase}">${formatoConSimbolo(valor, moneda)}</span>`;
+}
+
+function filaDolar(etiqueta, d) {
+  return `
+      <div class="dolar-fila">
+        <div class="dolar-icono">$</div>
+        <div class="dolar-info">
+          <strong>${etiqueta}</strong>
+          <span>Compra ${formatoConSimbolo(d.compra, "ARS")} · Venta ${formatoConSimbolo(d.venta, "ARS")}</span>
+        </div>
+      </div>`;
+}
 
 async function cargarDolar() {
   const cont = document.getElementById("widget-dolar");
   try {
     const d = await api("GET", "/api/dolar");
     ultimaCotizacionDolar = d;
-    const actualizado = new Date(d.fechaActualizacion);
+    const actualizado = new Date(d.blue.fechaActualizacion);
     cont.innerHTML = `
-      <div class="dolar-icono">$</div>
-      <div class="dolar-info">
-        <strong>Dólar blue</strong>
-        <span>Compra ${formatoMoneda(d.compra)} · Venta ${formatoMoneda(d.venta)}</span>
-      </div>
+      ${filaDolar("Dólar blue", d.blue)}
+      ${filaDolar("Dólar cripto (USDT)", d.cripto)}
       <span class="dolar-actualizado">Actualizado ${actualizado.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span>
     `;
   } catch (e) {
     ultimaCotizacionDolar = null;
-    cont.innerHTML = `<div class="dolar-info"><strong>Dólar blue</strong><span class="negativo">No se pudo obtener la cotización.</span></div>`;
+    cont.innerHTML = `<div class="dolar-info"><strong>Cotización del dólar</strong><span class="negativo">No se pudo obtener.</span></div>`;
   }
 }
 
-function formatoGanancia(valor, moneda) {
-  if (valor == null) return "-";
-  const clase = valor > 0 ? "a-favor-negocio" : valor < 0 ? "a-favor-cliente" : "";
-  return `<span class="${clase}">${formatoMoneda(valor, moneda)}</span>`;
-}
-
 async function cargarVentas() {
-  const form = document.getElementById("form-filtro-ventas");
-  const datos = Object.fromEntries(new FormData(form));
-  const params = new URLSearchParams(limpiarVacios(datos)).toString();
   try {
-    const [r] = await Promise.all([api("GET", `/api/ventas${params ? "?" + params : ""}`), cargarDolar()]);
+    const [r] = await Promise.all([api("GET", "/api/ventas"), cargarDolar()]);
     const paneles = document.getElementById("ventas-paneles");
     const monedas = Object.keys(r.resumen);
 
@@ -339,7 +354,7 @@ async function cargarVentas() {
       <div class="panel-moneda">
         <div class="panel-moneda-header">${NOMBRE_MONEDA[m] ?? m} <span class="etiqueta-moneda">${m}</span></div>
         <div class="panel-moneda-stats">
-          <div><div class="label">Facturado</div><div class="valor">${formatoMoneda(s.facturado, m)}</div></div>
+          <div><div class="label">Facturado</div><div class="valor">${formatoConSimbolo(s.facturado, m)}</div></div>
           <div><div class="label">Unidades</div><div class="valor">${s.unidades}</div></div>
           <div><div class="label">Ganancia est.</div><div class="valor">${formatoGanancia(s.ganancia_estimada, m)}</div></div>
         </div>
@@ -349,17 +364,25 @@ async function cargarVentas() {
       : `<div class="panel-moneda"><div class="panel-moneda-header">Sin ventas</div></div>`;
 
     if (monedas.includes("USD") && monedas.includes("ARS") && ultimaCotizacionDolar) {
-      const promedio = (ultimaCotizacionDolar.compra + ultimaCotizacionDolar.venta) / 2;
+      const promedio = (ultimaCotizacionDolar.blue.compra + ultimaCotizacionDolar.blue.venta) / 2;
       const facturadoTotalUSD = r.resumen.USD.facturado + r.resumen.ARS.facturado / promedio;
       const gananciaTotalUSD = r.resumen.USD.ganancia_estimada + r.resumen.ARS.ganancia_estimada / promedio;
       html += `
       <div class="panel-moneda panel-combinado">
-        <div class="panel-moneda-header">Total combinado <span class="etiqueta-moneda">≈USD</span></div>
+        <div class="panel-moneda-header">Total combinado <span class="etiqueta-moneda">≈USD / ≈ARS</span></div>
         <div class="panel-moneda-stats">
-          <div><div class="label">Facturado equiv.</div><div class="valor">${formatoMoneda(facturadoTotalUSD, "USD")}</div></div>
-          <div><div class="label">Ganancia equiv.</div><div class="valor">${formatoGanancia(gananciaTotalUSD, "USD")}</div></div>
+          <div>
+            <div class="label">Facturado equiv.</div>
+            <div class="valor">${formatoConSimbolo(facturadoTotalUSD, "USD")}</div>
+            <div class="valor-secundario">≈ ${formatoConSimbolo(facturadoTotalUSD * promedio, "ARS")}</div>
+          </div>
+          <div>
+            <div class="label">Ganancia equiv.</div>
+            <div class="valor">${formatoGanancia(gananciaTotalUSD, "USD")}</div>
+            <div class="valor-secundario">≈ ${formatoConSimbolo(gananciaTotalUSD * promedio, "ARS")}</div>
+          </div>
         </div>
-        <div class="panel-moneda-nota">Usando el dólar blue promedio (${formatoMoneda(promedio)}) para convertir los pesos.</div>
+        <div class="panel-moneda-nota">Usando el dólar blue promedio (${formatoConSimbolo(promedio, "ARS")}) para convertir.</div>
       </div>`;
     }
 
@@ -383,11 +406,6 @@ async function cargarVentas() {
     mostrarToast(e.message, true);
   }
 }
-
-document.getElementById("form-filtro-ventas").addEventListener("submit", (ev) => {
-  ev.preventDefault();
-  cargarVentas();
-});
 
 // ---------- prestamos ----------
 async function cargarPrestamos() {

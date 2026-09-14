@@ -88,15 +88,18 @@ app.get(
 );
 app.get("/api/resumen", envolver(() => repo.consultarEstadoGeneral()));
 
-// ---------- cotizacion del dolar (blue), con cache de 60s para no golpear la API de afuera ----------
+// ---------- cotizacion del dolar (blue y cripto/USDT), con cache de 60s ----------
 let dolarCache: { data: any; ts: number } | null = null;
 app.get(
   "/api/dolar",
   envolver(async () => {
     if (dolarCache && Date.now() - dolarCache.ts < 60_000) return dolarCache.data;
-    const resp = await fetch("https://dolarapi.com/v1/dolares/blue");
-    if (!resp.ok) throw new Error("No se pudo obtener la cotización del dólar.");
-    const datos = await resp.json();
+    const [blueResp, criptoResp] = await Promise.all([
+      fetch("https://dolarapi.com/v1/dolares/blue"),
+      fetch("https://dolarapi.com/v1/dolares/cripto"),
+    ]);
+    if (!blueResp.ok || !criptoResp.ok) throw new Error("No se pudo obtener la cotización del dólar.");
+    const datos = { blue: await blueResp.json(), cripto: await criptoResp.json() };
     dolarCache = { data: datos, ts: Date.now() };
     return datos;
   })

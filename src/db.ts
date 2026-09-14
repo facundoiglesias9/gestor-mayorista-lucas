@@ -31,9 +31,19 @@ export async function run(sql: string, params: any[] = []): Promise<{ lastInsert
 
 let migracion: Promise<void> | null = null;
 
+async function agregarColumnaSiFalta(tabla: string, columna: string, definicion: string) {
+  try {
+    await db.execute(`ALTER TABLE ${tabla} ADD COLUMN ${columna} ${definicion}`);
+  } catch (e: any) {
+    // Ya existe (esto corre en cada arranque, no solo la primera vez): se ignora.
+    if (!/duplicate column/i.test(e.message ?? "")) throw e;
+  }
+}
+
 export function asegurarTablas(): Promise<void> {
   if (!migracion) {
-    migracion = db.executeMultiple(`
+    migracion = (async () => {
+      await db.executeMultiple(`
 CREATE TABLE IF NOT EXISTS personas (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -143,6 +153,10 @@ CREATE TABLE IF NOT EXISTS logs_bot (
   fecha TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 `);
+      // Columna agregada despues de la version inicial de la tabla productos: en que moneda
+      // estan cargados el costo y el precio de venta de ese producto.
+      await agregarColumnaSiFalta("productos", "moneda", "TEXT NOT NULL DEFAULT 'USD'");
+    })();
   }
   return migracion;
 }
