@@ -293,25 +293,77 @@ document.getElementById("form-venta").addEventListener("submit", async (ev) => {
     mostrarToast(e.message, true);
   }
 });
+const NOMBRE_MONEDA = { USD: "Dólares", ARS: "Pesos" };
+let ultimaCotizacionDolar = null;
+
+async function cargarDolar() {
+  const cont = document.getElementById("widget-dolar");
+  try {
+    const d = await api("GET", "/api/dolar");
+    ultimaCotizacionDolar = d;
+    const actualizado = new Date(d.fechaActualizacion);
+    cont.innerHTML = `
+      <div class="dolar-icono">$</div>
+      <div class="dolar-info">
+        <strong>Dólar blue</strong>
+        <span>Compra ${formatoMoneda(d.compra)} · Venta ${formatoMoneda(d.venta)}</span>
+      </div>
+      <span class="dolar-actualizado">Actualizado ${actualizado.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span>
+    `;
+  } catch (e) {
+    ultimaCotizacionDolar = null;
+    cont.innerHTML = `<div class="dolar-info"><strong>Dólar blue</strong><span class="negativo">No se pudo obtener la cotización.</span></div>`;
+  }
+}
+
+function formatoGanancia(valor, moneda) {
+  if (valor == null) return "-";
+  const clase = valor > 0 ? "a-favor-negocio" : valor < 0 ? "a-favor-cliente" : "";
+  return `<span class="${clase}">${formatoMoneda(valor, moneda)}</span>`;
+}
+
 async function cargarVentas() {
   const form = document.getElementById("form-filtro-ventas");
   const datos = Object.fromEntries(new FormData(form));
   const params = new URLSearchParams(limpiarVacios(datos)).toString();
   try {
-    const r = await api("GET", `/api/ventas${params ? "?" + params : ""}`);
-    const cards = document.getElementById("ventas-resumen");
+    const [r] = await Promise.all([api("GET", `/api/ventas${params ? "?" + params : ""}`), cargarDolar()]);
+    const paneles = document.getElementById("ventas-paneles");
     const monedas = Object.keys(r.resumen);
-    cards.innerHTML = monedas.length
+
+    let html = monedas.length
       ? monedas
-          .map(
-            (m) => `
-      <div class="card"><div class="label">Facturado (${m})</div><div class="valor">${formatoMoneda(r.resumen[m].facturado)}</div></div>
-      <div class="card"><div class="label">Unidades (${m})</div><div class="valor">${r.resumen[m].unidades}</div></div>
-      <div class="card"><div class="label">Ganancia est. (${m})</div><div class="valor">${formatoMoneda(r.resumen[m].ganancia_estimada)}</div></div>
-    `
-          )
+          .map((m) => {
+            const s = r.resumen[m];
+            return `
+      <div class="panel-moneda">
+        <div class="panel-moneda-header">${NOMBRE_MONEDA[m] ?? m} <span class="etiqueta-moneda">${m}</span></div>
+        <div class="panel-moneda-stats">
+          <div><div class="label">Facturado</div><div class="valor">${formatoMoneda(s.facturado, m)}</div></div>
+          <div><div class="label">Unidades</div><div class="valor">${s.unidades}</div></div>
+          <div><div class="label">Ganancia est.</div><div class="valor">${formatoGanancia(s.ganancia_estimada, m)}</div></div>
+        </div>
+      </div>`;
+          })
           .join("")
-      : `<div class="card"><div class="label">Ventas</div><div class="valor">0</div></div>`;
+      : `<div class="panel-moneda"><div class="panel-moneda-header">Sin ventas</div></div>`;
+
+    if (monedas.includes("USD") && monedas.includes("ARS") && ultimaCotizacionDolar) {
+      const promedio = (ultimaCotizacionDolar.compra + ultimaCotizacionDolar.venta) / 2;
+      const facturadoTotalUSD = r.resumen.USD.facturado + r.resumen.ARS.facturado / promedio;
+      const gananciaTotalUSD = r.resumen.USD.ganancia_estimada + r.resumen.ARS.ganancia_estimada / promedio;
+      html += `
+      <div class="panel-moneda panel-combinado">
+        <div class="panel-moneda-header">Total combinado <span class="etiqueta-moneda">≈USD</span></div>
+        <div class="panel-moneda-stats">
+          <div><div class="label">Facturado equiv.</div><div class="valor">${formatoMoneda(facturadoTotalUSD, "USD")}</div></div>
+          <div><div class="label">Ganancia equiv.</div><div class="valor">${formatoGanancia(gananciaTotalUSD, "USD")}</div></div>
+        </div>
+        <div class="panel-moneda-nota">Usando el dólar blue promedio (${formatoMoneda(promedio)}) para convertir los pesos.</div>
+      </div>`;
+    }
+
+    paneles.innerHTML = html;
 
     const tbody = document.querySelector("#tabla-ventas tbody");
     tbody.innerHTML = r.detalle

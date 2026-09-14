@@ -88,6 +88,20 @@ app.get(
 );
 app.get("/api/resumen", envolver(() => repo.consultarEstadoGeneral()));
 
+// ---------- cotizacion del dolar (blue), con cache de 60s para no golpear la API de afuera ----------
+let dolarCache: { data: any; ts: number } | null = null;
+app.get(
+  "/api/dolar",
+  envolver(async () => {
+    if (dolarCache && Date.now() - dolarCache.ts < 60_000) return dolarCache.data;
+    const resp = await fetch("https://dolarapi.com/v1/dolares/blue");
+    if (!resp.ok) throw new Error("No se pudo obtener la cotización del dólar.");
+    const datos = await resp.json();
+    dolarCache = { data: datos, ts: Date.now() };
+    return datos;
+  })
+);
+
 // ---------- respuestas predefinidas ----------
 app.get("/api/respuestas", envolver(() => repo.listarRespuestasPredefinidas()));
 app.post("/api/respuestas", envolver((req) => repo.agregarRespuestaPredefinida(req.body)));
