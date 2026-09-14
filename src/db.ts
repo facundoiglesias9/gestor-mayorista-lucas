@@ -120,6 +120,28 @@ CREATE TABLE IF NOT EXISTS updates_procesados (
   update_id INTEGER PRIMARY KEY,
   procesado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
+
+-- Respuestas fijas: si el mensaje contiene el disparador, se responde esto directo, sin
+-- gastar de IA ni pasar por el cerebro. Para cosas tipo "horarios", "direccion", etc.
+CREATE TABLE IF NOT EXISTS respuestas_predefinidas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  disparador TEXT NOT NULL,
+  respuesta TEXT NOT NULL,
+  activo INTEGER NOT NULL DEFAULT 1,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+-- Registro de actividad del bot (para verlo desde el panel sin depender de logs de Vercel).
+CREATE TABLE IF NOT EXISTS logs_bot (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id TEXT,
+  usuario_nombre TEXT,
+  tipo TEXT NOT NULL CHECK (tipo IN ('mensaje','respuesta_predefinida','error')),
+  entrada TEXT,
+  salida TEXT,
+  herramientas_usadas TEXT,
+  fecha TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
 `);
   }
   return migracion;

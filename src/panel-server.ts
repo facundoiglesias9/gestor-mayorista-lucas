@@ -2,6 +2,7 @@ import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as repo from "./repo.js";
+import { toolDefinitions } from "./tools.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -86,6 +87,50 @@ app.get(
   })
 );
 app.get("/api/resumen", envolver(() => repo.consultarEstadoGeneral()));
+
+// ---------- respuestas predefinidas ----------
+app.get("/api/respuestas", envolver(() => repo.listarRespuestasPredefinidas()));
+app.post("/api/respuestas", envolver((req) => repo.agregarRespuestaPredefinida(req.body)));
+app.put("/api/respuestas/:id", envolver((req) => repo.actualizarRespuestaPredefinidaPorId(Number(req.params.id), req.body)));
+app.delete("/api/respuestas/:id", envolver((req) => repo.eliminarRespuestaPredefinidaPorId(Number(req.params.id))));
+
+// ---------- logs ----------
+app.get("/api/logs", envolver((req) => repo.listarLogs(req.query.limite ? Number(req.query.limite) : undefined)));
+
+// ---------- info del bot (para la pantalla "Como funciona") ----------
+app.get(
+  "/api/bot-info",
+  envolver(() => ({
+    herramientas: toolDefinitions.map((t) => ({ nombre: t.name, descripcion: t.description })),
+    modelo: process.env.CLAUDE_MODEL || "claude-sonnet-5",
+  }))
+);
+
+// ---------- estado / diagnostico ----------
+app.get(
+  "/api/estado-sistema",
+  envolver(async () => {
+    const baseOk = await repo.chequearConexionDb();
+
+    let webhook: any = null;
+    let webhookError: string | null = null;
+    try {
+      const resp = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getWebhookInfo`);
+      const datos = await resp.json();
+      webhook = datos.result ?? null;
+    } catch (e: any) {
+      webhookError = e.message ?? String(e);
+    }
+
+    return {
+      base_de_datos: baseOk,
+      webhook,
+      webhook_error: webhookError,
+      anthropic_configurado: !!process.env.ANTHROPIC_API_KEY,
+      hora_servidor: new Date().toISOString(),
+    };
+  })
+);
 
 // ---------- frontend estatico ----------
 app.use(express.static(path.join(__dirname, "..", "public")));

@@ -1,6 +1,6 @@
 import { Bot } from "grammy";
 import { procesarMensaje } from "./brain.js";
-import { yaProcesadoUpdate } from "./repo.js";
+import { yaProcesadoUpdate, buscarRespuestaPredefinida, registrarLog } from "./repo.js";
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const OWNER_ID = process.env.OWNER_TELEGRAM_ID;
@@ -21,6 +21,14 @@ function nombreDe(ctx: { from?: { first_name?: string; last_name?: string } }): 
   return [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "alguien";
 }
 
+async function registrarLogSeguro(entrada: Parameters<typeof registrarLog>[0]) {
+  try {
+    await registrarLog(entrada);
+  } catch (e) {
+    console.error("No se pudo guardar el log:", e);
+  }
+}
+
 const MAX_BYTES_IMAGEN = 5 * 1024 * 1024; // limite de la API de Anthropic para imagenes en base64
 
 export const bot = new Bot(TOKEN);
@@ -37,16 +45,25 @@ bot.on("message:text", async (ctx) => {
     console.log(`Mensaje ignorado de un ID no autorizado: ${ctx.from?.id}`);
     return;
   }
+  const usuarioId = String(ctx.from!.id);
+  const nombre = nombreDe(ctx);
   try {
     if (await yaProcesadoUpdate(ctx.update.update_id)) {
       console.log(`Update ${ctx.update.update_id} repetido (Telegram reintento), lo ignoro.`);
       return;
     }
+    const fija = await buscarRespuestaPredefinida(ctx.message.text);
+    if (fija) {
+      await ctx.reply(fija);
+      await registrarLogSeguro({ usuario_id: usuarioId, usuario_nombre: nombre, tipo: "respuesta_predefinida", entrada: ctx.message.text, salida: fija });
+      return;
+    }
     await ctx.replyWithChatAction("typing");
-    const respuesta = await procesarMensaje(String(ctx.from!.id), nombreDe(ctx), ctx.message.text);
+    const respuesta = await procesarMensaje(usuarioId, nombre, ctx.message.text);
     await ctx.reply(respuesta);
   } catch (e: any) {
     console.error(e);
+    await registrarLogSeguro({ usuario_id: usuarioId, usuario_nombre: nombre, tipo: "error", entrada: ctx.message.text, salida: String(e.message ?? e) });
     await ctx.reply(`Algo fallo procesando eso: ${e.message ?? e}`);
   }
 });
@@ -81,6 +98,13 @@ bot.on("message:photo", async (ctx) => {
     await ctx.reply(respuesta);
   } catch (e: any) {
     console.error(e);
+    await registrarLogSeguro({
+      usuario_id: String(ctx.from!.id),
+      usuario_nombre: nombreDe(ctx),
+      tipo: "error",
+      entrada: `(imagen) ${ctx.message.caption ?? ""}`,
+      salida: String(e.message ?? e),
+    });
     await ctx.reply(`Algo fallo procesando esa imagen: ${e.message ?? e}`);
   }
 });

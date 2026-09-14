@@ -324,7 +324,7 @@ dialog label {
   font-weight: 600;
 }
 
-dialog input, dialog select {
+dialog input, dialog select, dialog textarea {
   background: var(--bg-input);
   border: 1px solid var(--borde);
   color: var(--texto);
@@ -332,8 +332,17 @@ dialog input, dialog select {
   border-radius: 7px;
   font-size: 0.9rem;
   font-weight: 400;
+  font-family: inherit;
+  resize: vertical;
 }
-dialog input:focus, dialog select:focus { outline: none; border-color: var(--acento); }
+dialog input:focus, dialog select:focus, dialog textarea:focus { outline: none; border-color: var(--acento); }
+
+dialog label.fila-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+dialog label.fila-check input { width: auto; }
 
 .dialogo-botones {
   display: flex;
@@ -470,6 +479,64 @@ td input:focus, td select:focus { outline: none; border-color: var(--acento); }
 .negativo { color: var(--rojo); font-weight: 700; }
 .a-favor-negocio { color: var(--verde); font-weight: 600; }
 .a-favor-cliente { color: var(--rojo); font-weight: 600; }
+
+/* ---------- pagina "Bot": estado, explicacion, herramientas ---------- */
+.ayuda-grande {
+  color: var(--texto-tenue);
+  font-size: 0.88rem;
+  line-height: 1.6;
+  margin: 0 0 16px;
+}
+
+h4 {
+  font-size: 0.8rem;
+  color: var(--texto);
+  margin: 0 0 8px;
+  font-weight: 700;
+}
+
+.lista-herramientas {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.herramienta {
+  background: var(--bg-input);
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.herramienta strong { font-size: 0.82rem; color: var(--acento); }
+.herramienta span { font-size: 0.8rem; color: var(--texto-tenue); }
+
+.valor-chico {
+  font-size: 0.92rem !important;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-ancho { flex-basis: 100%; }
+
+.punto-estado {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+  display: inline-block;
+}
+.punto-ok { background: var(--verde); box-shadow: 0 0 6px var(--verde); }
+.punto-mal { background: var(--rojo); box-shadow: 0 0 6px var(--rojo); }
+
+.celda-texto {
+  max-width: 260px;
+  white-space: normal;
+  word-break: break-word;
+}
 
 .estado-vacio {
   border: 1px dashed var(--borde);

@@ -115,6 +115,8 @@ const TITULOS_TAB = {
   prestamos: "Préstamos",
   prendas: "Plan Canje",
   empleados: "Empleados",
+  bot: "Bot",
+  logs: "Logs",
 };
 
 document.querySelectorAll(".tab").forEach((btn) => {
@@ -135,6 +137,12 @@ function cargarTab(tab) {
   if (tab === "prestamos") cargarPrestamos();
   if (tab === "prendas") cargarPrendas();
   if (tab === "empleados") cargarEmpleados();
+  if (tab === "bot") {
+    cargarEstadoSistema();
+    cargarInfoBot();
+    cargarRespuestas();
+  }
+  if (tab === "logs") cargarLogs();
 }
 
 async function cargarListaPersonas() {
@@ -190,6 +198,7 @@ async function cargarResumen() {
 
 // ---------- stock ----------
 const ICONO_LAPIZ = `<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>`;
+const ICONO_TACHO = `<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6"/><path d="M10 11v6M14 11v6"/></svg>`;
 
 let productosCache = [];
 
@@ -503,6 +512,164 @@ document.getElementById("form-empleado").addEventListener("submit", async (ev) =
     mostrarToast(e.message, true);
   }
 });
+
+// ---------- bot: estado de conexion ----------
+async function cargarEstadoSistema() {
+  const cont = document.getElementById("estado-cards");
+  cont.innerHTML = `<div class="card"><div class="label">Cargando</div><div class="valor">…</div></div>`;
+  try {
+    const r = await api("GET", "/api/estado-sistema");
+    const webhookOk = !!r.webhook?.url && !r.webhook_error;
+    const webhookTexto = r.webhook?.url ? "Activo" : "Sin configurar";
+    const ultimoError = r.webhook?.last_error_message
+      ? `${escapeHtml(r.webhook.last_error_message)} (${new Date(r.webhook.last_error_date * 1000).toLocaleString("es-AR")})`
+      : null;
+    cont.innerHTML = `
+      ${tarjetaEstado("Base de datos (Turso)", r.base_de_datos)}
+      ${tarjetaEstado("Webhook de Telegram", webhookOk, webhookTexto)}
+      ${tarjetaEstado("Claude configurado", r.anthropic_configurado)}
+      <div class="card"><div class="label">Hora del servidor</div><div class="valor valor-chico">${new Date(r.hora_servidor).toLocaleString("es-AR")}</div></div>
+    `;
+    if (ultimoError) {
+      cont.innerHTML += `<div class="card card-ancho"><div class="label">Último error del webhook</div><div class="valor valor-chico negativo">${ultimoError}</div></div>`;
+    }
+  } catch (e) {
+    cont.innerHTML = `<div class="card"><div class="label">Error</div><div class="valor valor-chico negativo">${escapeHtml(e.message)}</div></div>`;
+  }
+}
+
+function tarjetaEstado(titulo, ok, textoExtra) {
+  const punto = ok ? `<span class="punto-estado punto-ok"></span>` : `<span class="punto-estado punto-mal"></span>`;
+  const texto = textoExtra ?? (ok ? "Andando bien" : "Con problemas");
+  return `<div class="card"><div class="label">${titulo}</div><div class="valor valor-chico">${punto}${escapeHtml(texto)}</div></div>`;
+}
+
+// ---------- bot: como funciona ----------
+async function cargarInfoBot() {
+  try {
+    const r = await api("GET", "/api/bot-info");
+    document.getElementById("info-modelo").textContent = r.modelo;
+    document.getElementById("lista-herramientas").innerHTML = r.herramientas
+      .map((h) => `<div class="herramienta"><strong>${escapeHtml(h.nombre)}</strong><span>${escapeHtml(h.descripcion)}</span></div>`)
+      .join("");
+  } catch (e) {
+    mostrarToast(e.message, true);
+  }
+}
+
+// ---------- bot: respuestas predefinidas ----------
+let respuestasCache = [];
+
+async function cargarRespuestas() {
+  try {
+    respuestasCache = await api("GET", "/api/respuestas");
+    const tbody = document.querySelector("#tabla-respuestas tbody");
+    tbody.innerHTML = respuestasCache.length
+      ? respuestasCache
+          .map(
+            (r) => `
+      <tr data-id="${r.id}">
+        <td data-etiqueta="Disparador">${escapeHtml(r.disparador)}</td>
+        <td data-etiqueta="Respuesta">${escapeHtml(r.respuesta)}</td>
+        <td data-etiqueta="Activa">${r.activo ? "Sí" : "No"}</td>
+        <td>
+          <button class="btn-icono" title="Editar" onclick="editarRespuesta(${r.id})">${ICONO_LAPIZ}</button>
+          <button class="btn-icono" title="Eliminar" onclick="eliminarRespuesta(${r.id})">${ICONO_TACHO}</button>
+        </td>
+      </tr>`
+          )
+          .join("")
+      : `<tr><td colspan="4">${estadoVacio("Todavía no cargaste ninguna respuesta predefinida.")}</td></tr>`;
+  } catch (e) {
+    mostrarToast(e.message, true);
+  }
+}
+
+function abrirDialogoRespuesta() {
+  const form = document.getElementById("form-respuesta");
+  form.reset();
+  form.elements.id.value = "";
+  form.elements.activo.checked = true;
+  document.getElementById("titulo-dialogo-respuesta").textContent = "Nueva respuesta";
+  document.getElementById("boton-guardar-respuesta").textContent = "Generar respuesta";
+  document.getElementById("dialogo-respuesta").showModal();
+}
+
+function editarRespuesta(id) {
+  const r = respuestasCache.find((x) => x.id === id);
+  if (!r) return;
+  const form = document.getElementById("form-respuesta");
+  form.reset();
+  form.elements.id.value = r.id;
+  form.elements.disparador.value = r.disparador;
+  form.elements.respuesta.value = r.respuesta;
+  form.elements.activo.checked = !!r.activo;
+  document.getElementById("titulo-dialogo-respuesta").textContent = "Editar respuesta";
+  document.getElementById("boton-guardar-respuesta").textContent = "Guardar cambios";
+  document.getElementById("dialogo-respuesta").showModal();
+}
+
+async function eliminarRespuesta(id) {
+  try {
+    await api("DELETE", `/api/respuestas/${id}`);
+    mostrarToast("Respuesta eliminada.");
+    cargarRespuestas();
+  } catch (e) {
+    mostrarToast(e.message, true);
+  }
+}
+
+document.getElementById("form-respuesta").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const form = ev.target;
+  const id = form.elements.id.value;
+  const body = {
+    disparador: form.elements.disparador.value,
+    respuesta: form.elements.respuesta.value,
+    activo: form.elements.activo.checked,
+  };
+  try {
+    if (id) {
+      await api("PUT", `/api/respuestas/${id}`, body);
+      mostrarToast("Respuesta actualizada.");
+    } else {
+      await api("POST", "/api/respuestas", body);
+      mostrarToast("Respuesta generada.");
+    }
+    form.reset();
+    document.getElementById("dialogo-respuesta").close();
+    cargarRespuestas();
+  } catch (e) {
+    mostrarToast(e.message, true);
+  }
+});
+
+// ---------- logs ----------
+const ETIQUETAS_TIPO_LOG = { mensaje: "Mensaje", respuesta_predefinida: "Respuesta fija", error: "Error" };
+
+async function cargarLogs() {
+  try {
+    const logs = await api("GET", "/api/logs?limite=150");
+    const tbody = document.querySelector("#tabla-logs tbody");
+    tbody.innerHTML = logs.length
+      ? logs
+          .map(
+            (l) => `
+      <tr>
+        <td data-etiqueta="Fecha">${l.fecha}</td>
+        <td data-etiqueta="Usuario">${escapeHtml(l.usuario_nombre ?? "-")}</td>
+        <td data-etiqueta="Tipo"><span class="estado-pill ${l.tipo === "error" ? "estado-vendida" : "estado-pagado"}">${ETIQUETAS_TIPO_LOG[l.tipo] ?? l.tipo}</span></td>
+        <td data-etiqueta="Mensaje" class="celda-texto">${escapeHtml(l.entrada ?? "-")}</td>
+        <td data-etiqueta="Respuesta" class="celda-texto">${escapeHtml(l.salida ?? "-")}</td>
+        <td data-etiqueta="Herramientas">${l.herramientas_usadas.length ? escapeHtml(l.herramientas_usadas.join(", ")) : "-"}</td>
+      </tr>`
+          )
+          .join("")
+      : `<tr><td colspan="6">${estadoVacio("Todavía no hay actividad registrada.")}</td></tr>`;
+  } catch (e) {
+    mostrarToast(e.message, true);
+  }
+}
 
 // ---------- arranque ----------
 iniciarLogin();

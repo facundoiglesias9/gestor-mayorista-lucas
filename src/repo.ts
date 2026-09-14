@@ -589,3 +589,86 @@ export async function yaProcesadoUpdate(updateId: number): Promise<boolean> {
     return true;
   }
 }
+
+// ---------- respuestas predefinidas (FAQ sin gastar IA) ----------
+
+export async function listarRespuestasPredefinidas() {
+  return all(`SELECT * FROM respuestas_predefinidas ORDER BY id DESC`);
+}
+
+export async function agregarRespuestaPredefinida(args: { disparador: string; respuesta: string; activo?: boolean }) {
+  const info = await run(`INSERT INTO respuestas_predefinidas (disparador, respuesta, activo) VALUES (?, ?, ?)`, [
+    args.disparador,
+    args.respuesta,
+    args.activo === false ? 0 : 1,
+  ]);
+  return { ok: true, id: info.lastInsertRowid };
+}
+
+export async function actualizarRespuestaPredefinidaPorId(
+  id: number,
+  campos: { disparador?: string; respuesta?: string; activo?: boolean }
+) {
+  const actual = await get(`SELECT * FROM respuestas_predefinidas WHERE id = ?`, [id]);
+  if (!actual) throw new Error(`No existe la respuesta predefinida #${id}.`);
+  await run(`UPDATE respuestas_predefinidas SET disparador = ?, respuesta = ?, activo = ? WHERE id = ?`, [
+    campos.disparador ?? actual.disparador,
+    campos.respuesta ?? actual.respuesta,
+    campos.activo != null ? (campos.activo ? 1 : 0) : actual.activo,
+    id,
+  ]);
+  return get(`SELECT * FROM respuestas_predefinidas WHERE id = ?`, [id]);
+}
+
+export async function eliminarRespuestaPredefinidaPorId(id: number) {
+  await run(`DELETE FROM respuestas_predefinidas WHERE id = ?`, [id]);
+  return { ok: true };
+}
+
+// Busca la primera respuesta activa cuyo disparador aparezca dentro del texto (sin
+// mayusculas/minusculas). null si ninguna coincide.
+export async function buscarRespuestaPredefinida(texto: string): Promise<string | null> {
+  const activas = await all(`SELECT * FROM respuestas_predefinidas WHERE activo = 1`);
+  const textoLower = texto.toLowerCase();
+  const match = activas.find((r) => textoLower.includes(String(r.disparador).toLowerCase()));
+  return match ? match.respuesta : null;
+}
+
+// ---------- logs del bot ----------
+
+export async function registrarLog(entrada: {
+  usuario_id?: string;
+  usuario_nombre?: string;
+  tipo: "mensaje" | "respuesta_predefinida" | "error";
+  entrada?: string;
+  salida?: string;
+  herramientas_usadas?: string[];
+}) {
+  await run(
+    `INSERT INTO logs_bot (usuario_id, usuario_nombre, tipo, entrada, salida, herramientas_usadas) VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      entrada.usuario_id ?? null,
+      entrada.usuario_nombre ?? null,
+      entrada.tipo,
+      entrada.entrada ?? null,
+      entrada.salida ?? null,
+      entrada.herramientas_usadas?.length ? JSON.stringify(entrada.herramientas_usadas) : null,
+    ]
+  );
+}
+
+export async function listarLogs(limite = 100) {
+  const filas = await all(`SELECT * FROM logs_bot ORDER BY id DESC LIMIT ?`, [limite]);
+  return filas.map((f) => ({ ...f, herramientas_usadas: f.herramientas_usadas ? JSON.parse(f.herramientas_usadas) : [] }));
+}
+
+// ---------- estado / diagnostico ----------
+
+export async function chequearConexionDb(): Promise<boolean> {
+  try {
+    await get(`SELECT 1 as ok`);
+    return true;
+  } catch {
+    return false;
+  }
+}

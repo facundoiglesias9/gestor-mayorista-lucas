@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { toolDefinitions, ejecutarHerramienta } from "./tools.js";
-import { cargarHistorialConversacion, guardarHistorialConversacion } from "./repo.js";
+import { cargarHistorialConversacion, guardarHistorialConversacion, registrarLog } from "./repo.js";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-5";
@@ -71,6 +71,7 @@ export async function procesarMensaje(
     historial.push({ role: "user", content: `[${nombreUsuario}] ${texto}` });
   }
 
+  const herramientasUsadas: string[] = [];
   let vueltas = 0;
   while (vueltas < 6) {
     vueltas++;
@@ -91,12 +92,21 @@ export async function procesarMensaje(
         .join("\n")
         .trim();
       await guardarHistorial(usuarioId, historial);
+      await registrarLogSeguro({
+        usuario_id: usuarioId,
+        usuario_nombre: nombreUsuario,
+        tipo: "mensaje",
+        entrada: imagen ? `${texto} (con imagen adjunta)` : texto,
+        salida: textoFinal || "Listo.",
+        herramientas_usadas: herramientasUsadas,
+      });
       return textoFinal || "Listo.";
     }
 
     const resultados: Anthropic.ToolResultBlockParam[] = [];
     for (const bloque of respuesta.content) {
       if (bloque.type === "tool_use") {
+        herramientasUsadas.push(bloque.name);
         const resultado = await ejecutarHerramienta(bloque.name, bloque.input);
         resultados.push({
           type: "tool_result",
@@ -110,6 +120,14 @@ export async function procesarMensaje(
 
   await guardarHistorial(usuarioId, historial);
   return "Me colgue haciendo demasiados pasos para esto. Contame de nuevo mas simple, o de a un tema por vez.";
+}
+
+async function registrarLogSeguro(entrada: Parameters<typeof registrarLog>[0]) {
+  try {
+    await registrarLog(entrada);
+  } catch (e) {
+    console.error("No se pudo guardar el log:", e);
+  }
 }
 
 async function guardarHistorial(usuarioId: string, historial: Turno[]) {

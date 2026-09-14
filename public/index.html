@@ -54,6 +54,14 @@
         <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17.5" cy="8.5" r="2.4"/><path d="M16 14.2c2.7.4 4.5 2.4 4.5 5.3"/></svg>
         Empleados
       </button>
+      <button data-tab="bot" class="tab">
+        <svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="2.5"/><path d="M12 8V4"/><circle cx="12" cy="3" r="1"/><circle cx="9" cy="14" r="1.3"/><circle cx="15" cy="14" r="1.3"/><path d="M4 13H2M22 13h-2"/></svg>
+        Bot
+      </button>
+      <button data-tab="logs" class="tab">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        Logs
+      </button>
     </nav>
   </aside>
 
@@ -246,6 +254,75 @@
           </div>
         </form>
       </dialog>
+
+      <section id="tab-bot" class="panel oculto">
+        <div class="barra-acciones">
+          <h3 class="sin-margen">Estado de conexión</h3>
+          <button type="button" class="btn-secundario" onclick="cargarEstadoSistema()">
+            <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
+            Actualizar
+          </button>
+        </div>
+        <div class="cards" id="estado-cards"></div>
+
+        <h3>Cómo funciona</h3>
+        <div class="surface">
+          <p class="ayuda-grande">
+            El bot escucha por Telegram (texto y fotos) a los usuarios autorizados. Cada mensaje se lo pasa a un modelo de IA
+            (<span id="info-modelo">Claude</span>) junto con las reglas del negocio y una lista de "herramientas" que puede usar para leer o
+            modificar la base de datos. Vos le contás lo que pasó en lenguaje normal, y el modelo decide qué acción ejecutar (o qué
+            preguntarte si falta un dato importante). El panel web y el chat comparten exactamente la misma base — lo que carga uno lo ve el otro
+            al instante.
+          </p>
+          <h4>Herramientas que puede usar</h4>
+          <div id="lista-herramientas" class="lista-herramientas"></div>
+        </div>
+
+        <div class="barra-acciones">
+          <h3 class="sin-margen">Respuestas predefinidas</h3>
+          <button type="button" class="btn-primario" onclick="abrirDialogoRespuesta()">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            Nueva respuesta
+          </button>
+        </div>
+        <p class="ayuda">Si un mensaje contiene el disparador, el bot responde esto directo — sin gastar IA. Útil para preguntas fijas tipo horarios, dirección, etc.</p>
+        <div class="tabla-wrap">
+          <table id="tabla-respuestas">
+            <thead><tr><th>Disparador</th><th>Respuesta</th><th>Activa</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <dialog id="dialogo-respuesta">
+        <form id="form-respuesta">
+          <input type="hidden" name="id" />
+          <h3 class="sin-margen" id="titulo-dialogo-respuesta">Nueva respuesta</h3>
+          <label>Disparador (texto que activa la respuesta)<input name="disparador" placeholder="Ej: horario" autocomplete="off" required /></label>
+          <label>Respuesta<textarea name="respuesta" rows="3" placeholder="Lo que le contesta el bot" required></textarea></label>
+          <label class="fila-check"><input type="checkbox" name="activo" checked /> Activa</label>
+          <div class="dialogo-botones">
+            <button type="button" class="btn-secundario" onclick="document.getElementById('dialogo-respuesta').close()">Cancelar</button>
+            <button type="submit" class="btn-primario" id="boton-guardar-respuesta">Generar respuesta</button>
+          </div>
+        </form>
+      </dialog>
+
+      <section id="tab-logs" class="panel oculto">
+        <div class="barra-acciones">
+          <h3 class="sin-margen">Actividad reciente del bot</h3>
+          <button type="button" class="btn-secundario" onclick="cargarLogs()">
+            <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
+            Actualizar
+          </button>
+        </div>
+        <div class="tabla-wrap">
+          <table id="tabla-logs">
+            <thead><tr><th>Fecha</th><th>Usuario</th><th>Tipo</th><th>Mensaje</th><th>Respuesta</th><th>Herramientas usadas</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
 
     </main>
   </div>
