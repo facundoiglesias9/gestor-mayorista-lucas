@@ -37,12 +37,12 @@ bot.on("message:text", async (ctx) => {
     console.log(`Mensaje ignorado de un ID no autorizado: ${ctx.from?.id}`);
     return;
   }
-  if (await yaProcesadoUpdate(ctx.update.update_id)) {
-    console.log(`Update ${ctx.update.update_id} repetido (Telegram reintento), lo ignoro.`);
-    return;
-  }
-  await ctx.replyWithChatAction("typing");
   try {
+    if (await yaProcesadoUpdate(ctx.update.update_id)) {
+      console.log(`Update ${ctx.update.update_id} repetido (Telegram reintento), lo ignoro.`);
+      return;
+    }
+    await ctx.replyWithChatAction("typing");
     const respuesta = await procesarMensaje(String(ctx.from!.id), nombreDe(ctx), ctx.message.text);
     await ctx.reply(respuesta);
   } catch (e: any) {
@@ -56,12 +56,12 @@ bot.on("message:photo", async (ctx) => {
     console.log(`Foto ignorada de un ID no autorizado: ${ctx.from?.id}`);
     return;
   }
-  if (await yaProcesadoUpdate(ctx.update.update_id)) {
-    console.log(`Update ${ctx.update.update_id} repetido (Telegram reintento), lo ignoro.`);
-    return;
-  }
-  await ctx.replyWithChatAction("typing");
   try {
+    if (await yaProcesadoUpdate(ctx.update.update_id)) {
+      console.log(`Update ${ctx.update.update_id} repetido (Telegram reintento), lo ignoro.`);
+      return;
+    }
+    await ctx.replyWithChatAction("typing");
     const fotos = ctx.message.photo;
     const mejorFoto = fotos[fotos.length - 1]; // la de mayor resolucion
     if (mejorFoto.file_size && mejorFoto.file_size > MAX_BYTES_IMAGEN) {
