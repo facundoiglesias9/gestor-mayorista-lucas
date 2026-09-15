@@ -9,13 +9,14 @@
     "dev": "tsx watch src/index.ts",
     "backup": "tsx src/backup.ts",
     "set-webhook": "tsx src/set-webhook.ts",
-    "delete-webhook": "tsx src/delete-webhook.ts"
+    "delete-webhook": "tsx src/delete-webhook.ts",
+    "test-bot": "tsx src/test-bot.ts"
   },
   "engines": {
     "node": ">=22.5.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.1",
+    "@anthropic-ai/sdk": "^0.126.0",
     "@libsql/client": "^0.18.0",
     "dotenv": "^16.4.7",
     "express": "^5.2.1",

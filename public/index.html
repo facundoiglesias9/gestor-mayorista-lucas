@@ -4,13 +4,16 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Gestor Mayorista</title>
+<link rel="icon" type="image/png" href="img/logo-lv.png" />
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 <div id="login-overlay">
   <form id="form-login">
     <div class="login-marca">
-      <div class="marca-icono">GM</div>
+      <div class="marca-icono">
+        <img src="img/logo-lv.png" alt="LV" />
+      </div>
       <h1>Gestor Mayorista</h1>
     </div>
     <input id="login-clave" type="password" placeholder="Clave del panel" autocomplete="current-password" required />
@@ -21,15 +24,27 @@
 
 <div id="app-shell" class="oculto">
 
-  <aside class="sidebar">
+  <header class="topbar-app">
     <div class="marca">
-      <div class="marca-icono">GM</div>
+      <div class="marca-icono">
+        <img src="img/logo-lv.png" alt="LV" />
+      </div>
       <div class="marca-texto">
         <strong>Gestor Mayorista</strong>
         <span>Panel interno</span>
       </div>
     </div>
-    <nav id="tabs">
+
+    <h2><strong id="titulo-seccion">Resumen</strong></h2>
+
+    <button type="button" id="btn-menu" class="btn-hamburguesa" aria-label="Abrir menú" aria-expanded="false" aria-controls="tabs">
+      <span></span><span></span><span></span>
+    </button>
+  </header>
+
+  <div id="menu-backdrop" class="menu-backdrop oculto"></div>
+
+  <nav id="tabs" class="menu-desplegable">
       <button data-tab="resumen" class="tab activo">
         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
         Resumen
@@ -62,14 +77,9 @@
         <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
         Logs
       </button>
-    </nav>
-  </aside>
+  </nav>
 
   <div class="contenido">
-    <div class="topbar">
-      <h2 id="titulo-seccion">Resumen</h2>
-    </div>
-
     <main id="app-main">
 
       <section id="tab-resumen" class="panel">

@@ -1,9 +1,16 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { toolDefinitions, ejecutarHerramienta } from "./tools.js";
-import { cargarHistorialConversacion, guardarHistorialConversacion, registrarLog } from "./repo.js";
+import { cargarHistorialConversacion, guardarHistorialConversacion, registrarLog, reiniciarConversacion } from "./repo.js";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-5";
+
+// Las herramientas no cambian en tiempo de ejecucion: le ponemos cache_control a la ultima
+// para que Anthropic cachee TODO el bloque de herramientas (y, como va antes que el resto,
+// abarata cada llamada). Esto no cambia ninguna respuesta, solo el costo.
+const toolsConCache: Anthropic.Tool[] = toolDefinitions.map((t, i) =>
+  i === toolDefinitions.length - 1 ? { ...t, cache_control: { type: "ephemeral" } } : t
+);
 
 function buildSystemPrompt(): string {
   const hoy = new Date().toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit" });
@@ -18,6 +25,7 @@ Contexto del negocio:
 - "Plan Canje" es un trade-in: alguien trae un celular usado en cierto estado, se lo tomas a un precio, y de esa cuenta sale una diferencia que puede quedar a favor tuyo (el cliente te tiene que dar mas plata o vos le entregas menos) o a favor del cliente (vos le tenes que dar plata o un producto de vuelta). Esa diferencia se puede saldar en plata y/o entregando otro producto. Usa agregar_canje para registrar esto, con el signo correcto en saldo_monto (positivo = a favor tuyo, negativo = a favor del cliente). Cuando el saldo pendiente se resuelve (se cobro o se pago la diferencia, o se entrego el producto acordado), usa actualizar_canje para marcarlo "saldado".
   - Como distinguir un canje de una venta comun: si el mensaje menciona que la persona TRAJO/DEJO/ENTREGO un celular usado (aunque sea de pasada, tipo "me dio el celular", "le tome el equipo", "me dejo el usado", "en canje", "se lo tomo a tanto") ademas de plata y/o el 0km que se lleva, es un CANJE (agregar_canje), no una venta (registrar_venta). En un canje hay DOS objetos moviendose (el que entra y el que sale), en una venta comun hay uno solo (lo que compra el cliente) a cambio de plata.
   - Si el mensaje es continuacion de una pregunta tuya anterior sobre un canje (vos preguntaste el valor del equipo que tomaste, o el estado, etc.), la respuesta hay que registrarla con agregar_canje, nunca como venta nueva, aunque la respuesta en si misma solo mencione numeros y plata.
+  - Ejemplo de CANJE: "le di un iphone 13 a martina, me dejo su 11 y me dio 50 mil pesos de diferencia" -> agregar_canje (entra el 11 usado, sale el 13, mas una diferencia en plata). Ejemplo de VENTA (NO canje, aunque se mencione otro celular de pasada): "le vendi un iphone 13 a martina por 800 dolares, el que tenia antes era un 11" -> registrar_venta (el 11 anterior es solo un comentario, no entra a tu poder ahora).
 - A veces se compra y se vende algo en el mismo momento (nunca llega a quedar cargado como stock previo). Nunca hay que bloquear ni cuestionar una venta por falta de stock: se registra siempre, y el sistema repone automaticamente la diferencia para que el stock no quede negativo.
 - Puede haber mas de una persona de confianza escribiendote (el dueno y alguna otra persona autorizada del negocio). Cada mensaje del usuario viene marcado con quien lo escribe, por ejemplo "[Facundo] vendi 2 iphone a juan". Todos comparten la misma base de datos: lo que registra uno lo ve el otro.
 - El dueno no tiene el inventario ni las deudas claras en la cabeza: tu trabajo es ser la memoria externa. Cada vez que te cuentan algo que paso (una compra de mercaderia, una venta, un prestamo, un pago, una prenda), tenes que registrarlo con la herramienta correspondiente.
@@ -36,6 +44,16 @@ Reglas importantes:
 - Despues de ejecutar una o varias herramientas, respondele en un mensaje corto confirmando que quedo registrado (o dando la info pedida). No repitas datos tecnicos de mas, anda al grano. No hace falta que repitas quien escribio, eso ya lo sabe quien te esta leyendo.
 - Podes encadenar varias herramientas en un mismo mensaje si te cuentan varias cosas juntas (ej: "vendi 2 iphone a juan y me dejo un samsung en prenda").
 - Nunca inventes datos de stock, precios, deudas o ventas: siempre consultalos con las herramientas antes de afirmarlos.`;
+}
+
+// Si por lo que sea el historial guardado de una persona queda con un tool_use sin su
+// tool_result (ej: un bug futuro parecido al que ya tapamos, o una corrupcion vieja que quedo
+// de antes de este fix), la API de Anthropic rechaza el mensaje ENTERO con un 400 apenas lo
+// mandamos. Sin esto, esa persona queda con el bot roto hasta que alguien note el patron en
+// Logs y le mande /reiniciar a mano. Detectamos esa firma puntual y nos autoreseteamos.
+function esErrorHistorialCorrupto(e: any): boolean {
+  const msg = String(e?.message ?? e ?? "");
+  return /tool_use.*tool_result|tool_result.*tool_use/is.test(msg);
 }
 
 interface Turno {
@@ -71,17 +89,42 @@ export async function procesarMensaje(
     historial.push({ role: "user", content: `[${nombreUsuario}] ${texto}` });
   }
 
+  // El prompt del sistema se arma una sola vez por mensaje (cambia la fecha de "hoy", pero no
+  // dentro del mismo mensaje) y se marca para cachear: si este mensaje necesita varias vueltas
+  // de herramientas, las vueltas 2 a 6 pagan el prompt cacheado (mucho mas barato) en vez de
+  // completo cada vez.
+  const systemPrompt: Anthropic.TextBlockParam[] = [
+    { type: "text", text: buildSystemPrompt(), cache_control: { type: "ephemeral" } },
+  ];
+
   const herramientasUsadas: string[] = [];
   let vueltas = 0;
   while (vueltas < 6) {
     vueltas++;
-    const respuesta = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 4096,
-      system: buildSystemPrompt(),
-      tools: toolDefinitions,
-      messages: historial as Anthropic.MessageParam[],
-    });
+    let respuesta;
+    try {
+      respuesta = await anthropic.messages.create({
+        model: MODEL,
+        max_tokens: 4096,
+        system: systemPrompt,
+        tools: toolsConCache,
+        messages: historial as Anthropic.MessageParam[],
+      });
+    } catch (e: any) {
+      if (esErrorHistorialCorrupto(e)) {
+        await reiniciarConversacion(usuarioId);
+        await registrarLogSeguro({
+          usuario_id: usuarioId,
+          usuario_nombre: nombreUsuario,
+          tipo: "error",
+          entrada: imagen ? `${texto} (con imagen adjunta)` : texto,
+          salida: "Historial corrupto detectado (tool_use sin tool_result): se reinicio la memoria de esta conversacion automaticamente.",
+          herramientas_usadas: herramientasUsadas,
+        });
+        return "Tuve un corte interno con la memoria de esta charla. Ya lo solucione solo — contame de nuevo.";
+      }
+      throw e;
+    }
 
     historial.push({ role: "assistant", content: respuesta.content });
 

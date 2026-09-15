@@ -127,7 +127,31 @@ document.querySelectorAll(".tab").forEach((btn) => {
     document.getElementById(`tab-${btn.dataset.tab}`).classList.remove("oculto");
     document.getElementById("titulo-seccion").textContent = TITULOS_TAB[btn.dataset.tab] ?? "";
     cargarTab(btn.dataset.tab);
+    cerrarMenu();
   });
+});
+
+// ---------- menu hamburguesa desplegable (reemplaza el menu lateral/superior clasico) ----------
+function abrirMenu() {
+  document.getElementById("tabs").classList.add("abierto");
+  document.getElementById("menu-backdrop").classList.remove("oculto");
+  document.getElementById("btn-menu").classList.add("abierto");
+  document.getElementById("btn-menu").setAttribute("aria-expanded", "true");
+}
+
+function cerrarMenu() {
+  document.getElementById("tabs").classList.remove("abierto");
+  document.getElementById("menu-backdrop").classList.add("oculto");
+  document.getElementById("btn-menu").classList.remove("abierto");
+  document.getElementById("btn-menu").setAttribute("aria-expanded", "false");
+}
+
+document.getElementById("btn-menu").addEventListener("click", () => {
+  document.getElementById("tabs").classList.contains("abierto") ? cerrarMenu() : abrirMenu();
+});
+document.getElementById("menu-backdrop").addEventListener("click", cerrarMenu);
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") cerrarMenu();
 });
 
 function cargarTab(tab) {

@@ -9,9 +9,21 @@
   --texto-tenue: #8b93a1;
   --acento: #6ea8fe;
   --acento-suave: rgba(110, 168, 254, 0.14);
+  --acento-2: #8f7cf0;
   --verde: #4caf7d;
   --rojo: #e5686a;
   --amarillo: #d9b354;
+  --teal: #35c9b6;
+  --rosa: #ec6fb0;
+  /* colores por seccion, para que el menu y los iconos no sean todos el mismo tono */
+  --c-resumen: var(--acento);
+  --c-stock: var(--teal);
+  --c-ventas: var(--verde);
+  --c-prestamos: var(--amarillo);
+  --c-prendas: var(--rosa);
+  --c-empleados: var(--acento-2);
+  --c-bot: #59c7ec;
+  --c-logs: var(--texto-tenue);
   font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
 }
 
@@ -19,7 +31,11 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  background:
+    radial-gradient(1100px 520px at 12% -8%, rgba(110, 168, 254, 0.10), transparent 60%),
+    radial-gradient(900px 480px at 100% 0%, rgba(143, 124, 240, 0.08), transparent 55%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--texto);
   font-size: 14px;
   line-height: 1.45;
@@ -90,60 +106,41 @@ h3:first-child { margin-top: 0; }
 #form-login input:focus { outline: none; border-color: var(--acento); }
 
 #form-login button {
-  background: var(--acento);
+  background: linear-gradient(135deg, var(--acento), var(--acento-2));
   color: #0d1117;
-  border: none;
+  border: 1px solid rgba(255,255,255,0.25);
   padding: 11px;
   border-radius: 8px;
   font-weight: 700;
   cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
-#form-login button:hover { filter: brightness(1.08); }
+#form-login button:hover { filter: brightness(1.08); transform: translateY(-2px); box-shadow: 0 10px 24px rgba(110,168,254,0.32); }
+#form-login button:active { transform: translateY(0) scale(0.97); }
 
 #login-error { color: var(--rojo); margin: 0; font-size: 0.85rem; }
 #login-error.oculto { display: none; }
 
-/* ---------- shell / sidebar ---------- */
-#app-shell {
-  display: flex;
-  min-height: 100vh;
-}
+/* ---------- shell / topbar + menu hamburguesa ---------- */
+#app-shell { min-height: 100vh; }
 #app-shell.oculto { display: none; }
-
-.sidebar {
-  width: 232px;
-  flex: none;
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--borde);
-  padding: 20px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  position: sticky;
-  top: 0;
-  height: 100vh;
-}
 
 .marca {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 6px;
+  min-width: 0;
 }
 
 .marca-icono {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  background: linear-gradient(135deg, var(--acento), #8f7cf0);
-  color: #0d1117;
-  font-weight: 800;
-  font-size: 0.8rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
   flex: none;
+  overflow: hidden;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
 }
+.marca-icono svg, .marca-icono img { width: 48px; height: 48px; display: block; object-fit: cover; }
 
 .marca-texto {
   display: flex;
@@ -151,58 +148,138 @@ h3:first-child { margin-top: 0; }
   line-height: 1.25;
   overflow: hidden;
 }
-.marca-texto strong { font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.marca-texto strong { font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .marca-texto span { font-size: 0.72rem; color: var(--texto-tenue); }
 
-#tabs {
+/* barra superior fija: logo a la izquierda, titulo de la seccion al medio, hamburguesa a la derecha */
+.topbar-app {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 22px;
+  background: rgba(16, 18, 22, 0.86);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--borde);
+}
+
+.topbar-app h2 {
+  font-size: 1.05rem;
+  color: var(--texto-tenue);
+}
+.topbar-app h2 strong { color: var(--texto); font-weight: 700; }
+
+.btn-hamburguesa {
+  width: 42px;
+  height: 42px;
+  flex: none;
+  border-radius: 11px;
+  border: 1px solid var(--borde);
+  background: var(--bg-card);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.15s ease;
+}
+.btn-hamburguesa:hover { border-color: var(--acento); transform: translateY(-1px); }
+.btn-hamburguesa:active { transform: scale(0.93); }
+.btn-hamburguesa span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--texto);
+  transition: transform 0.22s ease, opacity 0.18s ease;
+}
+.btn-hamburguesa.abierto { border-color: var(--acento); background: var(--acento-suave); }
+.btn-hamburguesa.abierto span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.btn-hamburguesa.abierto span:nth-child(2) { opacity: 0; }
+.btn-hamburguesa.abierto span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+/* fondo oscuro clickeable detras del menu desplegable */
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 7, 9, 0.55);
+  z-index: 13;
+}
+.menu-backdrop.oculto { display: none; }
+
+#tabs.menu-desplegable {
+  position: fixed;
+  top: 68px;
+  right: 18px;
+  z-index: 14;
+  width: min(360px, calc(100vw - 36px));
+  max-height: calc(100vh - 90px);
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--borde);
+  border-radius: 16px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transform: translateY(-10px) scale(0.98);
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+#tabs.menu-desplegable.abierto {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
 }
 
 .tab {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   background: none;
-  border: none;
+  border: 1px solid transparent;
   color: var(--texto-tenue);
-  padding: 9px 10px;
-  border-radius: 8px;
-  font-size: 0.88rem;
-  font-weight: 500;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
   cursor: pointer;
   text-align: left;
   width: 100%;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
 }
 
-.tab:hover { background: rgba(255,255,255,0.04); color: var(--texto); }
+.tab svg { color: var(--tab-color, var(--texto-tenue)); transition: color 0.15s ease; }
+
+.tab:hover { background: rgba(255,255,255,0.05); color: var(--texto); border-color: var(--borde); transform: translateX(2px); }
+.tab:hover svg { color: var(--tab-color, var(--acento)); }
 
 .tab.activo {
-  background: var(--acento-suave);
-  color: var(--acento);
+  background: color-mix(in srgb, var(--tab-color, var(--acento)) 16%, transparent);
+  color: var(--texto);
+  border-color: color-mix(in srgb, var(--tab-color, var(--acento)) 45%, transparent);
   font-weight: 700;
 }
+.tab.activo svg { color: var(--tab-color, var(--acento)); }
+
+.tab[data-tab="resumen"] { --tab-color: var(--c-resumen); }
+.tab[data-tab="stock"] { --tab-color: var(--c-stock); }
+.tab[data-tab="ventas"] { --tab-color: var(--c-ventas); }
+.tab[data-tab="prestamos"] { --tab-color: var(--c-prestamos); }
+.tab[data-tab="prendas"] { --tab-color: var(--c-prendas); }
+.tab[data-tab="empleados"] { --tab-color: var(--c-empleados); }
+.tab[data-tab="bot"] { --tab-color: var(--c-bot); }
+.tab[data-tab="logs"] { --tab-color: var(--c-logs); }
 
 /* ---------- content ---------- */
-.contenido {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.topbar {
-  padding: 18px 28px;
-  border-bottom: 1px solid var(--borde);
-  position: sticky;
-  top: 0;
-  background: var(--bg);
-  z-index: 1;
-}
-
 main {
-  padding: 20px 28px 60px;
+  padding: 24px 28px 60px;
   max-width: 1150px;
   width: 100%;
   margin: 0 auto;
@@ -244,18 +321,20 @@ main {
 }
 
 .formulario button {
-  background: var(--acento);
+  background: linear-gradient(135deg, var(--acento), var(--acento-2));
   color: #0d1117;
-  border: none;
+  border: 1px solid rgba(255,255,255,0.25);
   padding: 9px 18px;
   border-radius: 7px;
   font-weight: 700;
   font-size: 0.88rem;
   cursor: pointer;
   flex: 0 0 auto;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
 
-.formulario button:hover { filter: brightness(1.08); }
+.formulario button:hover { filter: brightness(1.08); transform: translateY(-2px); box-shadow: 0 8px 20px rgba(110,168,254,0.3); }
+.formulario button:active { transform: translateY(0) scale(0.97); }
 
 /* ---------- botones y barra de acciones ---------- */
 .sin-margen { margin: 0; }
@@ -273,20 +352,22 @@ main {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--acento);
+  background: linear-gradient(135deg, var(--acento), var(--acento-2));
   color: #0d1117;
-  border: none;
+  border: 1px solid rgba(255,255,255,0.25);
   padding: 9px 16px;
   border-radius: 8px;
   font-weight: 700;
   font-size: 0.86rem;
   cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
-.btn-primario:hover { filter: brightness(1.08); }
+.btn-primario:hover { filter: brightness(1.08); transform: translateY(-2px); box-shadow: 0 10px 22px rgba(110,168,254,0.32); }
+.btn-primario:active { transform: translateY(0) scale(0.96); box-shadow: 0 4px 10px rgba(110,168,254,0.28); }
 .btn-primario svg { width: 16px; height: 16px; }
 
 .btn-secundario {
-  background: none;
+  background: var(--bg-card);
   border: 1px solid var(--borde);
   color: var(--texto);
   padding: 9px 16px;
@@ -294,8 +375,10 @@ main {
   font-weight: 600;
   font-size: 0.86rem;
   cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-.btn-secundario:hover { border-color: var(--texto-tenue); }
+.btn-secundario:hover { border-color: var(--acento); color: var(--acento); transform: translateY(-2px); box-shadow: 0 8px 18px rgba(0,0,0,0.35); }
+.btn-secundario:active { transform: translateY(0) scale(0.96); }
 
 /* ---------- dialogo / popup ---------- */
 dialog {
@@ -306,8 +389,14 @@ dialog {
   padding: 24px;
   width: min(420px, 92vw);
   box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+  animation: aparecer-dialogo 0.16s ease;
 }
 dialog::backdrop { background: rgba(0,0,0,0.55); }
+
+@keyframes aparecer-dialogo {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
 
 dialog form {
   display: flex;
@@ -362,11 +451,19 @@ dialog label.fila-check input { width: auto; }
 .card {
   background: var(--bg-card);
   border: 1px solid var(--borde);
+  border-top: 3px solid var(--card-color, var(--acento));
   border-radius: 12px;
   padding: 14px 18px;
   min-width: 150px;
   flex: 1 1 150px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
+.card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(0,0,0,0.3); }
+.cards .card:nth-child(4n+1) { --card-color: var(--acento); }
+.cards .card:nth-child(4n+2) { --card-color: var(--verde); }
+.cards .card:nth-child(4n+3) { --card-color: var(--amarillo); }
+.cards .card:nth-child(4n+4) { --card-color: var(--rosa); }
+.cards .card.card-ancho { --card-color: var(--rojo); }
 
 .card .label {
   color: var(--texto-tenue);
@@ -442,9 +539,11 @@ td input:focus, td select:focus { outline: none; border-color: var(--acento); }
   font-size: 0.8rem;
   font-weight: 600;
   white-space: nowrap;
+  transition: transform 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.btn-chico:hover { border-color: var(--acento); color: var(--acento); }
+.btn-chico:hover { border-color: var(--acento); color: var(--acento); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(110,168,254,0.22); }
+.btn-chico:active { transform: translateY(0) scale(0.95); }
 
 .btn-icono {
   background: none;
@@ -457,11 +556,13 @@ td input:focus, td select:focus { outline: none; border-color: var(--acento); }
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition: transform 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 .btn-icono svg { width: 15px; height: 15px; }
-.btn-icono:hover { border-color: var(--acento); color: var(--acento); }
+.btn-icono:hover { border-color: var(--acento); color: var(--acento); transform: translateY(-1px) scale(1.06); box-shadow: 0 4px 10px rgba(110,168,254,0.22); }
+.btn-icono:active { transform: scale(0.92); }
 .btn-chico.guardar { border-color: var(--verde); color: var(--verde); }
-.btn-chico.pago { background: var(--acento); border-color: var(--acento); color: #0d1117; }
+.btn-chico.pago { background: linear-gradient(135deg, var(--acento), var(--acento-2)); border-color: rgba(255,255,255,0.25); color: #0d1117; }
 .btn-chico.pago:hover { filter: brightness(1.08); color: #0d1117; }
 
 .estado-pill {
@@ -705,22 +806,33 @@ h4 {
 #toast.error { border-color: var(--rojo); }
 #toast.mostrar { display: block; }
 
+/* ---------- pantallas grandes: todo estaba pensado para notebook, en un monitor grande se
+   sentia chico y con mucho espacio muerto alrededor. Subimos el tamano base de letra (la
+   mayoria de las medidas del panel estan en rem, asi que escalan solas) y agrandamos un poco
+   el contenido y el menu desplegable. ---------- */
+@media (min-width: 1300px) {
+  html { font-size: 17px; }
+  main { max-width: 1360px; }
+  .card { padding: 18px 22px; }
+  #tabs.menu-desplegable {
+    width: min(480px, calc(100vw - 36px));
+    padding: 14px;
+    gap: 6px;
+  }
+  .tab { padding: 13px 15px; font-size: 0.96rem; }
+  .tab svg { width: 21px; height: 21px; }
+}
+@media (min-width: 1700px) {
+  html { font-size: 18.5px; }
+  main { max-width: 1500px; }
+}
+
 /* ---------- responsive ---------- */
 @media (max-width: 780px) {
-  #app-shell { flex-direction: column; }
-  .sidebar {
-    width: auto;
-    height: auto;
-    position: static;
-    flex-direction: row;
-    align-items: center;
-    padding: 12px 14px;
-    gap: 14px;
-  }
-  #tabs { flex-direction: row; overflow-x: auto; }
-  .tab { flex-direction: column; gap: 3px; padding: 6px 10px; font-size: 0.72rem; }
   .marca-texto span { display: none; }
-  .topbar { padding: 14px 16px; }
+  .topbar-app { padding: 10px 14px; }
+  .topbar-app h2 { font-size: 0.92rem; }
+  #tabs.menu-desplegable { grid-template-columns: 1fr; right: 10px; left: 10px; width: auto; top: 62px; }
   main { padding: 16px 16px 50px; }
 }
 

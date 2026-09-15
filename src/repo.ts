@@ -588,6 +588,25 @@ export async function reiniciarConversacion(usuarioId: string): Promise<void> {
   await guardarHistorialConversacion(usuarioId, []);
 }
 
+// Intenta tomar el "turno" para procesar un mensaje de esta persona. Devuelve true si lo
+// consiguio (nadie mas lo tenia, o el que estaba lo dejo pegado hace mas de 25 segundos, que es
+// mas que de sobra para una respuesta normal del bot) y false si otro mensaje de la misma
+// persona se esta procesando ahora mismo. Siempre liberar el turno con liberarBloqueo al
+// terminar (en un finally), haya salido bien o mal.
+export async function intentarBloquear(usuarioId: string): Promise<boolean> {
+  const info = await run(
+    `INSERT INTO bloqueos_conversacion (usuario_id, bloqueado_en) VALUES (?, datetime('now','localtime'))
+     ON CONFLICT(usuario_id) DO UPDATE SET bloqueado_en = excluded.bloqueado_en
+     WHERE bloqueos_conversacion.bloqueado_en < datetime('now','localtime','-25 seconds')`,
+    [usuarioId]
+  );
+  return info.changes > 0;
+}
+
+export async function liberarBloqueo(usuarioId: string): Promise<void> {
+  await run(`DELETE FROM bloqueos_conversacion WHERE usuario_id = ?`, [usuarioId]);
+}
+
 // Devuelve true si YA se habia procesado este update_id de Telegram (para no duplicar
 // acciones si Telegram reintenta un mensaje). Si es la primera vez, lo marca y devuelve false.
 export async function yaProcesadoUpdate(updateId: number): Promise<boolean> {

@@ -141,6 +141,16 @@ CREATE TABLE IF NOT EXISTS respuestas_predefinidas (
   creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
+-- Evita que dos mensajes de la MISMA persona lleguen casi juntos (o un reintento de Telegram)
+-- y se procesen en paralelo en dos instancias distintas de Vercel: la segunda pisaria el
+-- historial que la primera todavia esta por guardar. Se pide el "turno" antes de procesar y se
+-- libera al terminar; si quedo pegado por un crash, se puede volver a tomar despues de un rato
+-- (ver intentarBloquear en repo.ts).
+CREATE TABLE IF NOT EXISTS bloqueos_conversacion (
+  usuario_id TEXT PRIMARY KEY,
+  bloqueado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
 -- Registro de actividad del bot (para verlo desde el panel sin depender de logs de Vercel).
 CREATE TABLE IF NOT EXISTS logs_bot (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
