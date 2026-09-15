@@ -77,7 +77,7 @@ export async function procesarMensaje(
     vueltas++;
     const respuesta = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 1024,
+      max_tokens: 4096,
       system: buildSystemPrompt(),
       tools: toolDefinitions,
       messages: historial as Anthropic.MessageParam[],
@@ -85,7 +85,17 @@ export async function procesarMensaje(
 
     historial.push({ role: "assistant", content: respuesta.content });
 
-    if (respuesta.stop_reason !== "tool_use") {
+    const bloquesToolUse = respuesta.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
+
+    // Importante: nos fijamos si HAY bloques tool_use, no si stop_reason === "tool_use". Si la
+    // respuesta se corta por max_tokens (ej: penso mucho o encadeno varias herramientas y no
+    // entro todo), igual puede venir con tool_use ya armados en el content. Si en ese caso
+    // tratamos la respuesta como "final" y la guardamos tal cual, queda un tool_use colgado sin
+    // su tool_result: la proxima vez que se le mande algo a este usuario, la API de Anthropic
+    // rechaza TODO el historial (error 400) y el bot queda roto para siempre con esa persona
+    // hasta que alguien le resetee la conversacion a mano. Por eso, si hay tool_use, SIEMPRE
+    // los ejecutamos y les generamos su tool_result antes de guardar nada.
+    if (bloquesToolUse.length === 0) {
       const textoFinal = respuesta.content
         .filter((b): b is Anthropic.TextBlock => b.type === "text")
         .map((b) => b.text)
@@ -104,14 +114,21 @@ export async function procesarMensaje(
     }
 
     const resultados: Anthropic.ToolResultBlockParam[] = [];
-    for (const bloque of respuesta.content) {
-      if (bloque.type === "tool_use") {
-        herramientasUsadas.push(bloque.name);
+    for (const bloque of bloquesToolUse) {
+      herramientasUsadas.push(bloque.name);
+      try {
         const resultado = await ejecutarHerramienta(bloque.name, bloque.input);
+        resultados.push({ type: "tool_result", tool_use_id: bloque.id, content: JSON.stringify(resultado) });
+      } catch (e: any) {
+        // Si UNA herramienta explota, igual le mandamos un tool_result (marcado como error) en
+        // vez de dejar tirar la excepcion para afuera: asi el turno queda siempre balanceado
+        // (cada tool_use con su tool_result) y el historial nunca se corrompe, sin importar que
+        // una de las herramientas haya fallado.
         resultados.push({
           type: "tool_result",
           tool_use_id: bloque.id,
-          content: JSON.stringify(resultado),
+          content: JSON.stringify({ ok: false, error: e.message ?? String(e) }),
+          is_error: true,
         });
       }
     }
