@@ -29,6 +29,31 @@ async function registrarLogSeguro(entrada: Parameters<typeof registrarLog>[0]) {
   }
 }
 
+// Traduce errores tecnicos (JSON crudo de la API de Anthropic, etc.) a algo entendible para
+// mandar por Telegram. El detalle tecnico completo igual queda guardado en logs_bot (via
+// registrarLogSeguro, que recibe el error original sin tocar) para poder revisarlo despues.
+function mensajeErrorLegible(e: any): string {
+  const texto = String(e?.message ?? e ?? "");
+  let detalle = texto;
+  const match = texto.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[0]);
+      detalle = parsed?.error?.message || parsed?.message || texto;
+    } catch {
+      /* no era JSON valido, seguimos con el texto tal cual */
+    }
+  }
+  if (/tool_use.*tool_result|tool_result.*tool_use/is.test(detalle)) {
+    return "Se trabó la memoria de esta conversación por un corte interno. Ya se solucionó solo: escribime de nuevo.";
+  }
+  if (/rate.?limit|429/i.test(texto)) return "Estoy recibiendo demasiados mensajes justo ahora. Probá de nuevo en unos segundos.";
+  if (/overloaded/i.test(detalle)) return "El servicio de IA está sobrecargado en este momento. Probá de nuevo en un rato.";
+  if (/credit balance|insufficient/i.test(detalle)) return "Se quedó sin crédito la cuenta de IA: avisale a Facundo para cargar saldo.";
+  if (detalle.trim().startsWith("{") || detalle.length > 160) return "Tuve un error técnico procesando eso. Probá de nuevo, y si sigue avisale a Facundo.";
+  return detalle;
+}
+
 const MAX_BYTES_IMAGEN = 5 * 1024 * 1024; // limite de la API de Anthropic para imagenes en base64
 
 export const bot = new Bot(TOKEN);
@@ -64,7 +89,7 @@ bot.on("message:text", async (ctx) => {
   } catch (e: any) {
     console.error(e);
     await registrarLogSeguro({ usuario_id: usuarioId, usuario_nombre: nombre, tipo: "error", entrada: ctx.message.text, salida: String(e.message ?? e) });
-    await ctx.reply(`Algo fallo procesando eso: ${e.message ?? e}`);
+    await ctx.reply(mensajeErrorLegible(e));
   }
 });
 
@@ -105,7 +130,7 @@ bot.on("message:photo", async (ctx) => {
       entrada: `(imagen) ${ctx.message.caption ?? ""}`,
       salida: String(e.message ?? e),
     });
-    await ctx.reply(`Algo fallo procesando esa imagen: ${e.message ?? e}`);
+    await ctx.reply(mensajeErrorLegible(e));
   }
 });
 

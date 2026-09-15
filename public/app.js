@@ -717,6 +717,53 @@ document.getElementById("form-respuesta").addEventListener("submit", async (ev) 
 // ---------- logs ----------
 const ETIQUETAS_TIPO_LOG = { mensaje: "Mensaje", respuesta_predefinida: "Respuesta fija", error: "Error" };
 
+// Traduce errores tecnicos (de la API de Anthropic, de Telegram, etc.) a una frase entendible
+// para alguien que no sabe de programacion. Si no reconoce el patron, arma un mensaje generico
+// y deja el texto original plegado abajo por si hay que mandarmelo para que lo revise.
+function formatearError(mensajeCrudo) {
+  const texto = String(mensajeCrudo ?? "");
+  if (!texto) return { amigable: "-", tecnico: null };
+
+  // Los errores de la API de Anthropic vienen como '400 {"type":"error","error":{"message":"..."}}':
+  // intentamos sacar el mensaje de adentro de ese JSON.
+  let detalle = texto;
+  const match = texto.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[0]);
+      detalle = parsed?.error?.message || parsed?.message || texto;
+    } catch {
+      /* no era JSON valido, seguimos con el texto tal cual */
+    }
+  }
+
+  let amigable;
+  if (/tool_use.*tool_result|tool_result.*tool_use/is.test(detalle)) {
+    amigable = "Se trabó la memoria de esta conversación por un corte interno. Ya se solucionó: escribí de nuevo.";
+  } else if (/rate.?limit|429/i.test(texto)) {
+    amigable = "El asistente está recibiendo demasiados mensajes justo ahora. Probá de nuevo en unos segundos.";
+  } else if (/overloaded/i.test(detalle)) {
+    amigable = "El servicio de IA está sobrecargado en este momento. Probá de nuevo en un rato.";
+  } else if (/credit balance|insufficient/i.test(detalle)) {
+    amigable = "Se quedó sin crédito la cuenta de IA: hay que cargar saldo.";
+  } else if (detalle.trim().startsWith("{") || detalle.length > 160) {
+    amigable = "Hubo un error técnico procesando este mensaje. Probá de nuevo, y si sigue avisame.";
+  } else {
+    amigable = detalle;
+  }
+  return { amigable, tecnico: texto };
+}
+
+function celdaRespuestaLog(l) {
+  if (l.tipo !== "error") return escapeHtml(l.salida ?? "-");
+  const { amigable, tecnico } = formatearError(l.salida);
+  const detalle =
+    tecnico && tecnico !== amigable
+      ? `<details class="detalle-tecnico"><summary>Ver detalle técnico</summary><pre>${escapeHtml(tecnico)}</pre></details>`
+      : "";
+  return `<span class="texto-error">${escapeHtml(amigable)}</span>${detalle}`;
+}
+
 async function cargarLogs() {
   try {
     const logs = await api("GET", "/api/logs?limite=150");
@@ -730,7 +777,7 @@ async function cargarLogs() {
         <td data-etiqueta="Usuario">${escapeHtml(l.usuario_nombre ?? "-")}</td>
         <td data-etiqueta="Tipo"><span class="estado-pill ${l.tipo === "error" ? "estado-vendida" : "estado-pagado"}">${ETIQUETAS_TIPO_LOG[l.tipo] ?? l.tipo}</span></td>
         <td data-etiqueta="Mensaje" class="celda-texto">${escapeHtml(l.entrada ?? "-")}</td>
-        <td data-etiqueta="Respuesta" class="celda-texto">${escapeHtml(l.salida ?? "-")}</td>
+        <td data-etiqueta="Respuesta" class="celda-texto">${celdaRespuestaLog(l)}</td>
         <td data-etiqueta="Herramientas">${l.herramientas_usadas.length ? escapeHtml(l.herramientas_usadas.join(", ")) : "-"}</td>
       </tr>`
           )

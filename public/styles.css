@@ -655,6 +655,27 @@ h4 {
   word-break: break-word;
 }
 
+.texto-error { color: var(--rojo); }
+
+.detalle-tecnico { margin-top: 6px; }
+.detalle-tecnico summary {
+  cursor: pointer;
+  font-size: 0.74rem;
+  color: var(--texto-tenue);
+}
+.detalle-tecnico summary:hover { color: var(--texto); }
+.detalle-tecnico pre {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  font-size: 0.72rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--texto-tenue);
+}
+
 .estado-vacio {
   border: 1px dashed var(--borde);
   border-radius: 12px;
