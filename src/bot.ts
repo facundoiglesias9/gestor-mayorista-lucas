@@ -1,6 +1,6 @@
 import { Bot } from "grammy";
 import { procesarMensaje } from "./brain.js";
-import { yaProcesadoUpdate, buscarRespuestaPredefinida, registrarLog } from "./repo.js";
+import { yaProcesadoUpdate, buscarRespuestaPredefinida, registrarLog, reiniciarConversacion } from "./repo.js";
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const OWNER_ID = process.env.OWNER_TELEGRAM_ID;
@@ -61,8 +61,34 @@ export const bot = new Bot(TOKEN);
 bot.command("start", async (ctx) => {
   if (!estaAutorizado(ctx.from?.id)) return;
   await ctx.reply(
-    "Hola! Soy tu cerebro de gestion. Contame lo que va pasando (compras, ventas, prestamos, prendas) y pregunta lo que necesites saber. Tambien podes mandarme fotos (capturas de un chat, comprobantes, productos)."
+    "Hola! Soy tu cerebro de gestion. Contame lo que va pasando (compras, ventas, prestamos, prendas) y pregunta lo que necesites saber. Tambien podes mandarme fotos (capturas de un chat, comprobantes, productos).\n\nSi alguna vez me ves repetir el mismo error o contestar cosas que no tienen sentido, mandame /reiniciar y me olvido de la conversacion (no toca nada de lo ya cargado, solo mi memoria de la charla)."
   );
+});
+
+// Por si el bot queda "colgado" repitiendo el mismo error en una conversacion puntual (ej: se
+// corto una respuesta a mitad de camino): esto le borra la memoria de la charla a la persona que
+// lo manda, sin tocar ningun dato de negocio (ventas, stock, prestamos, etc. quedan intactos).
+bot.command("reiniciar", async (ctx) => {
+  if (!estaAutorizado(ctx.from?.id)) return;
+  const usuarioId = String(ctx.from!.id);
+  const nombre = nombreDe(ctx);
+  try {
+    await reiniciarConversacion(usuarioId);
+    await registrarLogSeguro({
+      usuario_id: usuarioId,
+      usuario_nombre: nombre,
+      tipo: "mensaje",
+      entrada: "/reiniciar",
+      salida: "Memoria de la conversacion reiniciada a pedido del usuario.",
+    });
+    await ctx.reply(
+      "Listo, me olvidé de todo lo que veníamos hablando en el chat. Los datos que ya cargamos (ventas, stock, préstamos, etc.) siguen todos ahí, esto solo reinicia nuestra charla. Contame de nuevo lo que necesites."
+    );
+  } catch (e: any) {
+    console.error(e);
+    await registrarLogSeguro({ usuario_id: usuarioId, usuario_nombre: nombre, tipo: "error", entrada: "/reiniciar", salida: String(e.message ?? e) });
+    await ctx.reply(mensajeErrorLegible(e));
+  }
 });
 
 bot.on("message:text", async (ctx) => {

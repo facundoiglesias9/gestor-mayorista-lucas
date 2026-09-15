@@ -581,6 +581,13 @@ export async function guardarHistorialConversacion(usuarioId: string, historial:
   );
 }
 
+// Borra la memoria de la conversacion de un usuario (comando /reiniciar del bot, o si alguna
+// vez hay que destrabar manualmente una conversacion que quedo en mal estado). No toca ningun
+// dato de negocio (ventas, stock, etc.), solo lo que el bot "recuerda" haber charlado.
+export async function reiniciarConversacion(usuarioId: string): Promise<void> {
+  await guardarHistorialConversacion(usuarioId, []);
+}
+
 // Devuelve true si YA se habia procesado este update_id de Telegram (para no duplicar
 // acciones si Telegram reintenta un mensaje). Si es la primera vez, lo marca y devuelve false.
 export async function yaProcesadoUpdate(updateId: number): Promise<boolean> {
