@@ -143,7 +143,10 @@ export async function registrarVenta(args: {
     `INSERT INTO movimientos_stock (producto_id, tipo, cantidad, persona_id, precio_unitario, moneda, nota) VALUES (?, 'salida', ?, ?, ?, ?, ?)`,
     [p.id, args.cantidad, persona?.id ?? null, precioUnitario, args.moneda ?? "ARS", args.nota ?? null]
   );
-  const restante = p.cantidad + faltante - args.cantidad;
+  // OJO: si habia stock de sobra, "faltante" queda negativo (no representa una reposicion real,
+  // esa rama del if de arriba ni se ejecuta). Para el stock restante solo hay que sumar lo que
+  // efectivamente se repuso (faltante > 0), nunca restar un "faltante" negativo de nuevo.
+  const restante = p.cantidad - args.cantidad + Math.max(faltante, 0);
   const total = precioUnitario != null ? precioUnitario * args.cantidad : null;
   const avisoReposicion =
     faltante > 0 ? ` (se sumaron ${faltante} de stock automaticamente porque no estaba cargado: se compro y vendio en el momento)` : "";
@@ -442,6 +445,80 @@ export async function consultarStock(args: { nombre_producto?: string }) {
     return { encontrado: true, producto: p };
   }
   return { productos: await listarProductos() };
+}
+
+// Version para el bot de CLIENTES (WhatsApp): igual que consultarStock, pero nunca expone el
+// costo de compra (eso es informacion del negocio, no del cliente) ni notas internas.
+export async function consultarStockPublico(args: { nombre_producto?: string }) {
+  const aPublico = (p: any) => ({ nombre: p.nombre, categoria: p.categoria, cantidad_disponible: p.cantidad, precio_venta: p.precio_venta, moneda: p.moneda });
+  if (args.nombre_producto) {
+    const p = await findProducto(args.nombre_producto);
+    if (!p) return { encontrado: false, mensaje: `No hay ningun producto llamado "${args.nombre_producto}".` };
+    return { encontrado: true, producto: aPublico(p) };
+  }
+  return { productos: (await listarProductos()).map(aPublico) };
+}
+
+// ---------- pedidos pendientes (clientes por WhatsApp) ----------
+
+export async function crearPedidoPendiente(args: {
+  cliente_telefono: string;
+  cliente_nombre?: string;
+  producto: string;
+  cantidad: number;
+  precio_unitario?: number;
+  moneda?: string;
+  nota?: string;
+}) {
+  const p = await findProducto(args.producto);
+  const precioSugerido = args.precio_unitario ?? p?.precio_venta ?? null;
+  const moneda = args.moneda ?? p?.moneda ?? "ARS";
+  const info = await run(
+    `INSERT INTO pedidos_pendientes (cliente_telefono, cliente_nombre, producto, cantidad, precio_unitario, moneda, nota) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [args.cliente_telefono, args.cliente_nombre ?? null, args.producto, args.cantidad, precioSugerido, moneda, args.nota ?? null]
+  );
+  return {
+    ok: true,
+    pedido_id: info.lastInsertRowid,
+    mensaje: `Pedido registrado: ${args.cantidad} x "${args.producto}"${
+      precioSugerido != null ? ` a ${precioSugerido} ${moneda} c/u (estimado)` : ""
+    }. Queda PENDIENTE hasta que el negocio lo confirme.`,
+  };
+}
+
+export async function listarPedidosPendientes(soloPendientes = false) {
+  if (soloPendientes) return all(`SELECT * FROM pedidos_pendientes WHERE estado = 'pendiente' ORDER BY creado_en DESC`);
+  return all(`SELECT * FROM pedidos_pendientes ORDER BY creado_en DESC LIMIT 200`);
+}
+
+async function requierePedidoPendiente(id: number) {
+  const pedido = await get(`SELECT * FROM pedidos_pendientes WHERE id = ?`, [id]);
+  if (!pedido) throw new Error(`No existe el pedido #${id}.`);
+  if (pedido.estado !== "pendiente") throw new Error(`El pedido #${id} ya esta "${pedido.estado}", no se puede volver a resolver.`);
+  return pedido;
+}
+
+// Aprobar = se registra la venta de verdad (misma logica que registrarVenta: nunca bloquea por
+// falta de stock, repone automatico). A partir de aca el pedido deja de ser "de mentira".
+export async function aprobarPedidoPendiente(id: number) {
+  const pedido = await requierePedidoPendiente(id);
+  const resultado = await registrarVenta({
+    nombre_producto: pedido.producto,
+    cantidad: pedido.cantidad,
+    nombre_cliente: pedido.cliente_nombre ?? undefined,
+    precio_unitario: pedido.precio_unitario ?? undefined,
+    moneda: pedido.moneda,
+    nota: `Pedido por WhatsApp #${id}${pedido.nota ? " - " + pedido.nota : ""}`,
+  });
+  await run(`UPDATE pedidos_pendientes SET estado = 'aprobado', resuelto_en = datetime('now','localtime') WHERE id = ?`, [id]);
+  return { ok: true, mensaje: `Pedido #${id} aprobado y registrado como venta. ${resultado.mensaje}` };
+}
+
+export async function rechazarPedidoPendiente(id: number, motivo?: string) {
+  const pedido = await requierePedidoPendiente(id);
+  const notaFinal = motivo ? `${pedido.nota ?? ""} [Rechazado: ${motivo}]`.trim() : pedido.nota;
+  await run(`UPDATE pedidos_pendientes SET estado = 'rechazado', resuelto_en = datetime('now','localtime'), nota = ? WHERE id = ?`, [notaFinal, id]);
+  return { ok: true, mensaje: `Pedido #${id} rechazado.` };
 }
 
 export async function consultarPersona(args: { nombre: string }) {

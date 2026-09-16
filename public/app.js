@@ -27,6 +27,7 @@ function mostrarApp() {
   cargarResumen();
   cargarListaPersonas();
   cargarListaProductos();
+  actualizarBadgePedidos();
 }
 
 document.getElementById("form-login").addEventListener("submit", async (ev) => {
@@ -112,6 +113,7 @@ const TITULOS_TAB = {
   resumen: "Resumen",
   stock: "Stock",
   ventas: "Ventas",
+  pedidos: "Pedidos",
   prestamos: "Préstamos",
   prendas: "Plan Canje",
   empleados: "Empleados",
@@ -158,6 +160,7 @@ function cargarTab(tab) {
   if (tab === "resumen") cargarResumen();
   if (tab === "stock") cargarProductos();
   if (tab === "ventas") cargarVentas();
+  if (tab === "pedidos") cargarPedidos();
   if (tab === "prestamos") cargarPrestamos();
   if (tab === "prendas") cargarPrendas();
   if (tab === "empleados") cargarEmpleados();
@@ -426,6 +429,83 @@ async function cargarVentas() {
       </tr>`
       )
       .join("");
+  } catch (e) {
+    mostrarToast(e.message, true);
+  }
+}
+
+// ---------- pedidos pendientes (clientes por WhatsApp) ----------
+const ETIQUETAS_ESTADO_PEDIDO = { pendiente: "Pendiente", aprobado: "Aprobado", rechazado: "Rechazado" };
+function pillEstadoPedido(estado) {
+  const clase = estado === "aprobado" ? "estado-pagado" : estado === "rechazado" ? "estado-rechazado" : "estado-activo";
+  return `<span class="estado-pill ${clase}">${ETIQUETAS_ESTADO_PEDIDO[estado] ?? estado}</span>`;
+}
+
+async function actualizarBadgePedidos() {
+  try {
+    const pendientes = await api("GET", "/api/pedidos?pendientes=1");
+    const badge = document.getElementById("badge-pedidos");
+    if (pendientes.length) {
+      badge.textContent = pendientes.length;
+      badge.classList.remove("oculto");
+    } else {
+      badge.classList.add("oculto");
+    }
+  } catch {
+    /* si falla, no pasa nada grave: se vuelve a intentar la proxima vez que se abra el panel */
+  }
+}
+
+async function cargarPedidos() {
+  try {
+    const pedidos = await api("GET", "/api/pedidos");
+    const tbody = document.querySelector("#tabla-pedidos tbody");
+    tbody.innerHTML = pedidos.length
+      ? pedidos
+          .map(
+            (p) => `
+      <tr>
+        <td data-etiqueta="Fecha">${p.creado_en}</td>
+        <td data-etiqueta="Cliente">${escapeHtml(p.cliente_nombre ?? p.cliente_telefono)}</td>
+        <td data-etiqueta="Producto">${escapeHtml(p.producto)}</td>
+        <td data-etiqueta="Cantidad">${p.cantidad}</td>
+        <td data-etiqueta="Precio est.">${p.precio_unitario != null ? formatoMoneda(p.precio_unitario, p.moneda) : "-"}</td>
+        <td data-etiqueta="Estado">${pillEstadoPedido(p.estado)}</td>
+        <td>${
+          p.estado === "pendiente"
+            ? `<div style="display:flex;gap:6px;">
+                <button class="btn-chico guardar" onclick="aprobarPedido(${p.id})">Aprobar</button>
+                <button class="btn-chico" onclick="rechazarPedido(${p.id})">Rechazar</button>
+              </div>`
+            : "-"
+        }</td>
+      </tr>`
+          )
+          .join("")
+      : `<tr><td colspan="7">${estadoVacio("Todavía no hay pedidos de clientes.")}</td></tr>`;
+    actualizarBadgePedidos();
+  } catch (e) {
+    mostrarToast(e.message, true);
+  }
+}
+
+async function aprobarPedido(id) {
+  if (!confirm("¿Aprobar este pedido? Se va a registrar como venta real y descontar del stock.")) return;
+  try {
+    await api("POST", `/api/pedidos/${id}/aprobar`);
+    mostrarToast("Pedido aprobado y registrado como venta.");
+    cargarPedidos();
+  } catch (e) {
+    mostrarToast(e.message, true);
+  }
+}
+
+async function rechazarPedido(id) {
+  const motivo = prompt("Motivo del rechazo (opcional):") ?? "";
+  try {
+    await api("POST", `/api/pedidos/${id}/rechazar`, { motivo });
+    mostrarToast("Pedido rechazado.");
+    cargarPedidos();
   } catch (e) {
     mostrarToast(e.message, true);
   }

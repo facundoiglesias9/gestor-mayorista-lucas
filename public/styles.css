@@ -15,10 +15,12 @@
   --amarillo: #d9b354;
   --teal: #35c9b6;
   --rosa: #ec6fb0;
+  --naranja: #f0985a;
   /* colores por seccion, para que el menu y los iconos no sean todos el mismo tono */
   --c-resumen: var(--acento);
   --c-stock: var(--teal);
   --c-ventas: var(--verde);
+  --c-pedidos: var(--naranja);
   --c-prestamos: var(--amarillo);
   --c-prendas: var(--rosa);
   --c-empleados: var(--acento-2);
@@ -272,6 +274,7 @@ h3:first-child { margin-top: 0; }
 .tab[data-tab="stock"] { --tab-color: var(--c-stock); }
 .tab[data-tab="ventas"] { --tab-color: var(--c-ventas); }
 .tab[data-tab="prestamos"] { --tab-color: var(--c-prestamos); }
+.tab[data-tab="pedidos"] { --tab-color: var(--c-pedidos); }
 .tab[data-tab="prendas"] { --tab-color: var(--c-prendas); }
 .tab[data-tab="empleados"] { --tab-color: var(--c-empleados); }
 .tab[data-tab="bot"] { --tab-color: var(--c-bot); }
@@ -576,6 +579,23 @@ td input:focus, td select:focus { outline: none; border-color: var(--acento); }
 .estado-parcial { background: rgba(110,168,254,0.15); color: var(--acento); }
 .estado-pagado, .estado-devuelta { background: rgba(76,175,125,0.15); color: var(--verde); }
 .estado-vendida { background: rgba(139,147,161,0.15); color: var(--texto-tenue); }
+.estado-rechazado { background: rgba(229,104,106,0.15); color: var(--rojo); }
+
+.badge-contador.oculto { display: none; }
+.badge-contador {
+  background: var(--rojo);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 800;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+}
 
 .negativo { color: var(--rojo); font-weight: 700; }
 .a-favor-negocio { color: var(--verde); font-weight: 600; }

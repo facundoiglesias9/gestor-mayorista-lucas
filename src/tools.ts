@@ -186,6 +186,35 @@ export const toolDefinitions: Anthropic.Tool[] = [
   },
 ];
 
+// ---------- herramientas del bot de CLIENTES (WhatsApp) ----------
+// Deliberadamente un set chiquito: un cliente puede consultar stock/precio y armar un pedido,
+// nada mas. Ninguna herramienta de venta/stock/prestamo/canje "real" esta en esta lista, asi
+// que aunque alguien intente pedirle al modelo que las use, no puede: no existen en su menu.
+export const toolDefinitionsCliente: Anthropic.Tool[] = [
+  {
+    name: "consultar_stock_publico",
+    description: "Consulta si hay stock de un producto y su precio de venta. Si no se especifica producto, devuelve el catalogo completo disponible.",
+    input_schema: {
+      type: "object",
+      properties: { nombre_producto: { type: "string" } },
+    },
+  },
+  {
+    name: "crear_pedido",
+    description:
+      "Registra el pedido de un cliente. OJO: esto NO es una venta todavia, queda pendiente de que el negocio lo confirme (el cliente tiene que saber que es un pedido, no una compra cerrada). Usar cuando el cliente ya dijo claramente que producto y cantidad quiere.",
+    input_schema: {
+      type: "object",
+      properties: {
+        producto: { type: "string" },
+        cantidad: { type: "number" },
+        nota: { type: "string", description: "Cualquier detalle extra que haya dado el cliente (color, para cuando lo necesita, etc.)" },
+      },
+      required: ["producto", "cantidad"],
+    },
+  },
+];
+
 const dispatch: Record<string, (args: any) => any | Promise<any>> = {
   agregar_producto: repo.agregarProducto,
   ajustar_stock: repo.ajustarStock,
@@ -200,12 +229,30 @@ const dispatch: Record<string, (args: any) => any | Promise<any>> = {
   consultar_persona: repo.consultarPersona,
   consultar_estado_general: () => repo.consultarEstadoGeneral(),
   consultar_ventas: repo.consultarVentas,
+  consultar_stock_publico: repo.consultarStockPublico,
 };
 
-export async function ejecutarHerramienta(nombre: string, args: any): Promise<any> {
-  const fn = dispatch[nombre];
-  if (!fn) return { ok: false, error: `Herramienta desconocida: ${nombre}` };
+export interface ContextoHerramienta {
+  usuarioId: string;
+  nombreUsuario: string;
+}
+
+export async function ejecutarHerramienta(nombre: string, args: any, contexto?: ContextoHerramienta): Promise<any> {
   try {
+    // crear_pedido es un caso especial: el telefono/nombre del cliente NO se lo pedimos al
+    // modelo (podria inventarlo o confundirlo), lo tomamos directo de quien esta escribiendo.
+    if (nombre === "crear_pedido") {
+      if (!contexto) return { ok: false, error: "Falta contexto del cliente para crear el pedido." };
+      return await repo.crearPedidoPendiente({
+        cliente_telefono: contexto.usuarioId,
+        cliente_nombre: contexto.nombreUsuario,
+        producto: args?.producto,
+        cantidad: args?.cantidad,
+        nota: args?.nota,
+      });
+    }
+    const fn = dispatch[nombre];
+    if (!fn) return { ok: false, error: `Herramienta desconocida: ${nombre}` };
     return await fn(args ?? {});
   } catch (e: any) {
     return { ok: false, error: e.message ?? String(e) };

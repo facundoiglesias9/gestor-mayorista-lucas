@@ -151,6 +151,24 @@ CREATE TABLE IF NOT EXISTS bloqueos_conversacion (
   bloqueado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
+-- Pedidos que arma un CLIENTE (por WhatsApp) charlando con el bot restringido: nunca tocan
+-- ventas/stock reales solos. Quedan "pendiente" hasta que el dueno o Lucas los aprueben (ahi si
+-- se registra la venta de verdad) o los rechacen. Ver crearPedidoPendiente/aprobarPedidoPendiente
+-- en repo.ts.
+CREATE TABLE IF NOT EXISTS pedidos_pendientes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_telefono TEXT NOT NULL,
+  cliente_nombre TEXT,
+  producto TEXT NOT NULL,
+  cantidad INTEGER NOT NULL,
+  precio_unitario REAL,
+  moneda TEXT NOT NULL DEFAULT 'ARS',
+  nota TEXT,
+  estado TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente','aprobado','rechazado')),
+  creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  resuelto_en TEXT
+);
+
 -- Registro de actividad del bot (para verlo desde el panel sin depender de logs de Vercel).
 CREATE TABLE IF NOT EXISTS logs_bot (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

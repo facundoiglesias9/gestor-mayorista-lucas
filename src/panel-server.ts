@@ -26,6 +26,9 @@ app.use("/api", (req, res, next) => {
   // El webhook de Telegram (registrado aparte, en api/index.ts) no manda esta clave: Telegram
   // se autentica solo con su propio secretToken, verificado por grammy en su propio handler.
   if (req.path === "/telegram-webhook") return next();
+  // El chequeo automatico del webhook (GitHub Actions, cada 30 min) tampoco tiene la clave del
+  // panel: se autentica con su propio CRON_SECRET, verificado en api/index.ts.
+  if (req.path === "/cron/verificar-webhook") return next();
   const header = req.headers.authorization;
   if (header?.startsWith("Basic ")) {
     const [, clave] = Buffer.from(header.slice(6), "base64").toString().split(":");
@@ -67,6 +70,11 @@ app.get("/api/prestamos/:id/pagos", envolver((req) => repo.listarPagosDePrestamo
 app.get("/api/canjes", envolver(() => repo.listarCanjes()));
 app.post("/api/canjes", envolver((req) => repo.agregarCanje(req.body)));
 app.put("/api/canjes/:id", envolver((req) => repo.actualizarCanjePorId(Number(req.params.id), req.body)));
+
+// ---------- pedidos pendientes (clientes por WhatsApp) ----------
+app.get("/api/pedidos", envolver((req) => repo.listarPedidosPendientes(req.query.pendientes === "1")));
+app.post("/api/pedidos/:id/aprobar", envolver((req) => repo.aprobarPedidoPendiente(Number(req.params.id))));
+app.post("/api/pedidos/:id/rechazar", envolver((req) => repo.rechazarPedidoPendiente(Number(req.params.id), req.body?.motivo)));
 
 // ---------- ventas / resumen ----------
 app.post("/api/ventas", envolver((req) => repo.registrarVenta(req.body)));

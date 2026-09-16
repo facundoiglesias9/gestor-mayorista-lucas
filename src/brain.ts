@@ -1,18 +1,20 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { toolDefinitions, ejecutarHerramienta } from "./tools.js";
+import { toolDefinitions, toolDefinitionsCliente, ejecutarHerramienta } from "./tools.js";
 import { cargarHistorialConversacion, guardarHistorialConversacion, registrarLog, reiniciarConversacion } from "./repo.js";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-5";
 
-// Las herramientas no cambian en tiempo de ejecucion: le ponemos cache_control a la ultima
-// para que Anthropic cachee TODO el bloque de herramientas (y, como va antes que el resto,
-// abarata cada llamada). Esto no cambia ninguna respuesta, solo el costo.
-const toolsConCache: Anthropic.Tool[] = toolDefinitions.map((t, i) =>
-  i === toolDefinitions.length - 1 ? { ...t, cache_control: { type: "ephemeral" } } : t
-);
+// Le ponemos cache_control a la ultima herramienta de cada set para que Anthropic cachee TODO
+// el bloque de herramientas (no cambian en tiempo de ejecucion). Abarata cada llamada, no
+// cambia ninguna respuesta.
+function conCache(tools: Anthropic.Tool[]): Anthropic.Tool[] {
+  return tools.map((t, i) => (i === tools.length - 1 ? { ...t, cache_control: { type: "ephemeral" } } : t));
+}
+const toolsInternoConCache = conCache(toolDefinitions);
+const toolsClienteConCache = conCache(toolDefinitionsCliente);
 
-function buildSystemPrompt(): string {
+function buildSystemPromptInterno(): string {
   const hoy = new Date().toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit" });
   return `Sos el asistente administrativo interno de un emprendimiento de compra y venta mayorista (principalmente celulares/electronica).
 Hablas en espanol rioplatense (Argentina), tono directo, breve y practico, como un empleado de confianza. Nada de rodeos ni formalismo excesivo.
@@ -46,6 +48,31 @@ Reglas importantes:
 - Nunca inventes datos de stock, precios, deudas o ventas: siempre consultalos con las herramientas antes de afirmarlos.`;
 }
 
+// Prompt del bot que le habla a un CLIENTE (por WhatsApp), no a alguien de confianza del
+// negocio. A proposito es mucho mas chico y restringido: este perfil solo tiene dos
+// herramientas disponibles (consultar_stock_publico y crear_pedido, ver tools.ts), asi que ni
+// pidiendoselo puede registrar una venta, un prestamo, un canje ni tocar stock de verdad. Eso
+// es lo que evita que un cliente pueda "autoconfirmarse" algo o ver datos del negocio.
+function buildSystemPromptCliente(): string {
+  const hoy = new Date().toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit" });
+  return `Sos el asistente de ventas de un negocio mayorista, atendiendole por WhatsApp a un CLIENTE (no es el dueno ni nadie de confianza del negocio, es un cliente cualquiera de afuera).
+Hablas en espanol rioplatense (Argentina), tono amable de buena atencion, pero corto y directo — como te escribiria un vendedor por WhatsApp, no un mail formal.
+
+Hoy es ${hoy}.
+
+Que podes hacer:
+- Responder cuanto stock hay y el precio de un producto, con consultar_stock_publico.
+- Armar un pedido con crear_pedido, cuando el cliente ya dejo claro que producto quiere y cuantas unidades.
+
+Reglas MUY importantes, no te las saltees:
+- NUNCA asumas de que rubro es el negocio ni que productos vende o no vende por tu cuenta: no sabes de antemano el catalogo. Ante CUALQUIER pregunta o pedido sobre un producto, primero llama a consultar_stock_publico para averiguarlo de verdad, y recien ahi contesta segun lo que te devuelva. Si consultar_stock_publico dice que no existe, ahi si decile al cliente que no lo tenes — pero nunca lo asumas sin consultar.
+- Un pedido creado con crear_pedido queda PENDIENTE: todavia no es una venta confirmada. Nunca le digas al cliente que "ya esta", "confirmado" o "listo tu pedido" — decile que en breve el negocio le confirma disponibilidad y precio final.
+- No tenes forma de registrar ventas, prestamos, canjes ni modificar stock directamente, y no existe forma de que el cliente se "autoconfirme" un pedido. Si pide algo fuera de consultar stock/precio o hacer un pedido, explicale con buena onda que eso lo tiene que hablar directo con el negocio.
+- Nunca reveles el costo de compra de un producto, ganancias, ni ningun dato de otro cliente (prestamos, deudas, canjes de otra persona): no es asunto de quien te escribe, y ademas no tenes esa informacion disponible en este perfil.
+- Si falta un dato clave para el pedido (que producto puntual, cuantas unidades), preguntalo antes de crear el pedido.
+- Si el mensaje no tiene nada que ver con comprar/consultar productos (spam, preguntas raras, etc.), respondele con buena onda pero breve, sin engancharte en charlas largas fuera de tema.`;
+}
+
 // Si por lo que sea el historial guardado de una persona queda con un tool_use sin su
 // tool_result (ej: un bug futuro parecido al que ya tapamos, o una corrupcion vieja que quedo
 // de antes de este fix), la API de Anthropic rechaza el mensaje ENTERO con un 400 apenas lo
@@ -75,7 +102,8 @@ export async function procesarMensaje(
   usuarioId: string,
   nombreUsuario: string,
   texto: string,
-  imagen?: ImagenAdjunta
+  imagen?: ImagenAdjunta,
+  esCliente = false
 ): Promise<string> {
   const historial: Turno[] = await cargarHistorialConversacion(usuarioId);
 
@@ -94,8 +122,9 @@ export async function procesarMensaje(
   // de herramientas, las vueltas 2 a 6 pagan el prompt cacheado (mucho mas barato) en vez de
   // completo cada vez.
   const systemPrompt: Anthropic.TextBlockParam[] = [
-    { type: "text", text: buildSystemPrompt(), cache_control: { type: "ephemeral" } },
+    { type: "text", text: esCliente ? buildSystemPromptCliente() : buildSystemPromptInterno(), cache_control: { type: "ephemeral" } },
   ];
+  const tools = esCliente ? toolsClienteConCache : toolsInternoConCache;
 
   const herramientasUsadas: string[] = [];
   let vueltas = 0;
@@ -107,7 +136,7 @@ export async function procesarMensaje(
         model: MODEL,
         max_tokens: 4096,
         system: systemPrompt,
-        tools: toolsConCache,
+        tools,
         messages: historial as Anthropic.MessageParam[],
       });
     } catch (e: any) {
@@ -160,7 +189,7 @@ export async function procesarMensaje(
     for (const bloque of bloquesToolUse) {
       herramientasUsadas.push(bloque.name);
       try {
-        const resultado = await ejecutarHerramienta(bloque.name, bloque.input);
+        const resultado = await ejecutarHerramienta(bloque.name, bloque.input, { usuarioId, nombreUsuario });
         resultados.push({ type: "tool_result", tool_use_id: bloque.id, content: JSON.stringify(resultado) });
       } catch (e: any) {
         // Si UNA herramienta explota, igual le mandamos un tool_result (marcado como error) en

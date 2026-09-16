@@ -1,0 +1,18 @@
+name: Verificar webhook del bot
+
+# Cada 30 minutos le pregunta a la app si el webhook de Telegram sigue bien configurado. Si se
+# cayo (nos paso una vez, sin avisar en ningun lado), lo repone solo y avisa por Telegram + Logs.
+# Necesita el secret CRON_SECRET configurado en este repo (Settings -> Secrets and variables ->
+# Actions), con el mismo valor que la variable de entorno CRON_SECRET en Vercel.
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chequear y reparar el webhook si hace falta
+        run: |
+          curl -fsS "https://gestor-mayorista-lucas.vercel.app/api/cron/verificar-webhook?secret=${{ secrets.CRON_SECRET }}"
