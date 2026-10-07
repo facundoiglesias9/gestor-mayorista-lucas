@@ -130,8 +130,8 @@ async function registrarVentaEnTransaccion(args: ArgsVenta, categoriaSiEsNuevo: 
   let p = await findProducto(args.nombre_producto);
   if (!p) {
     await run(
-      `INSERT INTO productos (nombre, categoria, cantidad, precio_venta, moneda, nota) VALUES (?, ?, 0, ?, ?, 'creado automaticamente al vender')`,
-      [args.nombre_producto, categoriaSiEsNuevo ?? "Otros", args.precio_unitario ?? null, args.moneda ?? "ARS"]
+      `INSERT INTO productos (nombre, categoria, cantidad, precio_venta, moneda, nota) VALUES (?, ?, 0, ?, ?, ?)`,
+      [args.nombre_producto, categoriaSiEsNuevo ?? "Otros", args.precio_unitario ?? null, args.moneda ?? "ARS", NOTA_PRODUCTO_CREADO_AL_VENDER]
     );
     p = await findProducto(args.nombre_producto);
   }
@@ -152,12 +152,12 @@ async function registrarVentaEnTransaccion(args: ArgsVenta, categoriaSiEsNuevo: 
   if (faltante > 0) {
     await run(`UPDATE productos SET cantidad = cantidad + ? WHERE id = ?`, [faltante, p.id]);
     await run(
-      `INSERT INTO movimientos_stock (producto_id, tipo, cantidad, precio_unitario, nota) VALUES (?, 'entrada', ?, ?, 'reposicion automatica: compra y venta en el momento')`,
-      [p.id, faltante, args.precio_unitario ?? null]
+      `INSERT INTO movimientos_stock (producto_id, tipo, cantidad, precio_unitario, nota) VALUES (?, 'entrada', ?, ?, ?)`,
+      [p.id, faltante, args.precio_unitario ?? null, NOTA_REPOSICION_AUTOMATICA]
     );
   }
   await run(`UPDATE productos SET cantidad = cantidad - ?, actualizado_en = datetime('now','localtime') WHERE id = ?`, [args.cantidad, p.id]);
-  await run(
+  const salida = await run(
     `INSERT INTO movimientos_stock (producto_id, tipo, cantidad, persona_id, precio_unitario, moneda, nota) VALUES (?, 'salida', ?, ?, ?, ?, ?)`,
     [p.id, args.cantidad, persona?.id ?? null, precioUnitario, moneda, args.nota ?? null]
   );
@@ -170,10 +170,69 @@ async function registrarVentaEnTransaccion(args: ArgsVenta, categoriaSiEsNuevo: 
     faltante > 0 ? ` (se sumaron ${faltante} de stock automaticamente porque no estaba cargado: se compro y vendio en el momento)` : "";
   return {
     ok: true,
+    venta_id: salida.lastInsertRowid,
     mensaje: `Venta registrada: ${args.cantidad} x "${args.nombre_producto}"${persona ? ` a ${persona.nombre}` : ""}${
       precioUnitario != null ? ` a ${precioUnitario} ${moneda} c/u (total ${total})` : ""
     }.${avisoReposicion} Stock restante: ${restante}.`,
   };
+}
+
+const NOTA_REPOSICION_AUTOMATICA = "reposicion automatica: compra y venta en el momento";
+const NOTA_PRODUCTO_CREADO_AL_VENDER = "creado automaticamente al vender";
+
+// Anula una venta cargada por error (ej: una prueba, o mal cargada): borra la venta y devuelve
+// las unidades al stock. Si al registrarla se habia repuesto stock automaticamente (compra y
+// venta en el momento), esa reposicion tambien se deshace, asi el stock queda exactamente como
+// estaba antes de la venta. Y si el producto lo habia creado esa misma venta y no le queda ningun
+// otro movimiento, se borra tambien (si no quedaria un producto "fantasma" con 0 unidades).
+export async function anularVenta(args: { venta_id: number }) {
+  const id = Number(args.venta_id);
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Falta el id de la venta a anular (buscalo con consultar_ventas).");
+  return enTransaccion(async () => {
+    const venta = await get(
+      `SELECT movimientos_stock.*, productos.nombre as producto_nombre, productos.nota as producto_nota, personas.nombre as persona_nombre
+       FROM movimientos_stock
+       JOIN productos ON productos.id = movimientos_stock.producto_id
+       LEFT JOIN personas ON personas.id = movimientos_stock.persona_id
+       WHERE movimientos_stock.id = ? AND movimientos_stock.tipo = 'salida'`,
+      [id]
+    );
+    if (!venta) throw new Error(`No existe ninguna venta con id #${id} (puede que ya se haya anulado).`);
+    // La reposicion automatica se inserta justo antes que la venta, en la misma transaccion, asi
+    // que siempre queda con el id anterior.
+    const reposicion = await get(`SELECT * FROM movimientos_stock WHERE id = ? AND producto_id = ? AND tipo = 'entrada' AND nota = ?`, [
+      id - 1,
+      venta.producto_id,
+      NOTA_REPOSICION_AUTOMATICA,
+    ]);
+    await run(`DELETE FROM movimientos_stock WHERE id = ?`, [id]);
+    if (reposicion) await run(`DELETE FROM movimientos_stock WHERE id = ?`, [reposicion.id]);
+    const devolver = venta.cantidad - (reposicion?.cantidad ?? 0);
+    await run(`UPDATE productos SET cantidad = cantidad + ?, actualizado_en = datetime('now','localtime') WHERE id = ?`, [devolver, venta.producto_id]);
+
+    let productoBorrado = false;
+    if (venta.producto_nota === NOTA_PRODUCTO_CREADO_AL_VENDER) {
+      const otros = await get(`SELECT COUNT(*) as n FROM movimientos_stock WHERE producto_id = ?`, [venta.producto_id]);
+      if (Number(otros.n) === 0) {
+        await run(`DELETE FROM productos WHERE id = ?`, [venta.producto_id]);
+        productoBorrado = true;
+      }
+    }
+    const descripcion = `${venta.cantidad} x "${venta.producto_nombre}"${venta.persona_nombre ? ` a ${venta.persona_nombre}` : ""}${
+      venta.precio_unitario != null ? ` a ${venta.precio_unitario} ${venta.moneda} c/u` : ""
+    }`;
+    if (productoBorrado) {
+      return {
+        ok: true,
+        mensaje: `Venta #${id} anulada (${descripcion}). El producto "${venta.producto_nombre}" se habia creado solo con esa venta, asi que tambien se borro.`,
+      };
+    }
+    const producto = await get(`SELECT cantidad FROM productos WHERE id = ?`, [venta.producto_id]);
+    return {
+      ok: true,
+      mensaje: `Venta #${id} anulada (${descripcion}). Stock de "${venta.producto_nombre}" ahora: ${producto.cantidad}.`,
+    };
+  });
 }
 
 export async function listarProductos() {
@@ -598,7 +657,7 @@ export async function consultarPersona(args: { nombre: string }) {
 }
 
 export async function consultarEstadoGeneral() {
-  const productos = await all(`SELECT nombre, cantidad, precio_venta FROM productos ORDER BY nombre`);
+  const productos = await all(`SELECT nombre, cantidad, precio_venta, moneda FROM productos ORDER BY nombre`);
   const prestamos_activos = await all(
     `SELECT prestamos.*, personas.nombre as persona_nombre FROM prestamos JOIN personas ON personas.id = prestamos.persona_id WHERE prestamos.estado != 'pagado' ORDER BY prestamos.fecha`
   );
@@ -670,6 +729,7 @@ export async function consultarVentas(args: FiltrosVentas) {
     resumen_por_moneda: resumenPorMoneda,
     nota: "ganancia_estimada asume que el costo cargado del producto esta en la misma moneda que el precio de venta de esa operacion; tratarlo como aproximado.",
     detalle_ultimas_ventas: filas.slice(0, 30).map((f) => ({
+      venta_id: f.id,
       fecha: f.fecha,
       producto: f.producto_nombre,
       cantidad: f.cantidad,

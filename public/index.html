@@ -3,22 +3,33 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#101216" />
 <title>Gestor Mayorista</title>
 <link rel="icon" type="image/png" href="img/logo-lv.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-<div id="login-overlay">
+<div id="login-overlay" class="verificando">
+  <div class="login-fondo" aria-hidden="true"><span></span><span></span></div>
   <form id="form-login">
     <div class="login-marca">
-      <div class="marca-icono">
+      <div class="marca-icono marca-icono-grande">
         <img src="img/logo-lv.png" alt="LV" />
       </div>
       <h1>Gestor Mayorista</h1>
+      <p>Panel interno de gestión</p>
     </div>
-    <input id="login-clave" type="password" placeholder="Clave del panel" autocomplete="current-password" required />
-    <button type="submit">Entrar</button>
-    <p id="login-error" class="oculto">Clave incorrecta.</p>
+    <div class="login-campos">
+      <label class="campo-con-icono">
+        <svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        <input id="login-clave" type="password" placeholder="Clave del panel" autocomplete="current-password" required />
+      </label>
+      <button type="submit" class="btn-primario btn-bloque">Entrar</button>
+      <p id="login-error" class="oculto" role="alert">Clave incorrecta.</p>
+    </div>
   </form>
 </div>
 
@@ -42,7 +53,7 @@
     </button>
   </header>
 
-  <div id="menu-backdrop" class="menu-backdrop oculto"></div>
+  <div id="menu-backdrop" class="menu-backdrop"></div>
 
   <nav id="tabs" class="menu-desplegable">
       <button data-tab="resumen" class="tab activo">
@@ -88,16 +99,51 @@
     <main id="app-main">
 
       <section id="tab-resumen" class="panel">
-        <div class="cards" id="resumen-cards"></div>
-        <h3>Préstamos activos</h3>
-        <div id="resumen-prestamos"></div>
-        <h3>Plan canje en curso</h3>
-        <div id="resumen-prendas"></div>
+        <div class="cards cards-kpi" id="resumen-cards"></div>
+        <div class="grilla-bloques">
+          <div class="bloque">
+            <div class="bloque-header">
+              <div>
+                <h3 class="bloque-titulo">Préstamos activos</h3>
+                <p class="subtitulo" id="sub-resumen-prestamos"></p>
+              </div>
+              <button type="button" class="btn-link" onclick="irATab('prestamos')">Ver todos
+                <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </button>
+            </div>
+            <div class="tabla-wrap">
+              <table id="tabla-resumen-prestamos">
+                <thead><tr><th>Persona</th><th class="num">Pendiente</th><th>Estado</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="bloque">
+            <div class="bloque-header">
+              <div>
+                <h3 class="bloque-titulo">Plan canje en curso</h3>
+                <p class="subtitulo" id="sub-resumen-canjes"></p>
+              </div>
+              <button type="button" class="btn-link" onclick="irATab('prendas')">Ver todos
+                <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </button>
+            </div>
+            <div class="tabla-wrap">
+              <table id="tabla-resumen-canjes">
+                <thead><tr><th>Persona</th><th>Celular</th><th class="num">Saldo</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section id="tab-stock" class="panel oculto">
         <div class="barra-acciones">
-          <h3 class="sin-margen">Inventario</h3>
+          <div>
+            <h3 class="titulo-bloque">Inventario</h3>
+            <p class="subtitulo" id="sub-stock"></p>
+          </div>
           <button type="button" class="btn-primario" onclick="abrirDialogoProducto()">
             <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
             Agregar stock
@@ -105,7 +151,7 @@
         </div>
         <div class="tabla-wrap">
           <table id="tabla-productos">
-            <thead><tr><th>Nombre</th><th>Categoría</th><th>Cantidad</th><th>Costo</th><th>Precio venta</th><th></th></tr></thead>
+            <thead><tr><th>Nombre</th><th>Categoría</th><th class="num">Cantidad</th><th class="num">Costo</th><th class="num">Precio venta</th><th class="col-acciones"></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -114,16 +160,22 @@
       <dialog id="dialogo-producto">
         <form id="form-producto">
           <input type="hidden" name="id" />
-          <h3 class="sin-margen" id="titulo-dialogo-producto">Agregar stock</h3>
-          <p class="ayuda">La categoría se detecta sola con IA a partir del nombre (por ej. "iPhone 12" → Celulares). Dejala vacía salvo que quieras forzar otra.</p>
+          <div class="dialogo-header">
+            <h3 class="dialogo-titulo" id="titulo-dialogo-producto">Agregar stock</h3>
+            <p class="ayuda">La categoría se detecta sola con IA a partir del nombre (por ej. "iPhone 12" → Celulares). Dejala vacía salvo que quieras forzar otra.</p>
+          </div>
           <label>Nombre del producto<input name="nombre" placeholder="Ej: iPhone 12 128GB" autocomplete="off" required /></label>
-          <label>Cantidad<input name="cantidad" type="number" placeholder="Cantidad" required /></label>
-          <label>Costo unitario<input name="costo" type="number" step="0.01" placeholder="Costo unitario" /></label>
-          <label>Precio de venta<input name="precio_venta" type="number" step="0.01" placeholder="Precio de venta (opcional)" /></label>
-          <label>Moneda (costo y precio de venta)<select name="moneda"><option value="USD">Dólares (U$D)</option><option value="ARS">Pesos ($)</option></select></label>
+          <div class="fila-campos">
+            <label>Cantidad<input name="cantidad" type="number" placeholder="Cantidad" required /></label>
+            <label>Moneda<select name="moneda"><option value="USD">Dólares (U$D)</option><option value="ARS">Pesos ($)</option></select></label>
+          </div>
+          <div class="fila-campos">
+            <label>Costo unitario<input name="costo" type="number" step="0.01" placeholder="Costo unitario" /></label>
+            <label>Precio de venta<input name="precio_venta" type="number" step="0.01" placeholder="Opcional" /></label>
+          </div>
           <label>Categoría<input name="categoria" placeholder="Se detecta sola (opcional)" autocomplete="off" /></label>
           <div class="dialogo-botones">
-            <button type="button" class="btn-secundario" onclick="document.getElementById('dialogo-producto').close()">Cancelar</button>
+            <button type="button" class="btn-secundario" onclick="cerrarDialogo('dialogo-producto')">Cancelar</button>
             <button type="submit" class="btn-primario" id="boton-guardar-producto">Generar stock</button>
           </div>
         </form>
@@ -131,14 +183,18 @@
 
       <dialog id="dialogo-venta">
         <form id="form-venta">
-          <h3 class="sin-margen">Nueva venta</h3>
+          <div class="dialogo-header">
+            <h3 class="dialogo-titulo">Nueva venta</h3>
+          </div>
           <label>Producto<input name="nombre_producto" placeholder="Producto" autocomplete="off" required list="lista-productos" /></label>
-          <label>Cantidad<input name="cantidad" type="number" placeholder="Cantidad" required /></label>
+          <div class="fila-campos">
+            <label>Cantidad<input name="cantidad" type="number" placeholder="Cantidad" required /></label>
+            <label>Moneda<select name="moneda"><option value="ARS">Pesos ($)</option><option value="USD">Dólares (U$D)</option></select></label>
+          </div>
           <label>Cliente (opcional)<input name="nombre_cliente" placeholder="Cliente" autocomplete="off" list="lista-personas" /></label>
           <label>Precio unitario (opcional)<input name="precio_unitario" type="number" step="0.01" placeholder="Se usa el precio de lista si lo dejás vacío" /></label>
-          <label>Moneda<select name="moneda"><option value="ARS">ARS</option><option value="USD">USD</option></select></label>
           <div class="dialogo-botones">
-            <button type="button" class="btn-secundario" onclick="document.getElementById('dialogo-venta').close()">Cancelar</button>
+            <button type="button" class="btn-secundario" onclick="cerrarDialogo('dialogo-venta')">Cancelar</button>
             <button type="submit" class="btn-primario">Generar venta</button>
           </div>
         </form>
@@ -146,8 +202,11 @@
 
       <section id="tab-ventas" class="panel oculto">
         <div class="barra-acciones">
-          <h3 class="sin-margen">Ventas</h3>
-          <button type="button" class="btn-primario" onclick="document.getElementById('form-venta').reset(); document.getElementById('dialogo-venta').showModal()">
+          <div>
+            <h3 class="titulo-bloque">Ventas</h3>
+            <p class="subtitulo" id="sub-ventas"></p>
+          </div>
+          <button type="button" class="btn-primario" onclick="abrirDialogo('dialogo-venta')">
             <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
             Nueva venta
           </button>
@@ -158,7 +217,7 @@
 
         <div class="tabla-wrap">
           <table id="tabla-ventas">
-            <thead><tr><th>Fecha</th><th>Producto</th><th>Cantidad</th><th>Cliente</th><th>Precio unit.</th><th>Moneda</th><th>Nota</th></tr></thead>
+            <thead><tr><th>Fecha</th><th>Producto</th><th class="num">Cantidad</th><th>Cliente</th><th class="num">Precio unit.</th><th class="num">Total</th><th>Nota</th><th class="col-acciones"></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -166,7 +225,10 @@
 
       <section id="tab-pedidos" class="panel oculto">
         <div class="barra-acciones">
-          <h3 class="sin-margen">Pedidos de clientes</h3>
+          <div>
+            <h3 class="titulo-bloque">Pedidos de clientes</h3>
+            <p class="subtitulo" id="sub-pedidos"></p>
+          </div>
           <button type="button" class="btn-secundario" onclick="cargarPedidos()">
             <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
             Actualizar
@@ -175,7 +237,7 @@
         <p class="ayuda">Pedidos que arman los clientes por WhatsApp. No son ventas todavía — hay que aprobarlos (ahí sí se registran) o rechazarlos.</p>
         <div class="tabla-wrap">
           <table id="tabla-pedidos">
-            <thead><tr><th>Fecha</th><th>Cliente</th><th>Producto</th><th>Cantidad</th><th>Precio est.</th><th>Estado</th><th></th></tr></thead>
+            <thead><tr><th>Fecha</th><th>Cliente</th><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio est.</th><th>Estado</th><th class="col-acciones"></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -183,15 +245,18 @@
 
       <section id="tab-prestamos" class="panel oculto">
         <div class="barra-acciones">
-          <h3 class="sin-margen">Préstamos</h3>
-          <button type="button" class="btn-primario" onclick="document.getElementById('form-prestamo').reset(); document.getElementById('dialogo-prestamo').showModal()">
+          <div>
+            <h3 class="titulo-bloque">Préstamos</h3>
+            <p class="subtitulo" id="sub-prestamos"></p>
+          </div>
+          <button type="button" class="btn-primario" onclick="abrirDialogo('dialogo-prestamo')">
             <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
             Nuevo préstamo
           </button>
         </div>
         <div class="tabla-wrap">
           <table id="tabla-prestamos">
-            <thead><tr><th>#</th><th>Persona</th><th>Original</th><th>Pendiente</th><th>Moneda</th><th>Estado</th><th>Fecha</th><th>Registrar pago</th></tr></thead>
+            <thead><tr><th class="num">#</th><th>Persona</th><th class="num">Original</th><th>Pendiente</th><th>Estado</th><th>Fecha</th><th>Registrar pago</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -199,14 +264,18 @@
 
       <dialog id="dialogo-prestamo">
         <form id="form-prestamo">
-          <h3 class="sin-margen">Nuevo préstamo</h3>
+          <div class="dialogo-header">
+            <h3 class="dialogo-titulo">Nuevo préstamo</h3>
+          </div>
           <label>Persona<input name="persona" placeholder="Persona" autocomplete="off" required list="lista-personas" /></label>
-          <label>Monto<input name="monto" type="number" step="0.01" placeholder="Monto" required /></label>
-          <label>Moneda<select name="moneda"><option value="ARS">ARS</option><option value="USD">USD</option></select></label>
+          <div class="fila-campos">
+            <label>Monto<input name="monto" type="number" step="0.01" placeholder="Monto" required /></label>
+            <label>Moneda<select name="moneda"><option value="ARS">Pesos ($)</option><option value="USD">Dólares (U$D)</option></select></label>
+          </div>
           <label>Interés % (opcional)<input name="interes_pct" type="number" step="0.01" placeholder="Ej: 10" /></label>
           <label>Nota (opcional)<input name="nota" placeholder="Nota" /></label>
           <div class="dialogo-botones">
-            <button type="button" class="btn-secundario" onclick="document.getElementById('dialogo-prestamo').close()">Cancelar</button>
+            <button type="button" class="btn-secundario" onclick="cerrarDialogo('dialogo-prestamo')">Cancelar</button>
             <button type="submit" class="btn-primario">Generar préstamo</button>
           </div>
         </form>
@@ -214,7 +283,10 @@
 
       <section id="tab-prendas" class="panel oculto">
         <div class="barra-acciones">
-          <h3 class="sin-margen">Plan Canje</h3>
+          <div>
+            <h3 class="titulo-bloque">Plan Canje</h3>
+            <p class="subtitulo" id="sub-prendas"></p>
+          </div>
           <button type="button" class="btn-primario" onclick="abrirDialogoCanje()">
             <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
             Nuevo canje
@@ -222,7 +294,7 @@
         </div>
         <div class="tabla-wrap">
           <table id="tabla-prendas">
-            <thead><tr><th>Persona</th><th>Celular</th><th>Estado del equipo</th><th>Valor tomado</th><th>Entregado</th><th>Saldo</th><th>Situación</th><th>Fecha</th><th></th></tr></thead>
+            <thead><tr><th>Persona</th><th>Celular</th><th>Estado del equipo</th><th class="num">Valor tomado</th><th>Entregado</th><th class="num">Saldo</th><th>Situación</th><th>Fecha</th><th class="col-acciones"></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -231,22 +303,26 @@
       <dialog id="dialogo-canje">
         <form id="form-canje">
           <input type="hidden" name="id" />
-          <h3 class="sin-margen" id="titulo-dialogo-canje">Nuevo canje</h3>
-          <p class="ayuda">Recibís un celular en cierto estado, lo tomás a un precio, y de ahí sale una diferencia a favor tuyo o del cliente (en plata o en producto).</p>
+          <div class="dialogo-header">
+            <h3 class="dialogo-titulo" id="titulo-dialogo-canje">Nuevo canje</h3>
+            <p class="ayuda">Recibís un celular en cierto estado, lo tomás a un precio, y de ahí sale una diferencia a favor tuyo o del cliente (en plata o en producto).</p>
+          </div>
           <label>Persona<input name="persona" placeholder="Persona" autocomplete="off" required list="lista-personas" /></label>
           <label>Celular que recibís<input name="descripcion" placeholder="Ej: iPhone 11 128GB" autocomplete="off" required /></label>
           <label>Estado del equipo<input name="condicion" placeholder="Ej: excelente, con detalles, para repuestos" autocomplete="off" /></label>
-          <label>Precio al que lo tomás<input name="valor_tomado" type="number" step="0.01" placeholder="Monto" /></label>
-          <label>Moneda del valor<select name="moneda_valor"><option value="ARS">ARS</option><option value="USD">USD</option></select></label>
+          <div class="fila-campos">
+            <label>Precio al que lo tomás<input name="valor_tomado" type="number" step="0.01" placeholder="Monto" /></label>
+            <label>Moneda<select name="moneda_valor"><option value="ARS">Pesos ($)</option><option value="USD">Dólares (U$D)</option></select></label>
+          </div>
           <label>Producto que entregás a cambio (opcional)<input name="producto_entregado" placeholder="Ej: iPhone 13 128GB" autocomplete="off" /></label>
-          <label>
-            Diferencia en plata (opcional)
-            <input name="saldo_monto" type="number" step="0.01" placeholder="Positivo = te tienen que dar. Negativo = les debés." />
-          </label>
-          <label>Moneda de la diferencia<select name="saldo_moneda"><option value="ARS">ARS</option><option value="USD">USD</option></select></label>
+          <div class="fila-campos">
+            <label>Diferencia en plata (opcional)<input name="saldo_monto" type="number" step="0.01" placeholder="+ te dan / − les debés" /></label>
+            <label>Moneda<select name="saldo_moneda"><option value="ARS">Pesos ($)</option><option value="USD">Dólares (U$D)</option></select></label>
+          </div>
+          <p class="ayuda ayuda-campo">Positivo = te tienen que dar esa plata. Negativo = se la debés vos.</p>
           <label>Nota (opcional)<input name="nota" placeholder="Nota" /></label>
           <div class="dialogo-botones">
-            <button type="button" class="btn-secundario" onclick="document.getElementById('dialogo-canje').close()">Cancelar</button>
+            <button type="button" class="btn-secundario" onclick="cerrarDialogo('dialogo-canje')">Cancelar</button>
             <button type="submit" class="btn-primario" id="boton-guardar-canje">Generar canje</button>
           </div>
         </form>
@@ -254,15 +330,18 @@
 
       <section id="tab-empleados" class="panel oculto">
         <div class="barra-acciones">
-          <h3 class="sin-margen">Empleados</h3>
-          <button type="button" class="btn-primario" onclick="document.getElementById('form-empleado').reset(); document.getElementById('dialogo-empleado').showModal()">
+          <div>
+            <h3 class="titulo-bloque">Empleados</h3>
+            <p class="subtitulo" id="sub-empleados"></p>
+          </div>
+          <button type="button" class="btn-primario" onclick="abrirDialogo('dialogo-empleado')">
             <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
             Nuevo usuario
           </button>
         </div>
         <div class="tabla-wrap">
           <table id="tabla-empleados">
-            <thead><tr><th>Nombre</th><th>Teléfono</th><th>Descuento %</th></tr></thead>
+            <thead><tr><th>Nombre</th><th>Teléfono</th><th class="num">Descuento</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -270,12 +349,16 @@
 
       <dialog id="dialogo-empleado">
         <form id="form-empleado">
-          <h3 class="sin-margen">Nuevo usuario (precio amigo)</h3>
+          <div class="dialogo-header">
+            <h3 class="dialogo-titulo">Nuevo usuario (precio amigo)</h3>
+          </div>
           <label>Nombre<input name="nombre" placeholder="Nombre" autocomplete="off" required /></label>
-          <label>Teléfono (opcional)<input name="telefono" placeholder="Teléfono" autocomplete="off" /></label>
-          <label>% descuento<input name="descuento_pct" type="number" step="0.01" placeholder="Ej: 10" /></label>
+          <div class="fila-campos">
+            <label>Teléfono (opcional)<input name="telefono" placeholder="Teléfono" autocomplete="off" /></label>
+            <label>% descuento<input name="descuento_pct" type="number" step="0.01" placeholder="Ej: 10" /></label>
+          </div>
           <div class="dialogo-botones">
-            <button type="button" class="btn-secundario" onclick="document.getElementById('dialogo-empleado').close()">Cancelar</button>
+            <button type="button" class="btn-secundario" onclick="cerrarDialogo('dialogo-empleado')">Cancelar</button>
             <button type="submit" class="btn-primario">Generar usuario</button>
           </div>
         </form>
@@ -283,9 +366,12 @@
 
       <section id="tab-bot" class="panel oculto">
         <div class="barra-acciones">
-          <h3 class="sin-margen">Estado de conexión</h3>
+          <div>
+            <h3 class="titulo-bloque">Estado de conexión</h3>
+            <p class="subtitulo">Cómo están el bot, la base de datos y la IA ahora mismo</p>
+          </div>
           <div class="grupo-botones">
-            <button type="button" class="btn-secundario" onclick="descargarBackup()" title="Descarga un archivo con todos los datos del negocio">
+            <button type="button" class="btn-secundario" onclick="descargarBackup(this)" title="Descarga un archivo con todos los datos del negocio">
               <svg viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>
               Descargar backup
             </button>
@@ -295,13 +381,17 @@
             </button>
           </div>
         </div>
-        <div class="cards" id="estado-cards"></div>
+        <div class="cards cards-estado" id="estado-cards"></div>
 
-        <h3>Cómo funciona</h3>
+        <div class="barra-acciones">
+          <div>
+            <h3 class="titulo-bloque">Cómo funciona</h3>
+          </div>
+        </div>
         <div class="surface">
           <p class="ayuda-grande">
             El bot escucha por Telegram (texto y fotos) a los usuarios autorizados. Cada mensaje se lo pasa a un modelo de IA
-            (<span id="info-modelo">Claude</span>) junto con las reglas del negocio y una lista de "herramientas" que puede usar para leer o
+            (<span id="info-modelo" class="chip-codigo">Claude</span>) junto con las reglas del negocio y una lista de "herramientas" que puede usar para leer o
             modificar la base de datos. Vos le contás lo que pasó en lenguaje normal, y el modelo decide qué acción ejecutar (o qué
             preguntarte si falta un dato importante). El panel web y el chat comparten exactamente la misma base — lo que carga uno lo ve el otro
             al instante.
@@ -310,12 +400,20 @@
             Si el bot se queda repitiendo el mismo error con alguien, esa persona puede mandarle <strong>/reiniciar</strong> por Telegram:
             le borra la memoria de esa charla puntual (nunca los datos de ventas, stock, etc.) y sigue funcionando normal.
           </p>
-          <h4>Herramientas que puede usar</h4>
-          <div id="lista-herramientas" class="lista-herramientas"></div>
+          <details class="desplegable">
+            <summary>
+              <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+              Herramientas que puede usar <span class="etiqueta" id="cantidad-herramientas"></span>
+            </summary>
+            <div id="lista-herramientas" class="lista-herramientas"></div>
+          </details>
         </div>
 
         <div class="barra-acciones">
-          <h3 class="sin-margen">Respuestas predefinidas</h3>
+          <div>
+            <h3 class="titulo-bloque">Respuestas predefinidas</h3>
+            <p class="subtitulo" id="sub-respuestas"></p>
+          </div>
           <button type="button" class="btn-primario" onclick="abrirDialogoRespuesta()">
             <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
             Nueva respuesta
@@ -324,7 +422,7 @@
         <p class="ayuda">Si un mensaje corto (hasta 8 palabras) contiene el disparador, el bot responde esto directo — sin gastar IA. No importan mayúsculas ni tildes. Útil para preguntas fijas tipo horarios, dirección, etc. Los mensajes más largos siempre van a la IA, para que una venta contada junto a una pregunta no se pierda.</p>
         <div class="tabla-wrap">
           <table id="tabla-respuestas">
-            <thead><tr><th>Disparador</th><th>Respuesta</th><th>Activa</th><th></th></tr></thead>
+            <thead><tr><th>Disparador</th><th>Respuesta</th><th>Activa</th><th class="col-acciones"></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -333,12 +431,14 @@
       <dialog id="dialogo-respuesta">
         <form id="form-respuesta">
           <input type="hidden" name="id" />
-          <h3 class="sin-margen" id="titulo-dialogo-respuesta">Nueva respuesta</h3>
+          <div class="dialogo-header">
+            <h3 class="dialogo-titulo" id="titulo-dialogo-respuesta">Nueva respuesta</h3>
+          </div>
           <label>Disparador (texto que activa la respuesta)<input name="disparador" placeholder="Ej: horario" autocomplete="off" required /></label>
           <label>Respuesta<textarea name="respuesta" rows="3" placeholder="Lo que le contesta el bot" required></textarea></label>
           <label class="fila-check"><input type="checkbox" name="activo" checked /> Activa</label>
           <div class="dialogo-botones">
-            <button type="button" class="btn-secundario" onclick="document.getElementById('dialogo-respuesta').close()">Cancelar</button>
+            <button type="button" class="btn-secundario" onclick="cerrarDialogo('dialogo-respuesta')">Cancelar</button>
             <button type="submit" class="btn-primario" id="boton-guardar-respuesta">Generar respuesta</button>
           </div>
         </form>
@@ -346,7 +446,10 @@
 
       <section id="tab-logs" class="panel oculto">
         <div class="barra-acciones">
-          <h3 class="sin-margen">Actividad reciente del bot</h3>
+          <div>
+            <h3 class="titulo-bloque">Actividad reciente del bot</h3>
+            <p class="subtitulo" id="sub-logs"></p>
+          </div>
           <button type="button" class="btn-secundario" onclick="cargarLogs()">
             <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
             Actualizar
@@ -364,10 +467,25 @@
   </div>
 </div>
 
+<!-- Confirmacion propia (reemplaza los confirm()/prompt() grises del navegador). Ver confirmar() en app.js. -->
+<dialog id="dialogo-confirmar" class="dialogo-chico">
+  <form id="form-confirmar">
+    <div class="dialogo-header">
+      <h3 class="dialogo-titulo" id="confirmar-titulo">¿Confirmar?</h3>
+      <p class="ayuda" id="confirmar-mensaje"></p>
+    </div>
+    <label id="confirmar-motivo" class="oculto">Motivo (opcional)<input name="motivo" autocomplete="off" /></label>
+    <div class="dialogo-botones">
+      <button type="button" class="btn-secundario" id="confirmar-cancelar">Cancelar</button>
+      <button type="submit" class="btn-primario" id="confirmar-aceptar">Confirmar</button>
+    </div>
+  </form>
+</dialog>
+
 <datalist id="lista-personas"></datalist>
 <datalist id="lista-productos"></datalist>
 
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script src="app.js"></script>
 </body>

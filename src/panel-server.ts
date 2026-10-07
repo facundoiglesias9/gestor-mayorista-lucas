@@ -119,6 +119,7 @@ app.post("/api/pedidos/:id/rechazar", envolver((req) => repo.rechazarPedidoPendi
 
 // ---------- ventas / resumen ----------
 app.post("/api/ventas", envolver((req) => repo.registrarVenta(req.body)));
+app.delete("/api/ventas/:id", envolver((req) => repo.anularVenta({ venta_id: Number(req.params.id) })));
 app.get(
   "/api/ventas",
   envolver(async (req) => {
