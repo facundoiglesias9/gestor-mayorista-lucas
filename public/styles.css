@@ -350,6 +350,7 @@ main {
   margin: 28px 0 10px;
 }
 .barra-acciones h3 { margin: 0; }
+.grupo-botones { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 
 .btn-primario {
   display: inline-flex;

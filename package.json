@@ -10,7 +10,8 @@
     "backup": "tsx src/backup.ts",
     "set-webhook": "tsx src/set-webhook.ts",
     "delete-webhook": "tsx src/delete-webhook.ts",
-    "test-bot": "tsx src/test-bot.ts"
+    "test-bot": "tsx src/test-bot.ts",
+    "typecheck": "tsc --noEmit"
   },
   "engines": {
     "node": ">=22.5.0"

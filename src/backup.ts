@@ -1,7 +1,8 @@
+import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { all } from "./db.js";
+import { exportarTodo } from "./repo.js";
 
 // La base ahora vive en Turso (nube), que ya es durable por si sola. Esto es una copia extra
 // de tranquilidad: un volcado en JSON de todas las tablas a un archivo local, por si alguna
@@ -12,14 +13,9 @@ const backupsDir = path.join(__dirname, "..", "backups");
 const MAX_BACKUPS = 30;
 const INTERVALO_MS = 6 * 60 * 60 * 1000; // cada 6 horas
 
-const TABLAS = ["personas", "productos", "movimientos_stock", "prestamos", "pagos_prestamo", "canjes"];
-
 export async function hacerBackup() {
   if (!fs.existsSync(backupsDir)) fs.mkdirSync(backupsDir, { recursive: true });
-  const datos: Record<string, any[]> = {};
-  for (const tabla of TABLAS) {
-    datos[tabla] = await all(`SELECT * FROM ${tabla}`);
-  }
+  const datos = await exportarTodo();
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const destino = path.join(backupsDir, `gestor-${timestamp}.json`);
   fs.writeFileSync(destino, JSON.stringify(datos, null, 2));
@@ -35,9 +31,15 @@ export async function hacerBackup() {
   console.log(`Backup creado: ${destino}`);
 }
 
+// Si un backup falla (ej: se corto internet) solo se avisa en consola: sin el catch, el error
+// quedaria sin manejar y Node cerraria el proceso entero, bot incluido.
+function hacerBackupSeguro() {
+  hacerBackup().catch((e) => console.error("No se pudo hacer el backup automatico:", e));
+}
+
 export function iniciarBackupsAutomaticos() {
-  hacerBackup();
-  setInterval(hacerBackup, INTERVALO_MS);
+  hacerBackupSeguro();
+  setInterval(hacerBackupSeguro, INTERVALO_MS);
 }
 
 // Permite correr `npm run backup` manualmente

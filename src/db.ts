@@ -1,4 +1,5 @@
-import { createClient } from "@libsql/client";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { createClient, type Transaction } from "@libsql/client";
 
 const url = process.env.TURSO_DATABASE_URL;
 const authToken = process.env.TURSO_AUTH_TOKEN;
@@ -7,23 +8,53 @@ if (!url) throw new Error("Falta TURSO_DATABASE_URL en las variables de entorno.
 
 export const db = createClient({ url, authToken });
 
+// ---------- transacciones ----------
+// Las operaciones de varios pasos (una venta: crear producto + reponer + descontar + anotar el
+// movimiento) van dentro de enTransaccion: o se guardan todos los pasos, o ninguno. Sin esto,
+// si algo falla a la mitad (se corta la conexion, Vercel corta la funcion) el stock queda
+// descuadrado. get/all/run de abajo usan solos la transaccion en curso, asi que las funciones de
+// repo.ts no tienen que pasarla a mano.
+// OJO: nada de llamadas lentas a otros servicios (ej: la IA) adentro de una transaccion, porque
+// mientras dura nadie mas puede escribir en la base.
+
+const transaccionActual = new AsyncLocalStorage<Transaction>();
+
+export async function enTransaccion<T>(fn: () => Promise<T>): Promise<T> {
+  // Si ya estamos adentro de una (ej: aprobar un pedido llama a registrar la venta), se reusa.
+  if (transaccionActual.getStore()) return fn();
+  await asegurarTablas();
+  const tx = await db.transaction("write");
+  try {
+    const resultado = await transaccionActual.run(tx, fn);
+    await tx.commit();
+    return resultado;
+  } catch (e) {
+    await tx.rollback().catch(() => {});
+    throw e;
+  } finally {
+    tx.close();
+  }
+}
+
 // ---------- helpers de consulta (async, porque Turso es una base remota) ----------
 
-export async function get(sql: string, params: any[] = []): Promise<any | undefined> {
+async function ejecutar(sql: string, params: any[]) {
   await asegurarTablas();
-  const rs = await db.execute({ sql, args: params });
+  return (transaccionActual.getStore() ?? db).execute({ sql, args: params });
+}
+
+export async function get(sql: string, params: any[] = []): Promise<any | undefined> {
+  const rs = await ejecutar(sql, params);
   return rs.rows[0] as any;
 }
 
 export async function all(sql: string, params: any[] = []): Promise<any[]> {
-  await asegurarTablas();
-  const rs = await db.execute({ sql, args: params });
+  const rs = await ejecutar(sql, params);
   return rs.rows as any[];
 }
 
 export async function run(sql: string, params: any[] = []): Promise<{ lastInsertRowid: number; changes: number }> {
-  await asegurarTablas();
-  const rs = await db.execute({ sql, args: params });
+  const rs = await ejecutar(sql, params);
   return { lastInsertRowid: Number(rs.lastInsertRowid ?? 0), changes: rs.rowsAffected };
 }
 
@@ -42,8 +73,18 @@ async function agregarColumnaSiFalta(tabla: string, columna: string, definicion:
 
 export function asegurarTablas(): Promise<void> {
   if (!migracion) {
-    migracion = (async () => {
-      await db.executeMultiple(`
+    migracion = crearTablas().catch((e) => {
+      // Si fallo (ej: un corte de red justo al arrancar), no nos quedamos con el error guardado
+      // para siempre: el proximo pedido lo vuelve a intentar.
+      migracion = null;
+      throw e;
+    });
+  }
+  return migracion;
+}
+
+async function crearTablas(): Promise<void> {
+  await db.executeMultiple(`
 CREATE TABLE IF NOT EXISTS personas (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   nombre TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -181,10 +222,10 @@ CREATE TABLE IF NOT EXISTS logs_bot (
   fecha TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 `);
-      // Columna agregada despues de la version inicial de la tabla productos: en que moneda
-      // estan cargados el costo y el precio de venta de ese producto.
-      await agregarColumnaSiFalta("productos", "moneda", "TEXT NOT NULL DEFAULT 'USD'");
-    })();
-  }
-  return migracion;
+  // Columna agregada despues de la version inicial de la tabla productos: en que moneda
+  // estan cargados el costo y el precio de venta de ese producto.
+  await agregarColumnaSiFalta("productos", "moneda", "TEXT NOT NULL DEFAULT 'USD'");
+  // Identifica QUIEN tiene tomado el bloqueo de una conversacion, para que cada mensaje
+  // libere solo el suyo (ver intentarBloquear/liberarBloqueo en repo.ts).
+  await agregarColumnaSiFalta("bloqueos_conversacion", "token", "TEXT");
 }

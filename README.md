@@ -85,6 +85,7 @@ Corriendo solo en tu PC, el bot y el panel dejan de responder cuando la apagás.
 1. Entrá a [vercel.com](https://vercel.com), creá cuenta (podés con GitHub) y hacé **Add New → Project**.
 2. Elegí el repo `gestor-mayorista-lucas` de GitHub.
 3. En "Environment Variables" cargá **las mismas variables de tu `.env`** (todas, incluidas `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `PANEL_PASSWORD`, `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`, `OWNER_TELEGRAM_ID`, `OTROS_TELEGRAM_IDS`, `TELEGRAM_WEBHOOK_SECRET` — no hace falta `PANEL_PORT`, Vercel maneja el puerto solo).
+   > `TELEGRAM_WEBHOOK_SECRET` es **obligatoria** en Vercel: sin ella el webhook no procesa ningún mensaje (y te avisa por Telegram), porque cualquiera que conozca la URL podría mandarle mensajes falsos al bot haciéndose pasar por vos.
 4. Deploy. Te va a quedar una URL tipo `https://gestor-mayorista-lucas.vercel.app`.
 
 ### 2. Activar el bot en modo webhook
@@ -96,6 +97,8 @@ npm run set-webhook -- https://gestor-mayorista-lucas.vercel.app/api/telegram-we
 ```
 
 Listo — a partir de ahí Telegram le habla directo a Vercel, y el panel también vive ahí: `https://gestor-mayorista-lucas.vercel.app`.
+
+> Si alguna vez cambiás `TELEGRAM_WEBHOOK_SECRET`, tenés que volver a correr este comando con el valor nuevo en tu `.env`: Telegram manda esa clave en cada mensaje y, si no coincide con la de Vercel, el mensaje se rechaza.
 
 ### Volver a correr local (modo polling)
 
@@ -115,6 +118,8 @@ Los datos viven en Turso, que ya es un servicio en la nube durable por sí solo.
 ```bash
 npm run backup
 ```
+
+Si el bot corre en Vercel (donde no se pueden guardar archivos), podés bajar el mismo backup desde el panel: pestaña del bot → **Descargar backup**.
 
 Restaurar un backup de estos es manual (mirar el JSON y volver a cargar lo que falte) — están pensados como red de contención para mirar a mano, no como restauración automática.
 
@@ -139,6 +144,8 @@ En los dos casos te va a pedir una clave — es el valor de `PANEL_PASSWORD` (en
 - **Empleados**: agregar y ver la lista de precio amigo.
 
 El panel y el chat de Telegram comparten exactamente la misma base de datos (Turso) — lo que cargás en uno lo ves reflejado en el otro al instante, corra donde corra cada uno.
+
+> Después de 10 intentos con clave incorrecta desde una misma conexión, el panel la bloquea 15 minutos.
 
 > Importante: quien tenga la clave del panel puede ver y editar todos tus datos. Si lo desplegás en Vercel queda accesible desde cualquier internet — la única traba es esa clave, así que elegí una que no sea obvia y no la compartas. Si sospechás que alguien más la tiene, cambiá `PANEL_PASSWORD` (en tu `.env` y/o en Vercel) y volvé a desplegar/reiniciar.
 

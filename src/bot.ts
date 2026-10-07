@@ -1,9 +1,9 @@
-import { Bot } from "grammy";
+import { Bot, type Context } from "grammy";
 import { procesarMensaje } from "./brain.js";
 import {
   yaProcesadoUpdate,
   buscarRespuestaPredefinida,
-  registrarLog,
+  registrarLogSeguro,
   reiniciarConversacion,
   intentarBloquear,
   liberarBloqueo,
@@ -26,14 +26,6 @@ function estaAutorizado(id: number | undefined): boolean {
 
 function nombreDe(ctx: { from?: { first_name?: string; last_name?: string } }): string {
   return [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "alguien";
-}
-
-async function registrarLogSeguro(entrada: Parameters<typeof registrarLog>[0]) {
-  try {
-    await registrarLog(entrada);
-  } catch (e) {
-    console.error("No se pudo guardar el log:", e);
-  }
 }
 
 // Traduce errores tecnicos (JSON crudo de la API de Anthropic, etc.) a algo entendible para
@@ -98,42 +90,85 @@ bot.command("reiniciar", async (ctx) => {
   }
 });
 
-bot.on("message:text", async (ctx) => {
-  if (!estaAutorizado(ctx.from?.id)) {
-    console.log(`Mensaje ignorado de un ID no autorizado: ${ctx.from?.id}`);
-    return;
+// Telegram no acepta mensajes de mas de 4096 caracteres: si la respuesta es mas larga (ej: un
+// inventario completo), se manda en varias partes, cortando en saltos de linea cuando se puede.
+const MAX_CARACTERES_MENSAJE = 4096;
+
+async function responderEnPartes(ctx: Context, texto: string) {
+  let resto = texto;
+  while (resto.length > MAX_CARACTERES_MENSAJE) {
+    const corte = resto.lastIndexOf("\n", MAX_CARACTERES_MENSAJE);
+    const hasta = corte > MAX_CARACTERES_MENSAJE / 2 ? corte : MAX_CARACTERES_MENSAJE;
+    await ctx.reply(resto.slice(0, hasta));
+    resto = resto.slice(hasta).replace(/^\n/, "");
   }
-  const usuarioId = String(ctx.from!.id);
-  const nombre = nombreDe(ctx);
+  if (resto.length > 0) await ctx.reply(resto);
+}
+
+// Lo comun a cualquier mensaje (texto o foto): ignora los reintentos de Telegram y, si algo
+// falla, le avisa a la persona con un mensaje entendible y deja el detalle tecnico en Logs.
+async function atenderConManejoDeErrores(ctx: Context, entradaLog: string, atender: () => Promise<void>) {
   try {
     if (await yaProcesadoUpdate(ctx.update.update_id)) {
       console.log(`Update ${ctx.update.update_id} repetido (Telegram reintento), lo ignoro.`);
       return;
     }
-    const fija = await buscarRespuestaPredefinida(ctx.message.text);
-    if (fija) {
-      await ctx.reply(fija);
-      await registrarLogSeguro({ usuario_id: usuarioId, usuario_nombre: nombre, tipo: "respuesta_predefinida", entrada: ctx.message.text, salida: fija });
-      return;
-    }
-    // Si ya le estamos contestando un mensaje anterior a esta MISMA persona, no arrancamos otro
-    // en paralelo (pisaria el historial que el primero todavia no termino de guardar).
-    if (!(await intentarBloquear(usuarioId))) {
-      await ctx.reply("Todavía estoy respondiendo tu mensaje anterior — esperá un toque y probá de nuevo.");
-      return;
-    }
-    try {
-      await ctx.replyWithChatAction("typing");
-      const respuesta = await procesarMensaje(usuarioId, nombre, ctx.message.text);
-      await ctx.reply(respuesta);
-    } finally {
-      await liberarBloqueo(usuarioId);
-    }
+    await atender();
   } catch (e: any) {
     console.error(e);
-    await registrarLogSeguro({ usuario_id: usuarioId, usuario_nombre: nombre, tipo: "error", entrada: ctx.message.text, salida: String(e.message ?? e) });
+    await registrarLogSeguro({
+      usuario_id: String(ctx.from!.id),
+      usuario_nombre: nombreDe(ctx),
+      tipo: "error",
+      entrada: entradaLog,
+      salida: String(e.message ?? e),
+    });
     await ctx.reply(mensajeErrorLegible(e));
   }
+}
+
+// Toma el turno de la conversacion antes de llamar a la IA: si ya le estamos contestando un
+// mensaje anterior a esta MISMA persona, no arrancamos otro en paralelo (pisaria el historial
+// que el primero todavia no termino de guardar). Libera el turno al terminar, salga bien o mal.
+async function responderConTurno(ctx: Context, generarRespuesta: () => Promise<string>) {
+  const usuarioId = String(ctx.from!.id);
+  const token = await intentarBloquear(usuarioId);
+  if (!token) {
+    await ctx.reply("Todavía estoy respondiendo tu mensaje anterior — esperá un toque y probá de nuevo.");
+    return;
+  }
+  try {
+    await ctx.replyWithChatAction("typing");
+    await responderEnPartes(ctx, await generarRespuesta());
+  } finally {
+    await liberarBloqueo(usuarioId, token);
+  }
+}
+
+async function descargarFotoBase64(fileId: string): Promise<string> {
+  const archivo = await bot.api.getFile(fileId);
+  const respuestaHttp = await fetch(`https://api.telegram.org/file/bot${TOKEN}/${archivo.file_path}`);
+  if (!respuestaHttp.ok) throw new Error(`No pude descargar la foto de Telegram (error ${respuestaHttp.status}). Probá mandarla de nuevo.`);
+  return Buffer.from(await respuestaHttp.arrayBuffer()).toString("base64");
+}
+
+bot.on("message:text", async (ctx) => {
+  if (!estaAutorizado(ctx.from?.id)) {
+    console.log(`Mensaje ignorado de un ID no autorizado: ${ctx.from?.id}`);
+    return;
+  }
+  const usuarioId = String(ctx.from.id);
+  const nombre = nombreDe(ctx);
+  const texto = ctx.message.text;
+  await atenderConManejoDeErrores(ctx, texto, async () => {
+    const fija = await buscarRespuestaPredefinida(texto);
+    if (fija) {
+      await ctx.reply(fija);
+      await registrarLogSeguro({ usuario_id: usuarioId, usuario_nombre: nombre, tipo: "respuesta_predefinida", entrada: texto, salida: fija });
+      return;
+    }
+    await responderConTurno(ctx, () => procesarMensaje(usuarioId, nombre, texto));
+  });
 });
 
 bot.on("message:photo", async (ctx) => {
@@ -141,49 +176,19 @@ bot.on("message:photo", async (ctx) => {
     console.log(`Foto ignorada de un ID no autorizado: ${ctx.from?.id}`);
     return;
   }
-  const usuarioId = String(ctx.from!.id);
-  try {
-    if (await yaProcesadoUpdate(ctx.update.update_id)) {
-      console.log(`Update ${ctx.update.update_id} repetido (Telegram reintento), lo ignoro.`);
-      return;
-    }
+  const caption = ctx.message.caption ?? "";
+  await atenderConManejoDeErrores(ctx, `(imagen) ${caption}`, async () => {
     const fotos = ctx.message.photo;
     const mejorFoto = fotos[fotos.length - 1]; // la de mayor resolucion
     if (mejorFoto.file_size && mejorFoto.file_size > MAX_BYTES_IMAGEN) {
       await ctx.reply("Esa imagen pesa demasiado, mandame una mas chica o comprimida.");
       return;
     }
-    if (!(await intentarBloquear(usuarioId))) {
-      await ctx.reply("Todavía estoy respondiendo tu mensaje anterior — esperá un toque y probá de nuevo.");
-      return;
-    }
-    try {
-      await ctx.replyWithChatAction("typing");
-      const archivo = await ctx.api.getFile(mejorFoto.file_id);
-      const url = `https://api.telegram.org/file/bot${TOKEN}/${archivo.file_path}`;
-      const respuestaHttp = await fetch(url);
-      const buffer = Buffer.from(await respuestaHttp.arrayBuffer());
-      const base64 = buffer.toString("base64");
-
-      const respuesta = await procesarMensaje(usuarioId, nombreDe(ctx), ctx.message.caption ?? "", {
-        mediaType: "image/jpeg",
-        base64,
-      });
-      await ctx.reply(respuesta);
-    } finally {
-      await liberarBloqueo(usuarioId);
-    }
-  } catch (e: any) {
-    console.error(e);
-    await registrarLogSeguro({
-      usuario_id: String(ctx.from!.id),
-      usuario_nombre: nombreDe(ctx),
-      tipo: "error",
-      entrada: `(imagen) ${ctx.message.caption ?? ""}`,
-      salida: String(e.message ?? e),
+    await responderConTurno(ctx, async () => {
+      const base64 = await descargarFotoBase64(mejorFoto.file_id);
+      return procesarMensaje(String(ctx.from.id), nombreDe(ctx), caption, { mediaType: "image/jpeg", base64 });
     });
-    await ctx.reply(mensajeErrorLegible(e));
-  }
+  });
 });
 
 bot.catch((err) => {

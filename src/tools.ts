@@ -96,12 +96,18 @@ export const toolDefinitions: Anthropic.Tool[] = [
   {
     name: "registrar_pago_prestamo",
     description:
-      "Registra un pago/devolucion de un prestamo de una persona. Se aplica automaticamente contra el/los prestamos activos mas viejos de esa persona.",
+      "Registra un pago/devolucion de un prestamo de una persona. Se aplica automaticamente contra el/los prestamos activos mas viejos de esa persona EN LA MONEDA DEL PAGO (un pago en dolares nunca descuenta deuda en pesos ni al reves).",
     input_schema: {
       type: "object",
       properties: {
         persona: { type: "string" },
         monto: { type: "number" },
+        moneda: {
+          type: "string",
+          enum: ["USD", "ARS"],
+          description:
+            "Moneda del pago. Si la persona debe en una sola moneda se puede omitir (se usa esa). Si debe en las dos y no quedo claro en cual pago, preguntalo antes de registrar.",
+        },
         nota: { type: "string" },
       },
       required: ["persona", "monto"],
@@ -235,14 +241,21 @@ const dispatch: Record<string, (args: any) => any | Promise<any>> = {
 export interface ContextoHerramienta {
   usuarioId: string;
   nombreUsuario: string;
+  esCliente: boolean;
 }
 
-export async function ejecutarHerramienta(nombre: string, args: any, contexto?: ContextoHerramienta): Promise<any> {
+const nombresInterno = new Set(toolDefinitions.map((t) => t.name));
+const nombresCliente = new Set(toolDefinitionsCliente.map((t) => t.name));
+
+export async function ejecutarHerramienta(nombre: string, args: any, contexto: ContextoHerramienta): Promise<any> {
+  // Doble proteccion: aunque la IA de alguna forma pidiera una herramienta que no esta en el menu
+  // de su perfil (ej: el bot de clientes pidiendo registrar_venta), aca no se ejecuta.
+  const permitidas = contexto.esCliente ? nombresCliente : nombresInterno;
+  if (!permitidas.has(nombre)) return { ok: false, error: `La herramienta ${nombre} no esta disponible en este perfil.` };
   try {
     // crear_pedido es un caso especial: el telefono/nombre del cliente NO se lo pedimos al
     // modelo (podria inventarlo o confundirlo), lo tomamos directo de quien esta escribiendo.
     if (nombre === "crear_pedido") {
-      if (!contexto) return { ok: false, error: "Falta contexto del cliente para crear el pedido." };
       return await repo.crearPedidoPendiente({
         cliente_telefono: contexto.usuarioId,
         cliente_nombre: contexto.nombreUsuario,
