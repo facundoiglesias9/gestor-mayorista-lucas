@@ -1,19 +1,27 @@
 // Panel de Gestor Mayorista: vanilla JS, sin build step. Todo pega directo contra la API en /api/*.
 
 // ---------- login (la clave se guarda en sessionStorage del navegador, se manda como header en cada llamada) ----------
-function authHeader() {
-  const clave = sessionStorage.getItem("panel_clave");
-  return clave ? "Basic " + btoa("gestor:" + clave) : null;
+// btoa solo acepta caracteres "latinos" de 1 byte: se pasa la clave a UTF-8 antes, asi una clave
+// con tildes, ñ o emojis funciona igual que en el servidor (que la lee como UTF-8).
+function headerConClave(clave) {
+  const bytes = new TextEncoder().encode("gestor:" + clave);
+  return "Basic " + btoa(String.fromCharCode(...bytes));
 }
 
+function authHeader() {
+  const clave = sessionStorage.getItem("panel_clave");
+  return clave ? headerConClave(clave) : null;
+}
+
+// Devuelve el codigo HTTP: 200 = clave correcta, 401 = incorrecta, 429 = demasiados intentos.
 async function probarClave(clave) {
-  const resp = await fetch("/api/resumen", { headers: { Authorization: "Basic " + btoa("gestor:" + clave) } });
-  return resp.ok;
+  const resp = await fetch("/api/resumen", { headers: { Authorization: headerConClave(clave) } });
+  return resp.status;
 }
 
 async function iniciarLogin() {
   const claveGuardada = sessionStorage.getItem("panel_clave");
-  if (claveGuardada && (await probarClave(claveGuardada))) {
+  if (claveGuardada && (await probarClave(claveGuardada)) === 200) {
     mostrarApp();
     return;
   }
@@ -33,12 +41,15 @@ function mostrarApp() {
 document.getElementById("form-login").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const clave = document.getElementById("login-clave").value;
-  const ok = await probarClave(clave);
-  if (ok) {
+  const estado = await probarClave(clave);
+  if (estado === 200) {
     sessionStorage.setItem("panel_clave", clave);
     mostrarApp();
   } else {
-    document.getElementById("login-error").classList.remove("oculto");
+    const error = document.getElementById("login-error");
+    error.textContent =
+      estado === 429 ? "Demasiados intentos con clave incorrecta. Esperá 15 minutos y probá de nuevo." : "Clave incorrecta.";
+    error.classList.remove("oculto");
   }
 });
 
@@ -702,6 +713,7 @@ async function cargarEstadoSistema() {
       ${tarjetaEstado("Base de datos (Turso)", r.base_de_datos)}
       ${tarjetaEstado("Webhook de Telegram", webhookOk, webhookTexto)}
       ${tarjetaEstado("Claude configurado", r.anthropic_configurado)}
+      ${tarjetaEstado("Clave del webhook", r.secreto_webhook_configurado, r.secreto_webhook_configurado ? "Configurada" : "Falta TELEGRAM_WEBHOOK_SECRET")}
       <div class="card"><div class="label">Hora del servidor</div><div class="valor valor-chico">${new Date(r.hora_servidor).toLocaleString("es-AR")}</div></div>
     `;
     if (ultimoError) {
@@ -716,6 +728,27 @@ function tarjetaEstado(titulo, ok, textoExtra) {
   const punto = ok ? `<span class="punto-estado punto-ok"></span>` : `<span class="punto-estado punto-mal"></span>`;
   const texto = textoExtra ?? (ok ? "Andando bien" : "Con problemas");
   return `<div class="card"><div class="label">${titulo}</div><div class="valor valor-chico">${punto}${escapeHtml(texto)}</div></div>`;
+}
+
+// ---------- backup: descarga un JSON con todos los datos del negocio ----------
+async function descargarBackup() {
+  try {
+    const resp = await fetch("/api/backup", { headers: { Authorization: authHeader() } });
+    if (!resp.ok) {
+      const datos = await resp.json().catch(() => ({}));
+      throw new Error(datos.error ?? `Error ${resp.status}`);
+    }
+    const nombre = /filename="([^"]+)"/.exec(resp.headers.get("Content-Disposition") ?? "")?.[1] ?? "backup-gestor.json";
+    const url = URL.createObjectURL(await resp.blob());
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = nombre;
+    link.click();
+    URL.revokeObjectURL(url);
+    mostrarToast("Backup descargado.");
+  } catch (e) {
+    mostrarToast(e.message, true);
+  }
 }
 
 // ---------- bot: como funciona ----------

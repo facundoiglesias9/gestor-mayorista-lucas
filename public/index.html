@@ -284,10 +284,16 @@
       <section id="tab-bot" class="panel oculto">
         <div class="barra-acciones">
           <h3 class="sin-margen">Estado de conexión</h3>
-          <button type="button" class="btn-secundario" onclick="cargarEstadoSistema()">
-            <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
-            Actualizar
-          </button>
+          <div class="grupo-botones">
+            <button type="button" class="btn-secundario" onclick="descargarBackup()" title="Descarga un archivo con todos los datos del negocio">
+              <svg viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>
+              Descargar backup
+            </button>
+            <button type="button" class="btn-secundario" onclick="cargarEstadoSistema()">
+              <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
+              Actualizar
+            </button>
+          </div>
         </div>
         <div class="cards" id="estado-cards"></div>
 
@@ -315,7 +321,7 @@
             Nueva respuesta
           </button>
         </div>
-        <p class="ayuda">Si un mensaje contiene el disparador, el bot responde esto directo — sin gastar IA. Útil para preguntas fijas tipo horarios, dirección, etc.</p>
+        <p class="ayuda">Si un mensaje corto (hasta 8 palabras) contiene el disparador, el bot responde esto directo — sin gastar IA. No importan mayúsculas ni tildes. Útil para preguntas fijas tipo horarios, dirección, etc. Los mensajes más largos siempre van a la IA, para que una venta contada junto a una pregunta no se pierda.</p>
         <div class="tabla-wrap">
           <table id="tabla-respuestas">
             <thead><tr><th>Disparador</th><th>Respuesta</th><th>Activa</th><th></th></tr></thead>

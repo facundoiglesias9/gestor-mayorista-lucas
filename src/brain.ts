@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { toolDefinitions, toolDefinitionsCliente, ejecutarHerramienta } from "./tools.js";
-import { cargarHistorialConversacion, guardarHistorialConversacion, registrarLog, reiniciarConversacion } from "./repo.js";
+import { cargarHistorialConversacion, guardarHistorialConversacion, registrarLogSeguro, reiniciarConversacion } from "./repo.js";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-5";
@@ -105,7 +105,9 @@ export async function procesarMensaje(
   imagen?: ImagenAdjunta,
   esCliente = false
 ): Promise<string> {
-  const historial: Turno[] = await cargarHistorialConversacion(usuarioId);
+  // Se limpia tambien al cargar, por si quedo guardado un historial de antes de este arreglo
+  // que arranca en un lugar invalido.
+  const historial = recortarHistorial(await cargarHistorialConversacion(usuarioId));
 
   if (imagen) {
     const bloques: Array<Anthropic.ImageBlockParam | Anthropic.TextBlockParam> = [
@@ -189,7 +191,7 @@ export async function procesarMensaje(
     for (const bloque of bloquesToolUse) {
       herramientasUsadas.push(bloque.name);
       try {
-        const resultado = await ejecutarHerramienta(bloque.name, bloque.input, { usuarioId, nombreUsuario });
+        const resultado = await ejecutarHerramienta(bloque.name, bloque.input, { usuarioId, nombreUsuario, esCliente });
         resultados.push({ type: "tool_result", tool_use_id: bloque.id, content: JSON.stringify(resultado) });
       } catch (e: any) {
         // Si UNA herramienta explota, igual le mandamos un tool_result (marcado como error) en
@@ -211,15 +213,45 @@ export async function procesarMensaje(
   return "Me colgue haciendo demasiados pasos para esto. Contame de nuevo mas simple, o de a un tema por vez.";
 }
 
-async function registrarLogSeguro(entrada: Parameters<typeof registrarLog>[0]) {
-  try {
-    await registrarLog(entrada);
-  } catch (e) {
-    console.error("No se pudo guardar el log:", e);
+// La API exige que el historial arranque con un mensaje del usuario que NO sea un tool_result
+// (un tool_result sin el tool_use que lo pidio es justo lo que rechaza con un 400).
+function esInicioValido(turno: Turno): boolean {
+  if (turno.role !== "user") return false;
+  return typeof turno.content === "string" || !turno.content.some((b) => b.type === "tool_result");
+}
+
+// Se queda con los ultimos MAX_TURNOS mensajes, pero sin cortar a la mitad un intercambio con
+// herramientas: si el corte cae entre un tool_use y su tool_result, se descartan los mensajes
+// del principio hasta llegar a un mensaje normal del usuario. Antes se cortaba en cualquier
+// lado, y cada tanto el historial quedaba invalido y se reseteaba la memoria de la charla.
+function recortarHistorial(historial: Turno[]): Turno[] {
+  const recortado = historial.length > MAX_TURNOS ? historial.slice(historial.length - MAX_TURNOS) : historial;
+  const inicio = recortado.findIndex(esInicioValido);
+  return inicio === -1 ? [] : recortado.slice(inicio);
+}
+
+// Las fotos ocupan mucho (cientos de KB en base64) y se le reenviarian a la IA en CADA mensaje
+// siguiente, pagando de nuevo por leerlas. Se guarda solo la ultima (por si la proxima pregunta
+// es sobre esa misma foto); las anteriores se reemplazan por un texto: lo que la IA entendio de
+// ellas ya quedo en sus respuestas, que si se guardan.
+function sinFotosViejas(historial: Turno[]): Turno[] {
+  const resultado = [...historial];
+  let quedoLaMasNueva = false;
+  for (let i = resultado.length - 1; i >= 0; i--) {
+    const turno = resultado[i];
+    if (typeof turno.content === "string" || !turno.content.some((b) => b.type === "image")) continue;
+    if (!quedoLaMasNueva) {
+      quedoLaMasNueva = true;
+      continue;
+    }
+    resultado[i] = {
+      ...turno,
+      content: turno.content.map((b) => (b.type === "image" ? { type: "text" as const, text: "(aca habia una foto, ya procesada)" } : b)),
+    };
   }
+  return resultado;
 }
 
 async function guardarHistorial(usuarioId: string, historial: Turno[]) {
-  const recortado = historial.length > MAX_TURNOS ? historial.slice(historial.length - MAX_TURNOS) : historial;
-  await guardarHistorialConversacion(usuarioId, recortado);
+  await guardarHistorialConversacion(usuarioId, sinFotosViejas(recortarHistorial(historial)));
 }

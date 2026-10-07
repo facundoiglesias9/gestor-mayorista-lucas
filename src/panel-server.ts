@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as repo from "./repo.js";
 import { toolDefinitions } from "./tools.js";
+import { claveCoincide } from "./seguridad.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -17,11 +18,49 @@ if (!PANEL_PASSWORD) throw new Error("Falta PANEL_PASSWORD en el .env");
 // bot en los dos modos a la vez) y romperia el modo local con polling que usa index.ts.
 export const app = express();
 app.use(express.json());
+// Para que req.ip sea la IP real de quien entra (en Vercel llega en el header X-Forwarded-For)
+// y no la del proxy de Vercel: la usa el freno de intentos fallidos de abajo.
+app.set("trust proxy", true);
 
 // ---------- autenticacion ----------
 // El HTML/CSS/JS estatico se sirve libre (no tiene datos, es solo la pantalla). La propia
 // pagina pide la clave con un formulario propio y la manda como header Authorization en
 // cada llamada a la API; solo /api/* exige esa clave.
+
+// Freno contra probar claves a lo loco: despues de MAX_INTENTOS_FALLIDOS claves incorrectas
+// desde una misma IP, esa IP queda bloqueada hasta que pasen 15 minutos desde el primer fallo.
+// (En Vercel esto vive en la memoria de cada instancia, asi que no es perfecto, pero igual
+// vuelve impractico probar miles de claves.)
+const MAX_INTENTOS_FALLIDOS = 10;
+const VENTANA_INTENTOS_MS = 15 * 60 * 1000;
+const intentosFallidos = new Map<string, { cantidad: number; desde: number }>();
+
+function intentosVigentes(ip: string) {
+  const registro = intentosFallidos.get(ip);
+  if (registro && Date.now() - registro.desde > VENTANA_INTENTOS_MS) {
+    intentosFallidos.delete(ip);
+    return undefined;
+  }
+  return registro;
+}
+
+function anotarIntentoFallido(ip: string) {
+  // Para que el mapa no crezca sin limite si llegan intentos desde muchisimas IPs distintas.
+  if (intentosFallidos.size > 5000) intentosFallidos.clear();
+  const registro = intentosVigentes(ip);
+  if (registro) registro.cantidad++;
+  else intentosFallidos.set(ip, { cantidad: 1, desde: Date.now() });
+}
+
+// El header es "Basic base64(usuario:clave)". Se corta en el PRIMER ":" (el usuario no tiene),
+// asi una clave que tenga ":" adentro no se rompe.
+function claveDelHeader(header: string | undefined): string | null {
+  if (!header?.startsWith("Basic ")) return null;
+  const decodificado = Buffer.from(header.slice(6), "base64").toString("utf8");
+  const dosPuntos = decodificado.indexOf(":");
+  return dosPuntos === -1 ? null : decodificado.slice(dosPuntos + 1);
+}
+
 app.use("/api", (req, res, next) => {
   // El webhook de Telegram (registrado aparte, en api/index.ts) no manda esta clave: Telegram
   // se autentica solo con su propio secretToken, verificado por grammy en su propio handler.
@@ -29,11 +68,13 @@ app.use("/api", (req, res, next) => {
   // El chequeo automatico del webhook (GitHub Actions, cada 30 min) tampoco tiene la clave del
   // panel: se autentica con su propio CRON_SECRET, verificado en api/index.ts.
   if (req.path === "/cron/verificar-webhook") return next();
-  const header = req.headers.authorization;
-  if (header?.startsWith("Basic ")) {
-    const [, clave] = Buffer.from(header.slice(6), "base64").toString().split(":");
-    if (clave === PANEL_PASSWORD) return next();
+  const ip = req.ip ?? "desconocida";
+  if ((intentosVigentes(ip)?.cantidad ?? 0) >= MAX_INTENTOS_FALLIDOS) {
+    return res.status(429).json({ ok: false, error: "Demasiados intentos con clave incorrecta. Esperá 15 minutos y probá de nuevo." });
   }
+  const clave = claveDelHeader(req.headers.authorization);
+  if (clave !== null && claveCoincide(clave, PANEL_PASSWORD)) return next();
+  anotarIntentoFallido(ip);
   res.status(401).json({ ok: false, error: "Clave incorrecta o faltante." });
 });
 
@@ -122,6 +163,19 @@ app.delete("/api/respuestas/:id", envolver((req) => repo.eliminarRespuestaPredef
 // ---------- logs ----------
 app.get("/api/logs", envolver((req) => repo.listarLogs(req.query.limite ? Number(req.query.limite) : undefined)));
 
+// ---------- backup (descarga de todos los datos del negocio en un JSON) ----------
+// Sirve tambien estando en Vercel, donde no se pueden guardar archivos de backup automaticos.
+app.get("/api/backup", async (_req, res) => {
+  try {
+    const datos = await repo.exportarTodo();
+    const fecha = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Disposition", `attachment; filename="backup-gestor-${fecha}.json"`);
+    res.json(datos);
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: e.message ?? String(e) });
+  }
+});
+
 // ---------- info del bot (para la pantalla "Como funciona") ----------
 app.get(
   "/api/bot-info",
@@ -152,6 +206,7 @@ app.get(
       webhook,
       webhook_error: webhookError,
       anthropic_configurado: !!process.env.ANTHROPIC_API_KEY,
+      secreto_webhook_configurado: !!process.env.TELEGRAM_WEBHOOK_SECRET,
       hora_servidor: new Date().toISOString(),
     };
   })

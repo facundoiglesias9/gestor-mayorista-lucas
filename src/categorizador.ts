@@ -4,7 +4,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // Usamos un modelo chico/rapido para esto: es solo clasificar un nombre de producto en
 // una categoria, no hace falta gastar de mas ni esperar de mas.
-const MODEL_CATEGORIAS = "claude-haiku-4-5-20251001";
+const MODEL_CATEGORIAS = "claude-haiku-5-5";
 
 const SYSTEM = `Clasificas productos de un local de compra/venta mayorista de celulares y electronica en UNA categoria corta, en espanol, con mayuscula inicial.
 
@@ -35,7 +35,8 @@ export async function inferirCategoria(nombreProducto: string): Promise<string> 
       messages: [{ role: "user", content: nombreProducto }],
     });
     const bloque = respuesta.content.find((b) => b.type === "text");
-    const texto = bloque && "text" in bloque ? bloque.text.trim() : "";
+    // Por si contesta con un punto final o algo de mas: nos quedamos con un nombre corto.
+    const texto = bloque && "text" in bloque ? bloque.text.trim().replace(/[.\s]+$/, "").slice(0, 30) : "";
     return texto || "Otros";
   } catch (e) {
     console.error("No se pudo inferir categoria automaticamente:", e);

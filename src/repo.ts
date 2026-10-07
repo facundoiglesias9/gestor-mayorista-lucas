@@ -1,4 +1,5 @@
-import { get, all, run } from "./db.js";
+import { randomUUID } from "node:crypto";
+import { get, all, run, enTransaccion } from "./db.js";
 import { inferirCategoria } from "./categorizador.js";
 
 // Esta es la UNICA capa que toca la base de datos. Tanto el cerebro (Claude, via tools.ts)
@@ -49,64 +50,78 @@ export async function agregarProducto(args: {
   categoria?: string;
   nota?: string;
 }) {
-  const existente = await findProducto(args.nombre);
-  if (existente) {
-    await run(
-      `UPDATE productos SET cantidad = cantidad + ?, costo = COALESCE(?, costo), precio_venta = COALESCE(?, precio_venta), moneda = COALESCE(?, moneda), categoria = COALESCE(?, categoria), actualizado_en = datetime('now','localtime') WHERE id = ?`,
-      [args.cantidad, args.costo ?? null, args.precio_venta ?? null, args.moneda ?? null, args.categoria ?? null, existente.id]
-    );
-    await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, precio_unitario, nota) VALUES (?, 'entrada', ?, ?, ?)`, [
-      existente.id,
+  // Producto nuevo sin categoria: se la pedimos a la IA (ej: "iPhone 12" -> Celulares). Va ANTES
+  // de abrir la transaccion porque es una llamada lenta y no tiene que trabar la base.
+  const categoriaSiEsNuevo = args.categoria || ((await findProducto(args.nombre)) ? null : await inferirCategoria(args.nombre));
+  return enTransaccion(async () => {
+    const existente = await findProducto(args.nombre);
+    if (existente) {
+      await run(
+        `UPDATE productos SET cantidad = cantidad + ?, costo = COALESCE(?, costo), precio_venta = COALESCE(?, precio_venta), moneda = COALESCE(?, moneda), categoria = COALESCE(?, categoria), actualizado_en = datetime('now','localtime') WHERE id = ?`,
+        [args.cantidad, args.costo ?? null, args.precio_venta ?? null, args.moneda ?? null, args.categoria ?? null, existente.id]
+      );
+      await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, precio_unitario, nota) VALUES (?, 'entrada', ?, ?, ?)`, [
+        existente.id,
+        args.cantidad,
+        args.costo ?? null,
+        args.nota ?? "reposicion de stock",
+      ]);
+      const actualizado = await findProducto(args.nombre);
+      return { ok: true, mensaje: `Sumado stock a "${args.nombre}". Cantidad total ahora: ${actualizado.cantidad}.`, producto: actualizado };
+    }
+    const info = await run(`INSERT INTO productos (nombre, categoria, cantidad, costo, precio_venta, moneda, nota) VALUES (?, ?, ?, ?, ?, ?, ?)`, [
+      args.nombre,
+      categoriaSiEsNuevo ?? "Otros",
       args.cantidad,
       args.costo ?? null,
-      args.nota ?? "reposicion de stock",
+      args.precio_venta ?? null,
+      args.moneda ?? "USD",
+      args.nota ?? null,
     ]);
-    const actualizado = await findProducto(args.nombre);
-    return { ok: true, mensaje: `Sumado stock a "${args.nombre}". Cantidad total ahora: ${actualizado.cantidad}.`, producto: actualizado };
-  }
-  // Producto nuevo: si no vino categoria, se la pedimos a la IA (ej: "iPhone 12" -> Celulares).
-  const categoria = args.categoria || (await inferirCategoria(args.nombre));
-  const info = await run(`INSERT INTO productos (nombre, categoria, cantidad, costo, precio_venta, moneda, nota) VALUES (?, ?, ?, ?, ?, ?, ?)`, [
-    args.nombre,
-    categoria,
-    args.cantidad,
-    args.costo ?? null,
-    args.precio_venta ?? null,
-    args.moneda ?? "USD",
-    args.nota ?? null,
-  ]);
-  await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, precio_unitario, nota) VALUES (?, 'entrada', ?, ?, 'alta inicial')`, [
-    info.lastInsertRowid,
-    args.cantidad,
-    args.costo ?? null,
-  ]);
-  const nuevo = await get(`SELECT * FROM productos WHERE id = ?`, [info.lastInsertRowid]);
-  return { ok: true, mensaje: `Producto "${args.nombre}" creado con ${args.cantidad} unidades.`, producto: nuevo };
+    await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, precio_unitario, nota) VALUES (?, 'entrada', ?, ?, 'alta inicial')`, [
+      info.lastInsertRowid,
+      args.cantidad,
+      args.costo ?? null,
+    ]);
+    const nuevo = await get(`SELECT * FROM productos WHERE id = ?`, [info.lastInsertRowid]);
+    return { ok: true, mensaje: `Producto "${args.nombre}" creado con ${args.cantidad} unidades.`, producto: nuevo };
+  });
 }
 
 export async function ajustarStock(args: { nombre_producto: string; cantidad_delta: number; motivo?: string }) {
-  const p = await requireProducto(args.nombre_producto);
-  const nuevaCantidad = p.cantidad + args.cantidad_delta;
-  if (nuevaCantidad < 0) {
-    throw new Error(`El ajuste dejaria stock negativo (${nuevaCantidad}) para "${args.nombre_producto}". Cantidad actual: ${p.cantidad}.`);
-  }
-  await run(`UPDATE productos SET cantidad = ?, actualizado_en = datetime('now','localtime') WHERE id = ?`, [nuevaCantidad, p.id]);
-  await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, nota) VALUES (?, 'ajuste', ?, ?)`, [
-    p.id,
-    args.cantidad_delta,
-    args.motivo ?? "ajuste manual",
-  ]);
-  return { ok: true, mensaje: `Stock de "${args.nombre_producto}" ajustado. Cantidad nueva: ${nuevaCantidad}.` };
+  return enTransaccion(async () => {
+    const p = await requireProducto(args.nombre_producto);
+    const nuevaCantidad = p.cantidad + args.cantidad_delta;
+    if (nuevaCantidad < 0) {
+      throw new Error(`El ajuste dejaria stock negativo (${nuevaCantidad}) para "${args.nombre_producto}". Cantidad actual: ${p.cantidad}.`);
+    }
+    await run(`UPDATE productos SET cantidad = ?, actualizado_en = datetime('now','localtime') WHERE id = ?`, [nuevaCantidad, p.id]);
+    await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, nota) VALUES (?, 'ajuste', ?, ?)`, [
+      p.id,
+      args.cantidad_delta,
+      args.motivo ?? "ajuste manual",
+    ]);
+    return { ok: true, mensaje: `Stock de "${args.nombre_producto}" ajustado. Cantidad nueva: ${nuevaCantidad}.` };
+  });
 }
 
-export async function registrarVenta(args: {
+interface ArgsVenta {
   nombre_producto: string;
   cantidad: number;
   nombre_cliente?: string;
   precio_unitario?: number;
   moneda?: string;
   nota?: string;
-}) {
+}
+
+export async function registrarVenta(args: ArgsVenta) {
+  // Si el producto todavia no existe, la categoria se le pide a la IA ANTES de abrir la
+  // transaccion (es una llamada lenta y no tiene que trabar la base mientras tanto).
+  const categoriaSiEsNuevo = (await findProducto(args.nombre_producto)) ? null : await inferirCategoria(args.nombre_producto);
+  return enTransaccion(() => registrarVentaEnTransaccion(args, categoriaSiEsNuevo));
+}
+
+async function registrarVentaEnTransaccion(args: ArgsVenta, categoriaSiEsNuevo: string | null) {
   // No bloqueamos la venta por falta de stock: a veces se compra y se vende en el mismo momento
   // (no llega a quedar cargado como stock previo). Si el producto no existe todavia en el
   // sistema, se crea solo con cantidad 0. Si falta cantidad para cubrir la venta, se repone
@@ -114,15 +129,18 @@ export async function registrarVenta(args: {
   // stock nunca quede en negativo.
   let p = await findProducto(args.nombre_producto);
   if (!p) {
-    const categoria = await inferirCategoria(args.nombre_producto);
-    await run(`INSERT INTO productos (nombre, categoria, cantidad, precio_venta, nota) VALUES (?, ?, 0, ?, 'creado automaticamente al vender')`, [
-      args.nombre_producto,
-      categoria,
-      args.precio_unitario ?? null,
-    ]);
+    await run(
+      `INSERT INTO productos (nombre, categoria, cantidad, precio_venta, moneda, nota) VALUES (?, ?, 0, ?, ?, 'creado automaticamente al vender')`,
+      [args.nombre_producto, categoriaSiEsNuevo ?? "Otros", args.precio_unitario ?? null, args.moneda ?? "ARS"]
+    );
     p = await findProducto(args.nombre_producto);
   }
   let persona: any = null;
+  // Si no se dijo el precio se usa el de lista del producto, y entonces la moneda tiene que ser
+  // la del producto (no ARS por defecto): un iPhone de lista a 800 USD no puede quedar
+  // registrado como una venta de 800 pesos.
+  const usaPrecioDeLista = args.precio_unitario == null && p.precio_venta != null;
+  const moneda = usaPrecioDeLista ? p.moneda : args.moneda ?? "ARS";
   let precioUnitario = args.precio_unitario ?? p.precio_venta ?? null;
   if (args.nombre_cliente) {
     persona = await findOrCreatePersona(args.nombre_cliente);
@@ -141,7 +159,7 @@ export async function registrarVenta(args: {
   await run(`UPDATE productos SET cantidad = cantidad - ?, actualizado_en = datetime('now','localtime') WHERE id = ?`, [args.cantidad, p.id]);
   await run(
     `INSERT INTO movimientos_stock (producto_id, tipo, cantidad, persona_id, precio_unitario, moneda, nota) VALUES (?, 'salida', ?, ?, ?, ?, ?)`,
-    [p.id, args.cantidad, persona?.id ?? null, precioUnitario, args.moneda ?? "ARS", args.nota ?? null]
+    [p.id, args.cantidad, persona?.id ?? null, precioUnitario, moneda, args.nota ?? null]
   );
   // OJO: si habia stock de sobra, "faltante" queda negativo (no representa una reposicion real,
   // esa rama del if de arriba ni se ejecuta). Para el stock restante solo hay que sumar lo que
@@ -153,7 +171,7 @@ export async function registrarVenta(args: {
   return {
     ok: true,
     mensaje: `Venta registrada: ${args.cantidad} x "${args.nombre_producto}"${persona ? ` a ${persona.nombre}` : ""}${
-      precioUnitario != null ? ` a ${precioUnitario} ${args.moneda ?? "ARS"} c/u (total ${total})` : ""
+      precioUnitario != null ? ` a ${precioUnitario} ${moneda} c/u (total ${total})` : ""
     }.${avisoReposicion} Stock restante: ${restante}.`,
   };
 }
@@ -170,28 +188,30 @@ export async function actualizarProductoPorId(
   id: number,
   campos: { nombre?: string; categoria?: string; cantidad?: number; costo?: number; precio_venta?: number; moneda?: string; nota?: string }
 ) {
-  const actual = await obtenerProducto(id);
-  if (!actual) throw new Error(`No existe el producto #${id}.`);
-  await run(
-    `UPDATE productos SET nombre = ?, categoria = ?, cantidad = ?, costo = ?, precio_venta = ?, moneda = ?, nota = ?, actualizado_en = datetime('now','localtime') WHERE id = ?`,
-    [
-      campos.nombre ?? actual.nombre,
-      campos.categoria ?? actual.categoria,
-      campos.cantidad ?? actual.cantidad,
-      campos.costo ?? actual.costo,
-      campos.precio_venta ?? actual.precio_venta,
-      campos.moneda ?? actual.moneda,
-      campos.nota ?? actual.nota,
-      id,
-    ]
-  );
-  if (campos.cantidad != null && campos.cantidad !== actual.cantidad) {
-    await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, nota) VALUES (?, 'ajuste', ?, 'edicion manual desde el panel')`, [
-      id,
-      campos.cantidad - actual.cantidad,
-    ]);
-  }
-  return obtenerProducto(id);
+  return enTransaccion(async () => {
+    const actual = await obtenerProducto(id);
+    if (!actual) throw new Error(`No existe el producto #${id}.`);
+    await run(
+      `UPDATE productos SET nombre = ?, categoria = ?, cantidad = ?, costo = ?, precio_venta = ?, moneda = ?, nota = ?, actualizado_en = datetime('now','localtime') WHERE id = ?`,
+      [
+        campos.nombre ?? actual.nombre,
+        campos.categoria ?? actual.categoria,
+        campos.cantidad ?? actual.cantidad,
+        campos.costo ?? actual.costo,
+        campos.precio_venta ?? actual.precio_venta,
+        campos.moneda ?? actual.moneda,
+        campos.nota ?? actual.nota,
+        id,
+      ]
+    );
+    if (campos.cantidad != null && campos.cantidad !== actual.cantidad) {
+      await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, nota) VALUES (?, 'ajuste', ?, 'edicion manual desde el panel')`, [
+        id,
+        campos.cantidad - actual.cantidad,
+      ]);
+    }
+    return obtenerProducto(id);
+  });
 }
 
 // ---------- personas / empleados ----------
@@ -246,37 +266,59 @@ export async function actualizarPersonaPorId(
 // ---------- prestamos ----------
 
 export async function registrarPrestamo(args: { persona: string; monto: number; moneda: "USD" | "ARS"; interes_pct?: number; nota?: string }) {
-  const persona = await findOrCreatePersona(args.persona);
-  const info = await run(
-    `INSERT INTO prestamos (persona_id, monto_original, monto_pendiente, moneda, interes_pct, nota) VALUES (?, ?, ?, ?, ?, ?)`,
-    [persona.id, args.monto, args.monto, args.moneda, args.interes_pct ?? 0, args.nota ?? null]
-  );
-  return { ok: true, mensaje: `Prestamo registrado: ${args.monto} ${args.moneda} a ${args.persona}.`, prestamo_id: info.lastInsertRowid };
+  return enTransaccion(async () => {
+    const persona = await findOrCreatePersona(args.persona);
+    const info = await run(
+      `INSERT INTO prestamos (persona_id, monto_original, monto_pendiente, moneda, interes_pct, nota) VALUES (?, ?, ?, ?, ?, ?)`,
+      [persona.id, args.monto, args.monto, args.moneda, args.interes_pct ?? 0, args.nota ?? null]
+    );
+    return { ok: true, mensaje: `Prestamo registrado: ${args.monto} ${args.moneda} a ${args.persona}.`, prestamo_id: info.lastInsertRowid };
+  });
 }
 
-export async function registrarPagoPrestamo(args: { persona: string; monto: number; nota?: string }) {
-  const persona = await findPersona(args.persona);
-  if (!persona) throw new Error(`No encontre a "${args.persona}" en el sistema.`);
-  const prestamos = await all(`SELECT * FROM prestamos WHERE persona_id = ? AND estado != 'pagado' ORDER BY fecha ASC`, [persona.id]);
-  if (prestamos.length === 0) throw new Error(`"${args.persona}" no tiene prestamos activos.`);
-  let restante = args.monto;
-  const afectados: any[] = [];
-  for (const pr of prestamos) {
-    if (restante <= 0) break;
-    const aplicado = Math.min(restante, pr.monto_pendiente);
-    const nuevoPendiente = Math.round((pr.monto_pendiente - aplicado) * 100) / 100;
-    const nuevoEstado = nuevoPendiente <= 0 ? "pagado" : "parcial";
-    await run(`UPDATE prestamos SET monto_pendiente = ?, estado = ? WHERE id = ?`, [nuevoPendiente, nuevoEstado, pr.id]);
-    await run(`INSERT INTO pagos_prestamo (prestamo_id, monto, nota) VALUES (?, ?, ?)`, [pr.id, aplicado, args.nota ?? null]);
-    afectados.push({ prestamo_id: pr.id, moneda: pr.moneda, aplicado, nuevoPendiente });
-    restante -= aplicado;
-  }
-  return {
-    ok: true,
-    mensaje: `Pago de ${args.monto} registrado para "${args.persona}". Detalle: ${afectados
-      .map((a) => `prestamo #${a.prestamo_id} (${a.moneda}): -${a.aplicado}, queda ${a.nuevoPendiente}`)
-      .join("; ")}${restante > 0 ? `. Sobraron ${restante} sin aplicar (no habia mas deuda activa).` : ""}`,
-  };
+function validarMontoPago(monto: number) {
+  if (!(Number(monto) > 0)) throw new Error("El monto del pago tiene que ser un numero mayor a cero.");
+}
+
+export async function registrarPagoPrestamo(args: { persona: string; monto: number; moneda?: "USD" | "ARS"; nota?: string }) {
+  validarMontoPago(args.monto);
+  return enTransaccion(async () => {
+    const persona = await findPersona(args.persona);
+    if (!persona) throw new Error(`No encontre a "${args.persona}" en el sistema.`);
+    const activos = await all(`SELECT * FROM prestamos WHERE persona_id = ? AND estado != 'pagado' ORDER BY fecha ASC`, [persona.id]);
+    if (activos.length === 0) throw new Error(`"${args.persona}" no tiene prestamos activos.`);
+    // Un pago se aplica solo contra prestamos de SU moneda: 100 USD no pueden descontarse de una
+    // deuda en pesos. Si no se dijo la moneda y la persona debe en una sola, se usa esa.
+    const monedasConDeuda = [...new Set(activos.map((pr) => pr.moneda))];
+    const moneda = args.moneda ?? (monedasConDeuda.length === 1 ? monedasConDeuda[0] : undefined);
+    if (!moneda) {
+      throw new Error(
+        `"${args.persona}" tiene prestamos activos en ${monedasConDeuda.join(" y ")}: hay que aclarar en que moneda es el pago (USD o ARS).`
+      );
+    }
+    const prestamos = activos.filter((pr) => pr.moneda === moneda);
+    if (prestamos.length === 0) {
+      throw new Error(`"${args.persona}" no tiene prestamos activos en ${moneda} (debe en ${monedasConDeuda.join(" y ")}).`);
+    }
+    let restante = args.monto;
+    const afectados: any[] = [];
+    for (const pr of prestamos) {
+      if (restante <= 0) break;
+      const aplicado = Math.min(restante, pr.monto_pendiente);
+      const nuevoPendiente = Math.round((pr.monto_pendiente - aplicado) * 100) / 100;
+      const nuevoEstado = nuevoPendiente <= 0 ? "pagado" : "parcial";
+      await run(`UPDATE prestamos SET monto_pendiente = ?, estado = ? WHERE id = ?`, [nuevoPendiente, nuevoEstado, pr.id]);
+      await run(`INSERT INTO pagos_prestamo (prestamo_id, monto, nota) VALUES (?, ?, ?)`, [pr.id, aplicado, args.nota ?? null]);
+      afectados.push({ prestamo_id: pr.id, moneda: pr.moneda, aplicado, nuevoPendiente });
+      restante -= aplicado;
+    }
+    return {
+      ok: true,
+      mensaje: `Pago de ${args.monto} ${moneda} registrado para "${args.persona}". Detalle: ${afectados
+        .map((a) => `prestamo #${a.prestamo_id} (${a.moneda}): -${a.aplicado}, queda ${a.nuevoPendiente}`)
+        .join("; ")}${restante > 0 ? `. Sobraron ${restante} ${moneda} sin aplicar (no habia mas deuda activa en esa moneda).` : ""}`,
+    };
+  });
 }
 
 export async function listarPrestamos() {
@@ -309,14 +351,17 @@ export async function actualizarPrestamoPorId(
 }
 
 export async function registrarPagoPrestamoPorId(prestamoId: number, monto: number, nota?: string) {
-  const pr = await obtenerPrestamo(prestamoId);
-  if (!pr) throw new Error(`No existe el prestamo #${prestamoId}.`);
-  const aplicado = Math.min(monto, pr.monto_pendiente);
-  const nuevoPendiente = Math.round((pr.monto_pendiente - aplicado) * 100) / 100;
-  const nuevoEstado = nuevoPendiente <= 0 ? "pagado" : "parcial";
-  await run(`UPDATE prestamos SET monto_pendiente = ?, estado = ? WHERE id = ?`, [nuevoPendiente, nuevoEstado, prestamoId]);
-  await run(`INSERT INTO pagos_prestamo (prestamo_id, monto, nota) VALUES (?, ?, ?)`, [prestamoId, aplicado, nota ?? null]);
-  return obtenerPrestamo(prestamoId);
+  validarMontoPago(monto);
+  return enTransaccion(async () => {
+    const pr = await obtenerPrestamo(prestamoId);
+    if (!pr) throw new Error(`No existe el prestamo #${prestamoId}.`);
+    const aplicado = Math.min(monto, pr.monto_pendiente);
+    const nuevoPendiente = Math.round((pr.monto_pendiente - aplicado) * 100) / 100;
+    const nuevoEstado = nuevoPendiente <= 0 ? "pagado" : "parcial";
+    await run(`UPDATE prestamos SET monto_pendiente = ?, estado = ? WHERE id = ?`, [nuevoPendiente, nuevoEstado, prestamoId]);
+    await run(`INSERT INTO pagos_prestamo (prestamo_id, monto, nota) VALUES (?, ?, ?)`, [prestamoId, aplicado, nota ?? null]);
+    return obtenerPrestamo(prestamoId);
+  });
 }
 
 export async function listarPagosDePrestamo(prestamoId: number) {
@@ -338,33 +383,35 @@ export async function agregarCanje(args: {
   saldo_moneda?: string;
   nota?: string;
 }) {
-  const persona = await findOrCreatePersona(args.persona);
-  const info = await run(
-    `INSERT INTO canjes (persona_id, descripcion, condicion, valor_tomado, moneda_valor, producto_entregado, saldo_monto, saldo_moneda, nota)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      persona.id,
-      args.descripcion,
-      args.condicion ?? null,
-      args.valor_tomado ?? null,
-      args.moneda_valor ?? "ARS",
-      args.producto_entregado ?? null,
-      args.saldo_monto ?? null,
-      args.saldo_moneda ?? "ARS",
-      args.nota ?? null,
-    ]
-  );
-  const saldoTexto =
-    args.saldo_monto != null
-      ? args.saldo_monto > 0
-        ? ` ${args.persona} te tiene que dar ${args.saldo_monto} ${args.saldo_moneda ?? "ARS"}.`
-        : ` Vos le debes ${Math.abs(args.saldo_monto)} ${args.saldo_moneda ?? "ARS"} a ${args.persona}.`
-      : "";
-  return {
-    ok: true,
-    mensaje: `Canje registrado: "${args.descripcion}" de ${args.persona}.${saldoTexto}`,
-    canje_id: info.lastInsertRowid,
-  };
+  return enTransaccion(async () => {
+    const persona = await findOrCreatePersona(args.persona);
+    const info = await run(
+      `INSERT INTO canjes (persona_id, descripcion, condicion, valor_tomado, moneda_valor, producto_entregado, saldo_monto, saldo_moneda, nota)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        persona.id,
+        args.descripcion,
+        args.condicion ?? null,
+        args.valor_tomado ?? null,
+        args.moneda_valor ?? "ARS",
+        args.producto_entregado ?? null,
+        args.saldo_monto ?? null,
+        args.saldo_moneda ?? "ARS",
+        args.nota ?? null,
+      ]
+    );
+    const saldoTexto =
+      args.saldo_monto != null
+        ? args.saldo_monto > 0
+          ? ` ${args.persona} te tiene que dar ${args.saldo_monto} ${args.saldo_moneda ?? "ARS"}.`
+          : ` Vos le debes ${Math.abs(args.saldo_monto)} ${args.saldo_moneda ?? "ARS"} a ${args.persona}.`
+        : "";
+    return {
+      ok: true,
+      mensaje: `Canje registrado: "${args.descripcion}" de ${args.persona}.${saldoTexto}`,
+      canje_id: info.lastInsertRowid,
+    };
+  });
 }
 
 export async function actualizarCanje(args: { descripcion: string; persona?: string; estado: "pendiente" | "saldado"; nota?: string }) {
@@ -498,26 +545,43 @@ async function requierePedidoPendiente(id: number) {
   return pedido;
 }
 
+// Marca el pedido como resuelto SOLO si sigue pendiente, en un unico UPDATE. Si dos personas
+// aprueban el mismo pedido casi a la vez (doble clic, o el dueno y Lucas juntos), solo una de las
+// dos lo consigue: la otra recibe el error y no se registra la venta dos veces.
+async function marcarPedidoResuelto(id: number, estado: "aprobado" | "rechazado", nota?: string | null) {
+  const info = await run(
+    `UPDATE pedidos_pendientes SET estado = ?, resuelto_en = datetime('now','localtime'), nota = COALESCE(?, nota) WHERE id = ? AND estado = 'pendiente'`,
+    [estado, nota ?? null, id]
+  );
+  if (info.changes === 0) throw new Error(`El pedido #${id} ya fue resuelto por otra persona, no se puede volver a resolver.`);
+}
+
 // Aprobar = se registra la venta de verdad (misma logica que registrarVenta: nunca bloquea por
 // falta de stock, repone automatico). A partir de aca el pedido deja de ser "de mentira".
 export async function aprobarPedidoPendiente(id: number) {
   const pedido = await requierePedidoPendiente(id);
-  const resultado = await registrarVenta({
-    nombre_producto: pedido.producto,
-    cantidad: pedido.cantidad,
-    nombre_cliente: pedido.cliente_nombre ?? undefined,
-    precio_unitario: pedido.precio_unitario ?? undefined,
-    moneda: pedido.moneda,
-    nota: `Pedido por WhatsApp #${id}${pedido.nota ? " - " + pedido.nota : ""}`,
+  const categoriaSiEsNuevo = (await findProducto(pedido.producto)) ? null : await inferirCategoria(pedido.producto);
+  return enTransaccion(async () => {
+    await marcarPedidoResuelto(id, "aprobado");
+    const resultado = await registrarVentaEnTransaccion(
+      {
+        nombre_producto: pedido.producto,
+        cantidad: pedido.cantidad,
+        nombre_cliente: pedido.cliente_nombre ?? undefined,
+        precio_unitario: pedido.precio_unitario ?? undefined,
+        moneda: pedido.moneda,
+        nota: `Pedido por WhatsApp #${id}${pedido.nota ? " - " + pedido.nota : ""}`,
+      },
+      categoriaSiEsNuevo
+    );
+    return { ok: true, mensaje: `Pedido #${id} aprobado y registrado como venta. ${resultado.mensaje}` };
   });
-  await run(`UPDATE pedidos_pendientes SET estado = 'aprobado', resuelto_en = datetime('now','localtime') WHERE id = ?`, [id]);
-  return { ok: true, mensaje: `Pedido #${id} aprobado y registrado como venta. ${resultado.mensaje}` };
 }
 
 export async function rechazarPedidoPendiente(id: number, motivo?: string) {
   const pedido = await requierePedidoPendiente(id);
-  const notaFinal = motivo ? `${pedido.nota ?? ""} [Rechazado: ${motivo}]`.trim() : pedido.nota;
-  await run(`UPDATE pedidos_pendientes SET estado = 'rechazado', resuelto_en = datetime('now','localtime'), nota = ? WHERE id = ?`, [notaFinal, id]);
+  const notaFinal = motivo ? `${pedido.nota ?? ""} [Rechazado: ${motivo}]`.trim() : null;
+  await marcarPedidoResuelto(id, "rechazado", notaFinal);
   return { ok: true, mensaje: `Pedido #${id} rechazado.` };
 }
 
@@ -545,7 +609,15 @@ export async function consultarEstadoGeneral() {
   return { productos, prestamos_activos, canjes_pendientes, empleados };
 }
 
-export async function consultarVentas(args: { desde?: string; hasta?: string; nombre_producto?: string; nombre_cliente?: string }) {
+interface FiltrosVentas {
+  desde?: string;
+  hasta?: string;
+  nombre_producto?: string;
+  nombre_cliente?: string;
+}
+
+// Todas las ventas (movimientos de salida) que cumplen los filtros, de la mas nueva a la mas vieja.
+async function buscarVentas(args: FiltrosVentas) {
   const condiciones = [`movimientos_stock.tipo = 'salida'`];
   const params: any[] = [];
   if (args.desde) {
@@ -564,7 +636,7 @@ export async function consultarVentas(args: { desde?: string; hasta?: string; no
     condiciones.push(`personas.nombre = ? COLLATE NOCASE`);
     params.push(args.nombre_cliente);
   }
-  const filas = await all(
+  return all(
     `SELECT movimientos_stock.*, productos.nombre as producto_nombre, productos.costo as producto_costo, personas.nombre as persona_nombre
      FROM movimientos_stock
      JOIN productos ON productos.id = movimientos_stock.producto_id
@@ -573,6 +645,10 @@ export async function consultarVentas(args: { desde?: string; hasta?: string; no
      ORDER BY movimientos_stock.fecha DESC`,
     params
   );
+}
+
+export async function consultarVentas(args: FiltrosVentas) {
+  const filas = await buscarVentas(args);
 
   const resumenPorMoneda: Record<string, { unidades: number; operaciones: number; facturado: number; ganancia_estimada: number }> = {};
   for (const f of filas) {
@@ -606,34 +682,8 @@ export async function consultarVentas(args: { desde?: string; hasta?: string; no
 }
 
 // (ventas detalladas y sin limite de 30, usado por el panel web)
-export async function listarMovimientosVenta(args: { desde?: string; hasta?: string; nombre_producto?: string; nombre_cliente?: string }) {
-  const condiciones = [`movimientos_stock.tipo = 'salida'`];
-  const params: any[] = [];
-  if (args.desde) {
-    condiciones.push(`date(movimientos_stock.fecha) >= date(?)`);
-    params.push(args.desde);
-  }
-  if (args.hasta) {
-    condiciones.push(`date(movimientos_stock.fecha) <= date(?)`);
-    params.push(args.hasta);
-  }
-  if (args.nombre_producto) {
-    condiciones.push(`productos.nombre = ? COLLATE NOCASE`);
-    params.push(args.nombre_producto);
-  }
-  if (args.nombre_cliente) {
-    condiciones.push(`personas.nombre = ? COLLATE NOCASE`);
-    params.push(args.nombre_cliente);
-  }
-  return all(
-    `SELECT movimientos_stock.*, productos.nombre as producto_nombre, personas.nombre as persona_nombre
-     FROM movimientos_stock
-     JOIN productos ON productos.id = movimientos_stock.producto_id
-     LEFT JOIN personas ON personas.id = movimientos_stock.persona_id
-     WHERE ${condiciones.join(" AND ")}
-     ORDER BY movimientos_stock.fecha DESC`,
-    params
-  );
+export async function listarMovimientosVenta(args: FiltrosVentas) {
+  return buscarVentas(args);
 }
 
 // ---------- conversacion (historial del cerebro) e idempotencia de mensajes de Telegram ----------
@@ -665,35 +715,40 @@ export async function reiniciarConversacion(usuarioId: string): Promise<void> {
   await guardarHistorialConversacion(usuarioId, []);
 }
 
-// Intenta tomar el "turno" para procesar un mensaje de esta persona. Devuelve true si lo
-// consiguio (nadie mas lo tenia, o el que estaba lo dejo pegado hace mas de 25 segundos, que es
-// mas que de sobra para una respuesta normal del bot) y false si otro mensaje de la misma
-// persona se esta procesando ahora mismo. Siempre liberar el turno con liberarBloqueo al
-// terminar (en un finally), haya salido bien o mal.
-export async function intentarBloquear(usuarioId: string): Promise<boolean> {
+// Cuanto tiempo se respeta el turno de un mensaje antes de considerarlo abandonado (ej: la
+// funcion de Vercel se corto por un crash). Tiene que ser MAS que lo maximo que puede durar una
+// respuesta (maxDuration de 60 s en vercel.json): si fuera menos, un segundo mensaje podria
+// "robar" el turno mientras el primero todavia esta trabajando, y se procesarian en paralelo.
+const SEGUNDOS_VENCIMIENTO_BLOQUEO = 70;
+
+// Intenta tomar el "turno" para procesar un mensaje de esta persona. Si lo consigue (nadie mas
+// lo tenia, o el que estaba lo dejo abandonado) devuelve un token que identifica ESTE turno; si
+// otro mensaje de la misma persona se esta procesando ahora mismo, devuelve null. Siempre
+// liberar el turno con liberarBloqueo(usuarioId, token) al terminar (en un finally).
+export async function intentarBloquear(usuarioId: string): Promise<string | null> {
+  const token = randomUUID();
   const info = await run(
-    `INSERT INTO bloqueos_conversacion (usuario_id, bloqueado_en) VALUES (?, datetime('now','localtime'))
-     ON CONFLICT(usuario_id) DO UPDATE SET bloqueado_en = excluded.bloqueado_en
-     WHERE bloqueos_conversacion.bloqueado_en < datetime('now','localtime','-25 seconds')`,
-    [usuarioId]
+    `INSERT INTO bloqueos_conversacion (usuario_id, bloqueado_en, token) VALUES (?, datetime('now','localtime'), ?)
+     ON CONFLICT(usuario_id) DO UPDATE SET bloqueado_en = excluded.bloqueado_en, token = excluded.token
+     WHERE bloqueos_conversacion.bloqueado_en < datetime('now','localtime','-${SEGUNDOS_VENCIMIENTO_BLOQUEO} seconds')`,
+    [usuarioId, token]
   );
-  return info.changes > 0;
+  return info.changes > 0 ? token : null;
 }
 
-export async function liberarBloqueo(usuarioId: string): Promise<void> {
-  await run(`DELETE FROM bloqueos_conversacion WHERE usuario_id = ?`, [usuarioId]);
+// Solo borra el bloqueo si sigue siendo el de este turno: si este mensaje tardo de mas y otro ya
+// tomo el turno, no se lo sacamos.
+export async function liberarBloqueo(usuarioId: string, token: string): Promise<void> {
+  await run(`DELETE FROM bloqueos_conversacion WHERE usuario_id = ? AND token = ?`, [usuarioId, token]);
 }
 
 // Devuelve true si YA se habia procesado este update_id de Telegram (para no duplicar
 // acciones si Telegram reintenta un mensaje). Si es la primera vez, lo marca y devuelve false.
+// (Si la base no responde, el error sale para afuera: no hay que confundir "no me pude conectar"
+// con "ya lo procese", porque eso tiraria el mensaje a la basura sin avisar.)
 export async function yaProcesadoUpdate(updateId: number): Promise<boolean> {
-  try {
-    await run(`INSERT INTO updates_procesados (update_id) VALUES (?)`, [updateId]);
-    return false;
-  } catch {
-    // Choco con la PRIMARY KEY: ya existia.
-    return true;
-  }
+  const info = await run(`INSERT OR IGNORE INTO updates_procesados (update_id) VALUES (?)`, [updateId]);
+  return info.changes === 0;
 }
 
 // ---------- respuestas predefinidas (FAQ sin gastar IA) ----------
@@ -731,12 +786,33 @@ export async function eliminarRespuestaPredefinidaPorId(id: number) {
   return { ok: true };
 }
 
-// Busca la primera respuesta activa cuyo disparador aparezca dentro del texto (sin
-// mayusculas/minusculas). null si ninguna coincide.
+// Las respuestas fijas cortan ANTES de la IA, asi que solo se usan para mensajes cortos: en uno
+// largo tipo "vendi 2 iphone a Juan, che cual era el horario?" lo importante es la venta, y si
+// contestaramos solo el horario la venta no se registraria nunca.
+const MAX_PALABRAS_RESPUESTA_FIJA = 8;
+
+// Minusculas, sin tildes y sin signos de puntuacion: "¿Dirección?" -> "direccion".
+function normalizarTexto(texto: string): string {
+  return texto
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+// Busca la primera respuesta activa cuyo disparador aparezca en el mensaje empezando en una
+// palabra (asi "horario" coincide con "horarios", pero "hola" no salta adentro de "cholas"). Sin
+// importar mayusculas ni tildes. null si ninguna coincide o si el mensaje es largo.
 export async function buscarRespuestaPredefinida(texto: string): Promise<string | null> {
+  const textoNormalizado = normalizarTexto(texto);
+  if (!textoNormalizado || textoNormalizado.split(" ").length > MAX_PALABRAS_RESPUESTA_FIJA) return null;
   const activas = await all(`SELECT * FROM respuestas_predefinidas WHERE activo = 1`);
-  const textoLower = texto.toLowerCase();
-  const match = activas.find((r) => textoLower.includes(String(r.disparador).toLowerCase()));
+  const conEspacioAdelante = ` ${textoNormalizado}`;
+  const match = activas.find((r) => {
+    const disparador = normalizarTexto(String(r.disparador));
+    return disparador.length > 0 && conEspacioAdelante.includes(` ${disparador}`);
+  });
   return match ? match.respuesta : null;
 }
 
@@ -763,9 +839,52 @@ export async function registrarLog(entrada: {
   );
 }
 
-export async function listarLogs(limite = 100) {
-  const filas = await all(`SELECT * FROM logs_bot ORDER BY id DESC LIMIT ?`, [limite]);
+// Igual que registrarLog, pero si falla solo lo anota en consola: que no se pueda guardar un log
+// nunca tiene que romper la respuesta al usuario.
+export async function registrarLogSeguro(entrada: Parameters<typeof registrarLog>[0]) {
+  try {
+    await registrarLog(entrada);
+  } catch (e) {
+    console.error("No se pudo guardar el log:", e);
+  }
+}
+
+export async function listarLogs(limite?: number) {
+  const n = Number.isFinite(limite) ? Math.min(Math.max(Math.trunc(limite!), 1), 500) : 100;
+  const filas = await all(`SELECT * FROM logs_bot ORDER BY id DESC LIMIT ?`, [n]);
   return filas.map((f) => ({ ...f, herramientas_usadas: f.herramientas_usadas ? JSON.parse(f.herramientas_usadas) : [] }));
+}
+
+// ---------- mantenimiento ----------
+
+// Borra registros que ya no sirven para que esas tablas no crezcan para siempre. Telegram solo
+// reintenta un update durante unas horas, asi que 7 dias de updates_procesados sobra; los logs
+// se guardan 90 dias (el panel igual muestra solo los ultimos). Lo llama el chequeo periodico.
+export async function limpiarRegistrosViejos() {
+  const updates = await run(`DELETE FROM updates_procesados WHERE procesado_en < datetime('now','localtime','-7 days')`);
+  const logs = await run(`DELETE FROM logs_bot WHERE fecha < datetime('now','localtime','-90 days')`);
+  return { updates_borrados: updates.changes, logs_borrados: logs.changes };
+}
+
+// Todas las tablas con datos del negocio (no las internas del bot, como el historial de chat o
+// los bloqueos). Lo usan el backup local (backup.ts) y la descarga de backup del panel.
+const TABLAS_BACKUP = [
+  "personas",
+  "productos",
+  "movimientos_stock",
+  "prestamos",
+  "pagos_prestamo",
+  "canjes",
+  "pedidos_pendientes",
+  "respuestas_predefinidas",
+];
+
+export async function exportarTodo(): Promise<Record<string, any[]>> {
+  const datos: Record<string, any[]> = {};
+  for (const tabla of TABLAS_BACKUP) {
+    datos[tabla] = await all(`SELECT * FROM ${tabla}`);
+  }
+  return datos;
 }
 
 // ---------- estado / diagnostico ----------
