@@ -598,7 +598,7 @@ export async function consultarPersona(args: { nombre: string }) {
 }
 
 export async function consultarEstadoGeneral() {
-  const productos = await all(`SELECT nombre, cantidad, precio_venta FROM productos ORDER BY nombre`);
+  const productos = await all(`SELECT nombre, cantidad, precio_venta, moneda FROM productos ORDER BY nombre`);
   const prestamos_activos = await all(
     `SELECT prestamos.*, personas.nombre as persona_nombre FROM prestamos JOIN personas ON personas.id = prestamos.persona_id WHERE prestamos.estado != 'pagado' ORDER BY prestamos.fecha`
   );
