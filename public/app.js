@@ -786,12 +786,36 @@ async function cargarVentas() {
         <td data-etiqueta="Precio unit." class="num">${v.precio_unitario != null ? formatoConSimbolo(v.precio_unitario, v.moneda) : `<span class="texto-tenue">-</span>`}</td>
         <td data-etiqueta="Total" class="num texto-fuerte">${v.precio_unitario != null ? formatoConSimbolo(v.precio_unitario * v.cantidad, v.moneda) : `<span class="texto-tenue">-</span>`}</td>
         <td data-etiqueta="Nota" class="celda-texto texto-tenue">${escapeHtml(v.nota ?? "")}</td>
+        <td class="acciones"><button class="btn-icono peligro" title="Anular venta" aria-label="Anular venta" onclick="anularVenta(${v.id}, this)">${ICONO_TACHO}</button></td>
       </tr>`,
       "Todavía no hay ventas registradas."
     );
   } catch (e) {
     mostrarToast(e.message, true);
   }
+}
+
+async function anularVenta(id, boton) {
+  const v = estadoTablas["tabla-ventas"]?.items.find((x) => x.id === id);
+  const ok = await confirmar({
+    titulo: "¿Anular esta venta?",
+    mensaje: v
+      ? `${v.cantidad} x ${v.producto_nombre}${v.persona_nombre ? ` a ${v.persona_nombre}` : ""}. Se borra la venta y las unidades vuelven al stock.`
+      : "Se borra la venta y las unidades vuelven al stock.",
+    textoBoton: "Anular venta",
+    peligro: true,
+  });
+  if (!ok) return;
+  await conCarga(boton, async () => {
+    try {
+      const r = await api("DELETE", `/api/ventas/${id}`);
+      mostrarToast(r.mensaje ?? "Venta anulada.");
+      cargarVentas();
+      cargarListaProductos();
+    } catch (e) {
+      mostrarToast(e.message, true);
+    }
+  });
 }
 
 // ---------- pedidos pendientes (clientes por WhatsApp) ----------

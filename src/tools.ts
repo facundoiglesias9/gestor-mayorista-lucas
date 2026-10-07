@@ -60,6 +60,18 @@ export const toolDefinitions: Anthropic.Tool[] = [
     },
   },
   {
+    name: "anular_venta",
+    description:
+      "Anula (borra) una venta que se registro por error: una prueba, una venta que no se concreto, o una mal cargada. Devuelve las unidades al stock (y si al venderla se habia repuesto stock automaticamente, eso tambien se deshace). Necesita el id de la venta: registrar_venta lo devuelve como venta_id, y consultar_ventas lo trae en cada venta del detalle. Si no lo tenes, busca primero con consultar_ventas; si hay mas de una venta que podria ser, pregunta cual antes de anular. Para CORREGIR una venta mal cargada (precio, cantidad, cliente), anulala y registrala de nuevo bien.",
+    input_schema: {
+      type: "object",
+      properties: {
+        venta_id: { type: "number", description: "Id de la venta a anular (venta_id)" },
+      },
+      required: ["venta_id"],
+    },
+  },
+  {
     name: "agregar_empleado",
     description: "Da de alta o actualiza a una persona como 'empleado' (cliente mayorista con precio amigo/descuento fijo).",
     input_schema: {
@@ -225,6 +237,7 @@ const dispatch: Record<string, (args: any) => any | Promise<any>> = {
   agregar_producto: repo.agregarProducto,
   ajustar_stock: repo.ajustarStock,
   registrar_venta: repo.registrarVenta,
+  anular_venta: repo.anularVenta,
   agregar_empleado: repo.agregarEmpleado,
   listar_empleados: async () => ({ empleados: await repo.listarEmpleados() }),
   registrar_prestamo: repo.registrarPrestamo,
