@@ -156,7 +156,7 @@
         </div>
         <div class="tabla-wrap">
           <table id="tabla-productos">
-            <thead><tr><th>Nombre</th><th>Categoría</th><th class="num">Cantidad</th><th class="num">Costo</th><th class="num">Precio venta</th><th class="col-acciones"></th></tr></thead>
+            <thead><tr><th>Nombre</th><th>Categoría</th><th>Estado</th><th class="num">Cantidad</th><th class="num">Costo</th><th class="num">Precio venta</th><th class="col-acciones"></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -170,6 +170,11 @@
             <p class="ayuda">La categoría se detecta sola con IA a partir del nombre (por ej. "iPhone 12" → Celulares). Dejala vacía salvo que quieras forzar otra.</p>
           </div>
           <label>Nombre del producto<input name="nombre" placeholder="Ej: iPhone 12 128GB" autocomplete="off" required /></label>
+          <div class="fila-campos">
+            <label>Estado<select name="estado"><option value="">Sin especificar</option><option value="Sellado">Sellado</option><option value="Usado - como nuevo">Usado - como nuevo</option><option value="Usado">Usado</option></select></label>
+            <label id="campo-bateria" class="oculto">Batería (%)<input name="bateria" type="number" min="1" max="100" step="1" placeholder="Ej: 85" disabled /></label>
+          </div>
+          <p class="ayuda ayuda-campo" id="ayuda-bateria">Para celulares. Si no es sellado, cargá la batería: el % se agrega solo al nombre (ej: iPhone 15 Pro 128GB 85%) y en el catálogo el cliente elige según la batería.</p>
           <div class="fila-campos">
             <label>Cantidad<input name="cantidad" type="number" placeholder="Cantidad" required /></label>
             <label>Moneda<select name="moneda"><option value="USD">Dólares (U$D)</option><option value="ARS">Pesos ($)</option></select></label>

@@ -611,6 +611,7 @@ async function cargarProductos() {
       <tr data-id="${p.id}">
         <td data-etiqueta="Nombre" class="texto-fuerte">${escapeHtml(p.nombre)}</td>
         <td data-etiqueta="Categoría">${p.categoria ? `<span class="etiqueta">${escapeHtml(p.categoria)}</span>` : `<span class="texto-tenue">-</span>`}</td>
+        <td data-etiqueta="Estado">${celdaEstadoEquipo(p)}</td>
         <td data-etiqueta="Cantidad" class="num ${p.cantidad <= 0 ? "negativo" : ""}">${formatoNumero(p.cantidad)}</td>
         <td data-etiqueta="Costo" class="num">${p.costo != null ? formatoConSimbolo(p.costo, p.moneda) : `<span class="texto-tenue">-</span>`}</td>
         <td data-etiqueta="Precio venta" class="num">${p.precio_venta != null ? formatoConSimbolo(p.precio_venta, p.moneda) : `<span class="texto-tenue">-</span>`}</td>
@@ -623,10 +624,40 @@ async function cargarProductos() {
   }
 }
 
+// Estado de los celulares en stock (Sellado / Usado - como nuevo / Usado) y, si no es sellado,
+// el % de bateria.
+const CLASE_ESTADO_EQUIPO = { Sellado: "estado-info", "Usado - como nuevo": "estado-fija", Usado: "estado-neutro" };
+
+function celdaEstadoEquipo(p) {
+  if (!p.estado && p.bateria == null) return `<span class="texto-tenue">-</span>`;
+  const pill = p.estado ? `<span class="estado-pill ${CLASE_ESTADO_EQUIPO[p.estado] ?? "estado-neutro"}">${escapeHtml(p.estado)}</span>` : "";
+  const bateria = p.bateria != null ? `<span class="bateria-chip" title="Condición de batería">${ICONO_BATERIA}${p.bateria}%</span>` : "";
+  return `<div class="estado-equipo">${pill}${bateria}</div>`;
+}
+
+const ICONO_BATERIA = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="7" width="17" height="10" rx="2.5"/><path d="M21.5 10.5v3"/></svg>`;
+
+// La bateria se carga solo si el equipo no es sellado (y es obligatoria si es usado).
+function actualizarCampoBateria() {
+  const form = document.getElementById("form-producto");
+  const estado = form.elements.estado.value;
+  const input = form.elements.bateria;
+  const mostrar = estado === "Usado" || estado === "Usado - como nuevo" || (estado === "" && input.value !== "");
+  document.getElementById("campo-bateria").classList.toggle("oculto", !mostrar);
+  input.disabled = !mostrar;
+  input.required = estado === "Usado" || estado === "Usado - como nuevo";
+}
+document.getElementById("form-producto").elements.estado.addEventListener("change", (ev) => {
+  actualizarCampoBateria();
+  const input = ev.target.form.elements.bateria;
+  if (!input.disabled && input.value === "") input.focus();
+});
+
 function abrirDialogoProducto() {
   abrirDialogo("dialogo-producto");
   const form = document.getElementById("form-producto");
   form.elements.id.value = "";
+  actualizarCampoBateria();
   document.getElementById("titulo-dialogo-producto").textContent = "Agregar stock";
   document.getElementById("boton-guardar-producto").textContent = "Generar stock";
 }
@@ -643,6 +674,9 @@ function editarProducto(id) {
   form.elements.costo.value = p.costo ?? "";
   form.elements.precio_venta.value = p.precio_venta ?? "";
   form.elements.moneda.value = p.moneda ?? "USD";
+  form.elements.estado.value = p.estado ?? "";
+  form.elements.bateria.value = p.bateria ?? "";
+  actualizarCampoBateria();
   document.getElementById("titulo-dialogo-producto").textContent = "Editar producto";
   document.getElementById("boton-guardar-producto").textContent = "Guardar cambios";
 }
@@ -653,6 +687,12 @@ document.getElementById("form-producto").addEventListener("submit", (ev) => {
   const id = datos.id;
   delete datos.id;
   const body = limpiarVacios({ ...datos, cantidad: Number(datos.cantidad) });
+  // Estado y bateria van siempre al editar (vacio = se borra). Al cargar uno nuevo sin estado no
+  // se mandan: el sistema los lee del nombre si dice "sellado" o el % ("... 85%").
+  if (id || datos.estado) {
+    body.estado = datos.estado || null;
+    body.bateria = datos.bateria ? Number(datos.bateria) : null;
+  }
   conCarga(ev.submitter, async () => {
     try {
       if (id) {

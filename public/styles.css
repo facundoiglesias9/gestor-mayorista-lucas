@@ -1113,6 +1113,9 @@ tr.fila-oculta .item-catalogo, tr.fila-oculta .memorias-celda, tr.fila-oculta td
 .memoria-chip.agotada { opacity: 0.5; text-decoration: line-through; }
 .baterias-celda { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 7px; font-size: 0.74rem; color: var(--texto-tenue); }
 .bateria-chip { padding: 2px 7px; border-radius: 6px; background: rgba(76, 175, 125, 0.1); color: var(--verde); font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.estado-equipo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.estado-equipo .bateria-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 0.76rem; }
+.estado-equipo .bateria-chip svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 
 /* interruptor (switch) */
 .switch { position: relative; display: inline-block; width: 40px; height: 23px; flex: none; cursor: pointer; }

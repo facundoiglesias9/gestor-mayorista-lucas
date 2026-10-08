@@ -24,6 +24,16 @@ export const toolDefinitions: Anthropic.Tool[] = [
         },
         categoria: { type: "string", description: "Dejar vacio salvo que el usuario la mencione explicitamente: se infiere sola con IA." },
         nota: { type: "string", description: "Nota libre opcional" },
+        estado: {
+          type: "string",
+          enum: ["Sellado", "Usado - como nuevo", "Usado"],
+          description: "Solo para celulares/equipos: Sellado (nuevo en caja), 'Usado - como nuevo' (semi nuevo, impecable) o Usado.",
+        },
+        bateria: {
+          type: "number",
+          description:
+            "Solo si el estado NO es Sellado: % de condicion de bateria del equipo (1 a 100). El sistema le agrega el % al nombre solo, no lo pongas en el nombre.",
+        },
       },
       required: ["nombre", "cantidad"],
     },
