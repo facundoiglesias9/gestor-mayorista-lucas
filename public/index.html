@@ -93,6 +93,10 @@
         <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
         Logs
       </button>
+      <button data-tab="catalogo" class="tab">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/></svg>
+        Catálogo
+      </button>
   </nav>
 
   <div class="contenido">
@@ -443,6 +447,57 @@
           </div>
         </form>
       </dialog>
+
+      <section id="tab-catalogo" class="panel oculto">
+        <div class="barra-acciones">
+          <div>
+            <h3 class="titulo-bloque">Fotos del catálogo</h3>
+            <p class="subtitulo" id="sub-fotos"></p>
+          </div>
+          <div class="grupo-botones">
+            <a class="btn-secundario" href="/catalogo" target="_blank" rel="noopener">
+              <svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+              Ver catálogo
+            </a>
+            <button type="button" class="btn-primario" onclick="abrirDialogoFoto()">
+              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+              Agregar foto
+            </button>
+          </div>
+        </div>
+        <p class="ayuda">Una foto por modelo y color. En el catálogo, cada producto muestra las fotos de su modelo con los puntitos de color para cambiar entre ellas (por ej. las fotos de "iPhone 17 Pro Max" le aparecen a "Iphone 17 pro max 256 sellado"). Los productos sin foto se muestran con un dibujo.</p>
+
+        <div id="sin-foto" class="sin-foto oculto"></div>
+        <div id="lista-fotos" class="lista-fotos"></div>
+      </section>
+
+      <dialog id="dialogo-foto">
+        <form id="form-foto">
+          <div class="dialogo-header">
+            <h3 class="dialogo-titulo">Agregar foto</h3>
+            <p class="ayuda">Si ya hay una foto de ese modelo y color, se reemplaza. Conviene una foto con fondo blanco: en el catálogo el blanco se funde con el fondo.</p>
+          </div>
+          <label>Modelo<input name="modelo" placeholder="Ej: iPhone 17 Pro Max" autocomplete="off" required list="lista-modelos" /></label>
+          <div class="fila-campos fila-color">
+            <label>Color<input name="color" placeholder="Ej: Naranja cósmico" autocomplete="off" required list="lista-colores-modelo" /></label>
+            <label class="campo-hex">Tono<input name="color_hex" type="color" value="#c7c7cc" /></label>
+          </div>
+          <label class="zona-foto" id="zona-foto">
+            <input name="archivo" type="file" accept="image/*" required />
+            <img id="vista-foto" alt="" class="oculto" />
+            <span id="texto-zona-foto">
+              <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/></svg>
+              Elegí una foto o arrastrala acá
+            </span>
+          </label>
+          <div class="dialogo-botones">
+            <button type="button" class="btn-secundario" onclick="cerrarDialogo('dialogo-foto')">Cancelar</button>
+            <button type="submit" class="btn-primario">Guardar foto</button>
+          </div>
+        </form>
+      </dialog>
+      <datalist id="lista-modelos"></datalist>
+      <datalist id="lista-colores-modelo"></datalist>
 
       <section id="tab-logs" class="panel oculto">
         <div class="barra-acciones">

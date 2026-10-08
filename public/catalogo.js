@@ -60,10 +60,20 @@ function detectarColor(nombre) {
   return null;
 }
 
+const ESTADOS = [
+  [/\bsellad[oa]s?\b/, "Nuevo sellado"],
+  [/\bsemi(\s?nuevo)?\b/, "Seminuevo"],
+  [/\busad[oa]s?\b/, "Usado"],
+  [/\bnuev[oa]s?\b/, "Nuevo"],
+];
+
 function detallesDelNombre(nombre) {
   const detalles = [];
-  const capacidad = /(\d+)\s?(gb|tb)\b/i.exec(nombre);
-  if (capacidad) detalles.push({ texto: `${capacidad[1]} ${capacidad[2].toUpperCase()}` });
+  // Capacidad: "128GB", "1TB", o el numero solo si es una capacidad tipica ("Iphone 17 pro max 256").
+  const capacidad = /(\d+)\s?(gb|tb)\b/i.exec(nombre) ?? (/iphone|ipad|galaxy|xiaomi|redmi|motorola/i.test(nombre) && /\b(64|128|256|512)\b/.exec(nombre));
+  if (capacidad) detalles.push({ texto: `${capacidad[1]} ${(capacidad[2] ?? "gb").toUpperCase()}` });
+  const estado = ESTADOS.find(([regex]) => regex.test(normalizar(nombre)));
+  if (estado) detalles.push({ texto: estado[1] });
   const color = detectarColor(nombre);
   if (color) detalles.push({ texto: color.etiqueta, color: color.hex });
   const bateria = /\b(\d{2,3})\s?%/.exec(nombre);
@@ -188,20 +198,91 @@ function productosFiltrados() {
   return lista;
 }
 
+// ---------- fotos y colores ----------
+// Color elegido en cada tarjeta (id de producto -> indice de foto).
+const colorElegido = new Map();
+
+// Si el nombre del producto dice un color que tiene foto ("... naranja"), arranca en ese.
+function colorInicial(p) {
+  const nombre = normalizar(p.nombre);
+  const i = p.fotos.findIndex((f) => {
+    const palabras = normalizar(f.color).split(/\s+/).filter((w) => w.length > 2 && w !== "titanio");
+    return palabras.length && palabras.every((w) => new RegExp(`(^|[^a-z0-9])${w}([^a-z0-9]|$)`).test(nombre));
+  });
+  return Math.max(i, 0);
+}
+
+function fotoElegida(p) {
+  if (!colorElegido.has(p.id)) colorElegido.set(p.id, colorInicial(p));
+  return p.fotos[colorElegido.get(p.id)];
+}
+
+function mensajeWhatsapp(p) {
+  const foto = p.fotos.length > 1 ? fotoElegida(p) : null;
+  return `Hola! Me interesa ${p.nombre}${foto ? ` en ${foto.color}` : ""}${p.precio != null ? ` (${formatoPrecio(p.precio, p.moneda)})` : ""} que vi en el catálogo. ¿Está disponible?`;
+}
+
+function selectorColores(p) {
+  if (p.fotos.length < 2) return "";
+  const actual = colorElegido.get(p.id);
+  return `<div class="colores" role="radiogroup" aria-label="Colores">
+    ${p.fotos
+      .map(
+        (f, i) =>
+          `<button type="button" class="color${i === actual ? " activo" : ""}" role="radio" aria-checked="${i === actual}" aria-label="${escapeHtml(f.color)}" title="${escapeHtml(f.color)}" data-producto="${p.id}" data-indice="${i}" style="--color:${f.hex ?? "#c7c7cc"}"></button>`
+      )
+      .join("")}
+    <span class="color-nombre">${escapeHtml(p.fotos[actual].color)}</span>
+  </div>`;
+}
+
+// Cambia la foto de una tarjeta con un fundido corto, esperando a que la nueva ya este cargada
+// (asi no se ve un hueco en blanco mientras baja).
+function cambiarColor(idProducto, indice) {
+  const p = estado.productos.find((x) => x.id === idProducto);
+  if (!p || colorElegido.get(idProducto) === indice) return;
+  colorElegido.set(idProducto, indice);
+  const tarjeta = document.querySelector(`.producto[data-id="${idProducto}"]`);
+  const img = tarjeta.querySelector(".foto-producto");
+  const foto = p.fotos[indice];
+  tarjeta.querySelectorAll(".color").forEach((b, i) => {
+    b.classList.toggle("activo", i === indice);
+    b.setAttribute("aria-checked", String(i === indice));
+  });
+  tarjeta.querySelector(".color-nombre").textContent = foto.color;
+  const boton = tarjeta.querySelector(".btn-consultar");
+  if (boton) boton.href = linkWhatsapp(mensajeWhatsapp(p));
+  const nueva = new Image();
+  nueva.onload = () => {
+    img.classList.add("cambiando");
+    setTimeout(() => {
+      img.src = foto.url;
+      img.alt = `${p.nombre} ${foto.color}`;
+      img.classList.remove("cambiando");
+    }, 160);
+  };
+  nueva.src = foto.url;
+}
+
 // ---------- dibujo de la pagina ----------
 function tarjetaProducto(p, i) {
   const detalles = detallesDelNombre(p.nombre);
+  const foto = p.fotos.length ? fotoElegida(p) : null;
   const precio =
     p.precio != null
       ? `<span class="precio-valor">${formatoPrecio(p.precio, p.moneda)}</span>${
           p.moneda === "USD" && estado.dolar ? `<span class="precio-equivalente">≈ ${formatoPrecio(p.precio * estado.dolar, "ARS")}</span>` : ""
         }`
       : `<span class="precio-consultar">Consultar precio</span>`;
-  const mensaje = `Hola! Me interesa ${p.nombre}${p.precio != null ? ` (${formatoPrecio(p.precio, p.moneda)})` : ""} que vi en el catálogo. ¿Está disponible?`;
+  const mensaje = mensajeWhatsapp(p);
   return `
-    <article class="producto" style="--i:${Math.min(i, 12)}">
-      <div class="producto-imagen">
-        ${dibujoEquipo(p, p.id)}
+    <article class="producto" data-id="${p.id}" style="--i:${Math.min(i, 12)}">
+      <div class="producto-imagen${foto ? " con-foto" : ""}">
+        ${
+          foto
+            ? `<img class="foto-producto" src="${foto.url}" alt="${escapeHtml(`${p.nombre} ${foto.color}`)}" loading="lazy" decoding="async" />`
+            : dibujoEquipo(p, p.id)
+        }
         ${p.pocas_unidades ? `<span class="insignia">Últimas unidades</span>` : ""}
       </div>
       <div class="producto-cuerpo">
@@ -214,6 +295,7 @@ function tarjetaProducto(p, i) {
                 .join("")}</div>`
             : ""
         }
+        ${selectorColores(p)}
         <span class="disponibilidad">Disponible</span>
         <div class="producto-pie">
           <div class="precio">${precio}</div>
@@ -286,6 +368,11 @@ document.getElementById("categorias").addEventListener("click", (ev) => {
   dibujarProductos();
 });
 
+document.getElementById("grilla").addEventListener("click", (ev) => {
+  const boton = ev.target.closest(".color");
+  if (boton) cambiarColor(Number(boton.dataset.producto), Number(boton.dataset.indice));
+});
+
 let temporizadorBusqueda;
 document.getElementById("buscar").addEventListener("input", (ev) => {
   clearTimeout(temporizadorBusqueda);
@@ -311,9 +398,6 @@ async function iniciar() {
     estado.tienda = datos.tienda;
     estado.dolar = datos.dolar_blue_venta;
 
-    document.title = `Catálogo · ${datos.tienda.nombre}`;
-    document.getElementById("nombre-tienda").textContent = datos.tienda.nombre;
-    document.getElementById("nombre-tienda-pie").textContent = datos.tienda.nombre;
     document.getElementById("hero-etiqueta").textContent = `${datos.productos.length} productos disponibles hoy`;
     if (datos.tienda.whatsapp) {
       const link = linkWhatsapp("Hola! Vi el catálogo y quería hacer una consulta.");

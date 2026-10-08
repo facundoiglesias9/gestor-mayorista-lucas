@@ -370,6 +370,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .tab[data-tab="empleados"] { --tab-color: var(--c-empleados); }
 .tab[data-tab="bot"] { --tab-color: var(--c-bot); }
 .tab[data-tab="logs"] { --tab-color: var(--c-logs); }
+.tab[data-tab="catalogo"] { --tab-color: var(--rosa); }
 
 /* =====================================================================================
    Contenido
@@ -1045,6 +1046,77 @@ tr:nth-child(even) td:nth-child(odd) .esqueleto { width: 58%; }
 .herramienta:hover { border-color: var(--borde-fuerte); background: var(--bg-card-hover); }
 .herramienta strong { font-size: 0.8rem; color: var(--acento); font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-weight: 600; }
 .herramienta span { font-size: 0.8rem; color: var(--texto-tenue); line-height: 1.5; }
+
+/* ---------- fotos del catalogo ---------- */
+a.btn-secundario { text-decoration: none; }
+.sin-foto {
+  background: rgba(217, 179, 84, 0.07);
+  border: 1px solid rgba(217, 179, 84, 0.22);
+  border-radius: var(--radio);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  animation: subir-aparecer var(--dur-lenta) var(--ease) both;
+}
+.sin-foto-titulo { font-size: 0.82rem; font-weight: 600; color: var(--amarillo); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.sin-foto-lista { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-agregar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--borde);
+  background: var(--bg-card);
+  color: var(--texto);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 550;
+  cursor: pointer;
+  transition: border-color var(--dur-rapida) var(--ease), background var(--dur-rapida) var(--ease), transform var(--dur-rapida) var(--ease);
+}
+.chip-agregar svg { width: 14px; height: 14px; color: var(--amarillo); }
+.chip-agregar:hover { border-color: var(--borde-fuerte); background: var(--bg-card-hover); }
+.chip-agregar:active { transform: scale(0.96); }
+
+.lista-fotos { display: flex; flex-direction: column; gap: 14px; }
+.grupo-fotos {
+  background: var(--bg-card);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  padding: 16px 18px;
+  animation: subir-aparecer var(--dur-lenta) var(--ease) both;
+}
+.grupo-fotos-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.grupo-fotos-header strong { font-size: 0.96rem; }
+.fotos-modelo { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.foto-item { margin: 0; border: 1px solid var(--borde); border-radius: 10px; overflow: hidden; background: var(--bg-input); transition: border-color var(--dur-rapida) var(--ease), transform var(--dur) var(--ease); }
+.foto-item:hover { border-color: var(--borde-fuerte); transform: translateY(-2px); }
+.foto-item-imagen { aspect-ratio: 1; background: #f5f5f7; display: flex; align-items: center; justify-content: center; }
+.foto-item-imagen img { width: 100%; height: 100%; object-fit: contain; padding: 10px; mix-blend-mode: multiply; }
+.foto-item figcaption { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 6px 6px 10px; }
+.foto-color { display: inline-flex; align-items: center; gap: 7px; font-size: 0.8rem; min-width: 0; overflow-wrap: anywhere; }
+.punto-color { width: 11px; height: 11px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25); }
+
+.fila-color { grid-template-columns: 1fr auto; }
+.campo-hex input[type="color"] { width: 54px; height: 41px; padding: 4px; cursor: pointer; }
+.zona-foto {
+  position: relative;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  min-height: 170px;
+  border: 1.5px dashed var(--borde-fuerte);
+  border-radius: var(--radio);
+  background: var(--bg-input);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color var(--dur-rapida) var(--ease), background var(--dur-rapida) var(--ease);
+}
+.zona-foto:hover, .zona-foto.arrastrando { border-color: var(--acento); background: var(--acento-suave); }
+.zona-foto input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.zona-foto span { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--texto-tenue); font-size: 0.84rem; pointer-events: none; }
+.zona-foto span svg { width: 28px; height: 28px; }
+.zona-foto img { max-height: 220px; max-width: 100%; object-fit: contain; pointer-events: none; animation: aparecer var(--dur) var(--ease) both; }
 
 /* ---------- logs ---------- */
 .celda-texto { max-width: 280px; white-space: normal; word-break: break-word; }

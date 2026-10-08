@@ -571,9 +571,10 @@ export async function consultarStockPublico(args: { nombre_producto?: string }) 
 const POCAS_UNIDADES = 3;
 
 export async function listarCatalogo() {
-  const productos = await all(
-    `SELECT id, nombre, categoria, cantidad, precio_venta, moneda FROM productos WHERE cantidad > 0 ORDER BY categoria, nombre`
-  );
+  const [productos, fotos] = await Promise.all([
+    all(`SELECT id, nombre, categoria, cantidad, precio_venta, moneda FROM productos WHERE cantidad > 0 ORDER BY categoria, nombre`),
+    listarFotosCatalogo(),
+  ]);
   return productos.map((p) => ({
     id: p.id,
     nombre: p.nombre,
@@ -581,7 +582,96 @@ export async function listarCatalogo() {
     precio: p.precio_venta,
     moneda: p.moneda,
     pocas_unidades: p.cantidad <= POCAS_UNIDADES,
+    fotos: fotosDeProducto(p.nombre, fotos).map((f) => ({ color: f.color, hex: f.color_hex, url: f.url })),
   }));
+}
+
+// ---------- fotos del catalogo ----------
+
+// Clave del modelo, para emparejar fotos con productos. En los iPhone se saca el modelo exacto
+// del nombre ("Iphone 17 pro max 256 sellado" -> "iphone 17 pro max"), asi la foto de un 17 no
+// le aparece a un 17 Pro Max. En cualquier otro producto es el texto normalizado tal cual.
+export function claveModelo(texto: string): string {
+  const t = normalizarTexto(texto);
+  const iphone = /\biphone\s*(\d{1,2}e?|se|xr|xs|x|air)\b(?:\s*(pro\s*max|pro|plus|mini|max))?/.exec(t);
+  if (iphone) return ["iphone", iphone[1], iphone[2]?.replace(/pro\s*max/, "pro max")].filter(Boolean).join(" ");
+  return t;
+}
+
+// "iphone 17 pro max" -> "iPhone 17 Pro Max" (para mostrar en el panel).
+function nombreModeloBonito(clave: string): string {
+  return clave
+    .split(" ")
+    .map((p) => (p === "iphone" ? "iPhone" : ["se", "xr", "xs", "x"].includes(p) ? p.toUpperCase() : /^\d/.test(p) ? p : p[0].toUpperCase() + p.slice(1)))
+    .join(" ");
+}
+
+type FotoCatalogo = { id: number; modelo: string; modelo_clave: string; color: string; color_hex: string | null; url: string };
+
+// Las fotos que le corresponden a un producto. iPhone: el mismo modelo exacto. Otros productos:
+// la foto cuyo modelo aparezca entero en el nombre (si hay varias, gana la mas especifica).
+function fotosDeProducto(nombre: string, fotos: FotoCatalogo[]): FotoCatalogo[] {
+  const clave = claveModelo(nombre);
+  const exactas = fotos.filter((f) => f.modelo_clave === clave);
+  if (exactas.length || clave.startsWith("iphone")) return exactas;
+  const texto = ` ${normalizarTexto(nombre)} `;
+  const candidatas = fotos.filter((f) => !f.modelo_clave.startsWith("iphone") && texto.includes(` ${f.modelo_clave} `));
+  const largo = Math.max(0, ...candidatas.map((f) => f.modelo_clave.length));
+  return candidatas.filter((f) => f.modelo_clave.length === largo);
+}
+
+export async function listarFotosCatalogo(): Promise<FotoCatalogo[]> {
+  const filas = await all(
+    `SELECT id, modelo, modelo_clave, color, color_hex, actualizado_en, length(datos) as bytes FROM fotos_catalogo ORDER BY modelo_clave, id`
+  );
+  // La url lleva la fecha de actualizacion: si se reemplaza la foto, cambia la url y el navegador
+  // no muestra la vieja guardada (la foto en si se cachea "para siempre").
+  return filas.map((f) => ({ ...f, url: `/api/catalogo/fotos/${f.id}?v=${encodeURIComponent(f.actualizado_en)}` }));
+}
+
+// Para la seccion del panel: las fotos cargadas y que modelos en stock todavia no tienen foto.
+export async function estadoFotosCatalogo() {
+  const [fotos, productos] = await Promise.all([listarFotosCatalogo(), all(`SELECT nombre FROM productos WHERE cantidad > 0 ORDER BY nombre`)]);
+  const sinFoto = new Map<string, { modelo: string; productos: string[] }>();
+  for (const p of productos) {
+    if (fotosDeProducto(p.nombre, fotos).length) continue;
+    const clave = claveModelo(p.nombre);
+    const grupo = sinFoto.get(clave) ?? { modelo: clave.startsWith("iphone") ? nombreModeloBonito(clave) : String(p.nombre), productos: [] as string[] };
+    grupo.productos.push(p.nombre);
+    sinFoto.set(clave, grupo);
+  }
+  return { fotos, modelos_sin_foto: [...sinFoto.values()] };
+}
+
+const MAX_BYTES_FOTO = 1_500_000;
+
+export async function guardarFotoCatalogo(args: { modelo: string; color: string; color_hex?: string; imagen: string }) {
+  const modelo = String(args.modelo ?? "").trim();
+  const color = String(args.color ?? "").trim();
+  if (!modelo || !color) throw new Error("Falta el modelo o el color.");
+  const partes = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(args.imagen ?? ""));
+  if (!partes) throw new Error("La imagen tiene que ser JPG, PNG o WebP.");
+  const datos = Buffer.from(partes[2], "base64");
+  if (datos.length > MAX_BYTES_FOTO) throw new Error("La imagen pesa demasiado (máximo 1,5 MB).");
+  const hex = /^#[0-9a-f]{6}$/i.test(args.color_hex ?? "") ? args.color_hex! : null;
+  await run(
+    `INSERT INTO fotos_catalogo (modelo, modelo_clave, color, color_clave, color_hex, mime, datos) VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(modelo_clave, color_clave) DO UPDATE SET modelo = excluded.modelo, color = excluded.color, color_hex = excluded.color_hex,
+       mime = excluded.mime, datos = excluded.datos, actualizado_en = datetime('now','localtime')`,
+    [modelo, claveModelo(modelo), color, normalizarTexto(color), hex, partes[1], datos]
+  );
+  return { ok: true, mensaje: `Foto de ${modelo} (${color}) guardada.` };
+}
+
+export async function eliminarFotoCatalogo(id: number) {
+  await run(`DELETE FROM fotos_catalogo WHERE id = ?`, [id]);
+  return { ok: true };
+}
+
+export async function obtenerFotoCatalogo(id: number): Promise<{ mime: string; datos: Buffer } | null> {
+  const fila = await get(`SELECT mime, datos FROM fotos_catalogo WHERE id = ?`, [id]);
+  if (!fila) return null;
+  return { mime: fila.mime, datos: Buffer.from(fila.datos as ArrayBuffer) };
 }
 
 // ---------- pedidos pendientes (clientes por WhatsApp) ----------

@@ -71,8 +71,7 @@ svg { width: 18px; height: 18px; flex: none; }
   gap: 16px;
 }
 .marca { display: inline-flex; align-items: center; gap: 10px; color: var(--texto); text-decoration: none; font-weight: 700; letter-spacing: -0.01em; }
-.marca-logo { width: 34px; height: 34px; border-radius: 9px; object-fit: cover; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); }
-.marca-nombre { font-size: 1rem; }
+.marca-logo { width: 38px; height: 38px; border-radius: 9px; object-fit: cover; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); }
 
 /* ---------- botones ---------- */
 .btn {
@@ -246,6 +245,45 @@ main { max-width: 1240px; margin: 0 auto; padding: 0 24px 80px; }
 }
 .producto:hover .producto-imagen svg.equipo { transform: translateY(-4px) scale(1.04); }
 
+/* foto real: el fondo blanco de las fotos de producto se funde con el gris de la tarjeta */
+.producto-imagen.con-foto { background: #f5f5f7; }
+.foto-producto {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 8% 10%;
+  mix-blend-mode: multiply;
+  transition: opacity 160ms var(--ease), transform var(--dur-lenta) var(--ease);
+}
+.foto-producto.cambiando { opacity: 0; transform: scale(0.97); }
+.producto:hover .foto-producto { transform: scale(1.04); }
+
+/* puntitos de color debajo del nombre */
+.colores { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.color {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: none;
+  background: var(--color);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  position: relative;
+  transition: transform var(--dur-rapida) var(--ease);
+}
+.color::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  transition: border-color var(--dur-rapida) var(--ease);
+}
+.color:hover { transform: scale(1.1); }
+.color.activo::after { border-color: var(--acento); }
+.color-nombre { font-size: 0.8rem; color: var(--texto-tenue); margin-left: 2px; }
+
 .insignia {
   position: absolute;
   top: 14px;
@@ -365,6 +403,8 @@ main { max-width: 1240px; margin: 0 auto; padding: 0 24px 80px; }
   .producto-cuerpo { padding: 12px 13px 14px; gap: 4px; }
   .producto-nombre { font-size: 0.95rem; }
   .producto-detalles .detalle:nth-child(n + 3) { display: none; }
+  .color { width: 20px; height: 20px; }
+  .color-nombre { width: 100%; margin: 0; }
   .producto-pie { flex-direction: column; align-items: stretch; gap: 10px; }
   .precio-valor { font-size: 1.15rem; }
   .btn-consultar { width: 100%; height: 38px; border-radius: 999px; }

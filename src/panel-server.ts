@@ -17,7 +17,8 @@ if (!PANEL_PASSWORD) throw new Error("Falta PANEL_PASSWORD en el .env");
 // para siempre en este proceso (es una proteccion propia de la libreria para no correr el
 // bot en los dos modos a la vez) y romperia el modo local con polling que usa index.ts.
 export const app = express();
-app.use(express.json());
+// Limite mas alto que el de fabrica (100 KB) para poder subir las fotos del catalogo.
+app.use(express.json({ limit: "4mb" }));
 // Para que req.ip sea la IP real de quien entra (en Vercel llega en el header X-Forwarded-For)
 // y no la del proxy de Vercel: la usa el freno de intentos fallidos de abajo.
 app.set("trust proxy", true);
@@ -68,9 +69,9 @@ app.use("/api", (req, res, next) => {
   // El chequeo automatico del webhook (GitHub Actions, cada 30 min) tampoco tiene la clave del
   // panel: se autentica con su propio CRON_SECRET, verificado en api/index.ts.
   if (req.path === "/cron/verificar-webhook") return next();
-  // El catalogo es publico a proposito (es para clientes): solo devuelve lo que un cliente
-  // puede ver, ver listarCatalogo en repo.ts.
-  if (req.path === "/catalogo") return next();
+  // El catalogo y sus fotos son publicos a proposito (son para clientes): solo devuelven lo
+  // que un cliente puede ver, ver listarCatalogo en repo.ts.
+  if (req.path === "/catalogo" || req.path.startsWith("/catalogo/")) return next();
   const ip = req.ip ?? "desconocida";
   if ((intentosVigentes(ip)?.cantidad ?? 0) >= MAX_INTENTOS_FALLIDOS) {
     return res.status(429).json({ ok: false, error: "Demasiados intentos con clave incorrecta. Esperá 15 minutos y probá de nuevo." });
@@ -166,7 +167,6 @@ app.get("/api/catalogo", async (_req, res) => {
     res.setHeader("Cache-Control", "public, max-age=30, s-maxage=60, stale-while-revalidate=300");
     res.json({
       tienda: {
-        nombre: process.env.CATALOGO_NOMBRE || "Gestor Mayorista",
         whatsapp: (process.env.CATALOGO_WHATSAPP || "").replace(/\D/g, "") || null,
       },
       dolar_blue_venta: dolar?.blue?.venta ?? null,
@@ -234,6 +234,24 @@ app.get(
     };
   })
 );
+
+// Foto de un producto del catalogo (publica). La url cambia cuando se reemplaza la foto, asi que
+// se puede guardar en cache "para siempre".
+app.get("/api/catalogo/fotos/:id", async (req, res) => {
+  try {
+    const foto = await repo.obtenerFotoCatalogo(Number(req.params.id));
+    if (!foto) return res.status(404).end();
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.type(foto.mime).send(foto.datos);
+  } catch {
+    res.status(500).end();
+  }
+});
+
+// ---------- fotos del catalogo (panel, con clave) ----------
+app.get("/api/fotos-catalogo", envolver(() => repo.estadoFotosCatalogo()));
+app.post("/api/fotos-catalogo", envolver((req) => repo.guardarFotoCatalogo(req.body)));
+app.delete("/api/fotos-catalogo/:id", envolver((req) => repo.eliminarFotoCatalogo(Number(req.params.id))));
 
 // ---------- frontend estatico ----------
 // /catalogo sin el ".html" (en Vercel lo resuelve el rewrite de vercel.json).
