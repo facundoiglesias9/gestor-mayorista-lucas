@@ -43,7 +43,7 @@
   --c-prendas: var(--rosa);
   --c-empleados: var(--acento-2);
   --c-bot: #59c7ec;
-  --c-logs: var(--texto-tenue);
+  --c-logs: #a3acbb;
 
   /* forma */
   --radio-chico: 8px;
@@ -334,16 +334,16 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .lateral-pie { padding: 10px 12px 14px; border-top: 1px solid var(--borde); display: flex; flex-direction: column; gap: 2px; }
 .btn-colapsar svg { transition: transform var(--dur) var(--ease); }
 
-[data-tab="resumen"] { --tab-color: var(--c-resumen); }
-[data-tab="stock"] { --tab-color: var(--c-stock); }
-[data-tab="ventas"] { --tab-color: var(--c-ventas); }
-[data-tab="prestamos"] { --tab-color: var(--c-prestamos); }
-[data-tab="pedidos"] { --tab-color: var(--c-pedidos); }
-[data-tab="prendas"] { --tab-color: var(--c-prendas); }
-[data-tab="empleados"] { --tab-color: var(--c-empleados); }
-[data-tab="bot"] { --tab-color: var(--c-bot); }
-[data-tab="logs"] { --tab-color: var(--c-logs); }
-[data-tab="catalogo"] { --tab-color: var(--rosa); }
+[data-tab="resumen"], [data-seccion="resumen"] { --tab-color: var(--c-resumen); }
+[data-tab="stock"], [data-seccion="stock"] { --tab-color: var(--c-stock); }
+[data-tab="ventas"], [data-seccion="ventas"] { --tab-color: var(--c-ventas); }
+[data-tab="prestamos"], [data-seccion="prestamos"] { --tab-color: var(--c-prestamos); }
+[data-tab="pedidos"], [data-seccion="pedidos"] { --tab-color: var(--c-pedidos); }
+[data-tab="prendas"], [data-seccion="prendas"] { --tab-color: var(--c-prendas); }
+[data-tab="empleados"], [data-seccion="empleados"] { --tab-color: var(--c-empleados); }
+[data-tab="bot"], [data-seccion="bot"] { --tab-color: var(--c-bot); }
+[data-tab="logs"], [data-seccion="logs"] { --tab-color: var(--c-logs); }
+[data-tab="catalogo"], [data-seccion="catalogo"] { --tab-color: var(--rosa); }
 
 /* ---------- barra lateral contraida: solo iconos, con el nombre al pasar el mouse ---------- */
 .barra-lateral.contraida .lateral-cabecera { padding: 18px 0 14px; display: flex; justify-content: center; }
@@ -395,7 +395,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
   position: sticky;
   top: 0;
   z-index: 12;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 14px;
   min-height: 64px;
@@ -404,11 +405,46 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
   backdrop-filter: saturate(140%) blur(12px);
   border-bottom: 1px solid var(--borde);
 }
-.marca-movil { display: none; }
-.topbar-titulo { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
-.topbar-grupo { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--texto-tenue); }
-.topbar-app h2 { font-size: 1.12rem; }
-.topbar-app h2 strong { display: inline-block; font-weight: 700; letter-spacing: -0.015em; }
+.marca-movil { display: none; grid-column: 1; }
+/* titulo de la seccion: centrado y con el color de la seccion (el grupo arriba, chiquito, y el
+   nombre en un tono claro de ese color) */
+.topbar-titulo {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  line-height: 1.2;
+  text-align: center;
+}
+.topbar-grupo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--tab-color, var(--acento));
+  transition: color var(--dur) var(--ease);
+}
+.topbar-grupo::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 10px currentColor;
+}
+.topbar-app h2 { font-size: 1.2rem; }
+.topbar-app h2 strong {
+  display: inline-block;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: color-mix(in srgb, var(--tab-color, var(--acento)) 62%, white);
+  text-shadow: 0 0 24px color-mix(in srgb, var(--tab-color, var(--acento)) 35%, transparent);
+  transition: color var(--dur) var(--ease);
+}
 .topbar-app h2 strong.cambiando { animation: titulo-cambia 360ms var(--ease) both; }
 
 /* fondo oscuro clickeable detras de la hoja del menu (solo celular) */
@@ -1435,8 +1471,8 @@ a.btn-secundario { text-decoration: none; }
   .topbar-app { min-height: 56px; padding: 8px 16px; gap: 12px; }
   .marca-movil { display: flex; }
   .marca-movil .marca-icono { width: 34px; height: 34px; border-radius: 9px; }
-  .topbar-app h2 { font-size: 1.02rem; }
-  .topbar-grupo { font-size: 0.64rem; }
+  .topbar-app h2 { font-size: 1.08rem; }
+  .topbar-grupo { font-size: 0.62rem; }
   main { padding: 20px 16px calc(96px + env(safe-area-inset-bottom)); }
 
   .barra-inferior {

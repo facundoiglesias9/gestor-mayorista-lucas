@@ -480,6 +480,7 @@ function irATab(tab) {
   const titulo = document.getElementById("titulo-seccion");
   titulo.textContent = TITULOS_TAB[tab];
   document.getElementById("grupo-seccion").textContent = GRUPO_TAB[tab] ?? "";
+  document.getElementById("topbar").dataset.seccion = tab;
   titulo.classList.remove("cambiando");
   void titulo.offsetWidth;
   titulo.classList.add("cambiando");
