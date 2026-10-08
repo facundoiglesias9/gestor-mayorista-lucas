@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
+    "panel": "tsx watch src/panel-local.ts",
     "dev": "tsx watch src/index.ts",
     "backup": "tsx src/backup.ts",
     "set-webhook": "tsx src/set-webhook.ts",
