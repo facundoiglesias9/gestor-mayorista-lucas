@@ -25,9 +25,11 @@ const manejarWebhook = webhookCallback(bot, "express", { secretToken: WEBHOOK_SE
 // 2. Borra registros internos viejos para que la base no crezca sin limite.
 // La clave viaja en el header Authorization (no en la URL, que queda guardada en logs).
 app.get("/api/cron/verificar-webhook", async (req, res) => {
-  const header = req.headers.authorization ?? "";
-  const recibida = header.startsWith("Bearer ") ? header.slice(7) : "";
-  if (!process.env.CRON_SECRET || !claveCoincide(recibida, process.env.CRON_SECRET)) {
+  // Se ignoran los espacios o saltos de linea que se cuelan al pegar la clave (en Vercel o en
+  // cron-job.org), y "Bearer" se acepta en mayuscula o minuscula. La clave tiene que coincidir igual.
+  const recibida = (req.headers.authorization ?? "").trim().replace(/^Bearer\s+/i, "");
+  const esperada = (process.env.CRON_SECRET ?? "").trim();
+  if (!esperada || !claveCoincide(recibida, esperada)) {
     return res.status(401).json({ ok: false, error: "No autorizado." });
   }
   const limpieza = await limpiarRegistrosViejos().catch(async (e) => {
