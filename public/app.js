@@ -82,13 +82,6 @@ const ICONO_ERROR = `<svg viewBox="0 0 24 24"><path d="M12 7v6"/><path d="M12 17
 const ICONO_VACIO = `<svg viewBox="0 0 24 24"><path d="M3 13h5l2 3h4l2-3h5"/><path d="M5.5 5h13L21 13v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z"/></svg>`;
 const ICONO_ANTERIOR = `<svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>`;
 const ICONO_SIGUIENTE = `<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>`;
-const ICONOS_KPI = {
-  productos: `<svg viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>`,
-  unidades: `<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>`,
-  prestamos: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10"/><path d="M9.5 9.5a2.5 2.5 0 0 1 2.5-1.5c1.4 0 2.5.9 2.5 2s-1.1 1.8-2.5 2c-1.4.2-2.5.9-2.5 2s1.1 2 2.5 2a2.5 2.5 0 0 0 2.5-1.5"/></svg>`,
-  canjes: `<svg viewBox="0 0 24 24"><path d="M20.6 12.3 12.7 20a2 2 0 0 1-2.8 0l-7-7a2 2 0 0 1 0-2.8L10.9 2.5H18a2 2 0 0 1 2 2v7.1z"/><circle cx="15" cy="7" r="1.3"/></svg>`,
-};
-
 function estadoVacio(mensaje) {
   return `<div class="estado-vacio">${ICONO_VACIO}<span>${escapeHtml(mensaje)}</span></div>`;
 }
@@ -584,81 +577,7 @@ async function cargarListaProductos() {
 }
 
 // ---------- resumen ----------
-function tarjetaKpi(icono, etiqueta, clave, valor, detalle) {
-  return `
-    <div class="card">
-      <div class="card-cabecera"><div class="label">${etiqueta}</div><div class="card-icono">${ICONOS_KPI[icono]}</div></div>
-      <div class="valor">${contador(clave, valor)}</div>
-      <div class="detalle" title="${escapeAttr(detalle)}">${escapeHtml(detalle)}</div>
-    </div>`;
-}
-
-async function cargarResumen() {
-  mostrarEsqueleto("tabla-resumen-prestamos", 3);
-  mostrarEsqueleto("tabla-resumen-canjes", 3);
-  try {
-    const r = await api("GET", "/api/resumen");
-    const cards = document.getElementById("resumen-cards");
-    const unidades = r.productos.reduce((acc, p) => acc + p.cantidad, 0);
-    const sinStock = r.productos.filter((p) => p.cantidad <= 0).length;
-
-    // Valor de venta del stock, por moneda (solo productos con precio de venta cargado).
-    const valorStock = {};
-    for (const p of r.productos) {
-      if (p.precio_venta != null && p.cantidad > 0) valorStock[p.moneda ?? "USD"] = (valorStock[p.moneda ?? "USD"] ?? 0) + p.precio_venta * p.cantidad;
-    }
-    const pendientePrestamos = {};
-    for (const p of r.prestamos_activos) pendientePrestamos[p.moneda] = (pendientePrestamos[p.moneda] ?? 0) + p.monto_pendiente;
-    const teDeben = {};
-    const lesDebes = {};
-    for (const c of r.canjes_pendientes) {
-      if (!c.saldo_monto) continue;
-      const destino = c.saldo_monto > 0 ? teDeben : lesDebes;
-      destino[c.saldo_moneda] = (destino[c.saldo_moneda] ?? 0) + Math.abs(c.saldo_monto);
-    }
-
-    const detalleCanjes = [
-      totalesPorMoneda(teDeben) && `Te deben ${totalesPorMoneda(teDeben)}`,
-      totalesPorMoneda(lesDebes) && `Debés ${totalesPorMoneda(lesDebes)}`,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-
-    cards.innerHTML = [
-      tarjetaKpi("productos", "Productos distintos", "kpi-productos", r.productos.length, sinStock ? `${plural(sinStock, "producto")} sin stock` : "Todos con stock"),
-      tarjetaKpi("unidades", "Unidades en stock", "kpi-unidades", unidades, totalesPorMoneda(valorStock) ? `Valor de venta: ${totalesPorMoneda(valorStock)}` : "Sin precios de venta cargados"),
-      tarjetaKpi("prestamos", "Préstamos activos", "kpi-prestamos", r.prestamos_activos.length, totalesPorMoneda(pendientePrestamos) ? `Pendiente: ${totalesPorMoneda(pendientePrestamos)}` : "Nadie te debe plata"),
-      tarjetaKpi("canjes", "Canjes pendientes", "kpi-canjes", r.canjes_pendientes.length, detalleCanjes || "Sin saldos pendientes"),
-    ].join("");
-    animarContadores(cards);
-
-    ponerSubtitulo("sub-resumen-prestamos", r.prestamos_activos.length ? plural(r.prestamos_activos.length, "préstamo activo", "préstamos activos") : "");
-    renderTabla(
-      "tabla-resumen-prestamos",
-      r.prestamos_activos,
-      (p) => `<tr>
-        <td data-etiqueta="Persona" class="texto-fuerte">${escapeHtml(p.persona_nombre)}</td>
-        <td data-etiqueta="Pendiente" class="num">${formatoConSimbolo(p.monto_pendiente, p.moneda)}</td>
-        <td data-etiqueta="Estado">${pillEstadoPrestamo(p.estado)}</td>
-      </tr>`,
-      "No hay préstamos activos."
-    );
-
-    ponerSubtitulo("sub-resumen-canjes", r.canjes_pendientes.length ? plural(r.canjes_pendientes.length, "canje pendiente", "canjes pendientes") : "");
-    renderTabla(
-      "tabla-resumen-canjes",
-      r.canjes_pendientes,
-      (c) => `<tr>
-        <td data-etiqueta="Persona" class="texto-fuerte">${escapeHtml(c.persona_nombre)}</td>
-        <td data-etiqueta="Celular">${escapeHtml(c.descripcion)}</td>
-        <td data-etiqueta="Saldo" class="num">${textoSaldo(c)}</td>
-      </tr>`,
-      "No hay canjes pendientes."
-    );
-  } catch (e) {
-    mostrarToast(e.message, true);
-  }
-}
+// (el Resumen son los dashboards: ver dashboard.js)
 
 // ---------- stock ----------
 let productosCache = [];

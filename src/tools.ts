@@ -39,6 +39,47 @@ export const toolDefinitions: Anthropic.Tool[] = [
     },
   },
   {
+    name: "registrar_gasto",
+    description:
+      "Registra un gasto del negocio que NO es mercaderia: alquiler, sueldos, servicios (luz, internet), envios/fletes, publicidad, impuestos, comisiones (Mercado Pago, banco), etc. Sirve para la ganancia real y el flujo de caja del panel. La compra de productos para vender NO va aca (eso es agregar_producto), y prestarle plata a alguien tampoco (eso es registrar_prestamo).",
+    input_schema: {
+      type: "object",
+      properties: {
+        concepto: { type: "string", description: "Que se pago, corto. Ej: 'Alquiler del local', 'Sueldo Lucas', 'Envio Andreani'" },
+        monto: { type: "number", description: "Monto pagado" },
+        moneda: { type: "string", enum: ["ARS", "USD"], description: "Moneda del gasto. Si no se especifica, asumir ARS (los gastos suelen ser en pesos)." },
+        categoria: {
+          type: "string",
+          enum: ["Alquiler", "Sueldos", "Servicios", "Envíos", "Publicidad", "Impuestos", "Comisiones", "Otros"],
+          description: "Opcional: si no se pasa, se deduce del concepto.",
+        },
+        fecha: { type: "string", description: "Fecha del gasto AAAA-MM-DD, solo si no fue hoy (ej: 'el alquiler que pague el 1 de este mes')." },
+        nota: { type: "string", description: "Nota libre opcional" },
+      },
+      required: ["concepto", "monto"],
+    },
+  },
+  {
+    name: "consultar_gastos",
+    description: "Lista los gastos del negocio registrados (con su id, para poder anular uno) y el total por moneda. Se puede filtrar por fechas.",
+    input_schema: {
+      type: "object",
+      properties: {
+        desde: { type: "string", description: "Fecha desde AAAA-MM-DD (opcional)" },
+        hasta: { type: "string", description: "Fecha hasta AAAA-MM-DD (opcional)" },
+      },
+    },
+  },
+  {
+    name: "anular_gasto",
+    description: "Borra un gasto cargado por error. Primero buscar el id con consultar_gastos y confirmar con el usuario cual es.",
+    input_schema: {
+      type: "object",
+      properties: { gasto_id: { type: "number", description: "Id del gasto (sale de consultar_gastos)" } },
+      required: ["gasto_id"],
+    },
+  },
+  {
     name: "ajustar_stock",
     description:
       "Corrige manualmente la cantidad de stock de un producto sin que sea ni una compra ni una venta (ej: se rompio uno, conteo fisico distinto al del sistema). El delta puede ser negativo.",
@@ -274,6 +315,9 @@ const dispatch: Record<string, (args: any) => any | Promise<any>> = {
   registrar_pago_prestamo: repo.registrarPagoPrestamo,
   agregar_canje: repo.agregarCanje,
   actualizar_canje: repo.actualizarCanje,
+  registrar_gasto: repo.registrarGasto,
+  consultar_gastos: repo.consultarGastos,
+  anular_gasto: repo.anularGasto,
   consultar_stock: repo.consultarStock,
   consultar_persona: repo.consultarPersona,
   consultar_estado_general: () => repo.consultarEstadoGeneral(),

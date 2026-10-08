@@ -72,6 +72,7 @@ Dejalo corriendo (la terminal abierta) mientras lo querés usar así, local. Si 
 - "Le presté 500 dólares a María Gómez"
 - "María me pagó 200"
 - "Me trajeron un Samsung S21 en canje, lo tomo a 300 dólares"
+- "Pagué 300 mil de alquiler" (gasto del negocio: va a la ganancia real y al flujo de caja)
 - "¿Cuánto stock tengo de iPhone 12?"
 - "¿Cómo estamos en general?"
 - "¿Qué me debe María?"
@@ -138,7 +139,11 @@ En los dos casos te va a pedir una clave — es el valor de `PANEL_PASSWORD` (en
 
 ### Qué se puede hacer ahí
 
-- **Resumen**: stock total, préstamos activos y canjes pendientes de un vistazo.
+- **Resumen**: dashboards, con filtro de período (este mes, mes pasado, 3 meses, este año, 12 meses) y moneda (U$D o $; lo de la otra moneda se pasa al dólar blue del día). Cada gráfico se puede ver también como tabla.
+  - **Ejecutivo**: facturación, ganancia bruta y margen (contra el período anterior), evolución de 12 meses, objetivos con la marca de dónde deberías estar hoy, proyección de cierre del mes y margen por categoría.
+  - **Ventas**: cantidad de ventas, unidades, ticket promedio, clientes, el objetivo del mes día a día contra el mes pasado y el ritmo ideal, objetivo vs. cumplimiento de los últimos 6 meses, ranking de productos más vendidos y ventas por categoría.
+  - **Financiero**: ingresos, gastos, ganancia real (ganancia bruta menos gastos), flujo de caja (entra: ventas y cobros de préstamos; sale: compras de mercadería, gastos y préstamos dados), de las ventas a la ganancia real, gastos por categoría, lo que tenés hoy en stock y por cobrar, y la lista de gastos.
+  - **Objetivos**: se cargan con "Editar" (facturación, ganancia y unidades por mes) y valen desde ese mes hasta que cargues otros. **Gastos**: con "Registrar gasto" o por Telegram.
 - **Stock**: cargar productos (con botón "Agregar stock") y editar cualquier campo con el lápiz de cada fila. Los celulares tienen **Estado** (Sellado, Usado - como nuevo o Usado) y, si no son sellados, **Batería (%)**: el % se agrega solo al nombre (ej. "iPhone 15 Pro 128GB 85%"), así cada usado con su batería queda como un producto aparte.
 - **Ventas**: cargar una venta nueva, filtrar por fecha/producto/cliente, con totales facturados y ganancia estimada.
 - **Préstamos**: registrar préstamos nuevos y anotar pagos con un botón.

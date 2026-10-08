@@ -1351,6 +1351,166 @@ export async function listarLogs(limite?: number) {
 // Borra registros que ya no sirven para que esas tablas no crezcan para siempre. Telegram solo
 // reintenta un update durante unas horas, asi que 7 dias de updates_procesados sobra; los logs
 // se guardan 90 dias (el panel igual muestra solo los ultimos). Lo llama el chequeo periodico.
+// ---------- gastos del negocio ----------
+// Lo que se paga y no es mercaderia (la mercaderia entra por agregarProducto). Con esto el
+// dashboard Financiero calcula la ganancia real y el flujo de caja.
+
+export const CATEGORIAS_GASTO = ["Alquiler", "Sueldos", "Servicios", "Envíos", "Publicidad", "Impuestos", "Comisiones", "Otros"] as const;
+
+// Si no se dice la categoria, se adivina por el concepto ("pague el alquiler" -> Alquiler).
+function categoriaDeGasto(concepto: string): string {
+  const t = normalizarTexto(concepto);
+  if (/alquiler|expensa/.test(t)) return "Alquiler";
+  if (/sueldo|salario|aguinaldo|jornal|empleado|vacaciones/.test(t)) return "Sueldos";
+  if (/\bluz\b|\bagua\b|\bgas\b|internet|telefono|celular de la empresa|abono|edenor|edesur|metrogas|servicio/.test(t)) return "Servicios";
+  if (/envio|flete|correo|andreani|oca\b|cadete|moto|uber|nafta|combustible/.test(t)) return "Envíos";
+  if (/publicidad|anuncio|ads\b|instagram|facebook|meta\b|google|marketing|promocion/.test(t)) return "Publicidad";
+  if (/impuesto|afip|arca|iibb|ingresos brutos|monotributo|iva\b|tasa|municipal/.test(t)) return "Impuestos";
+  if (/comision|mercado ?pago|posnet|tarjeta|banco|transferencia/.test(t)) return "Comisiones";
+  return "Otros";
+}
+
+function validarCategoriaGasto(categoria: unknown, concepto: string): string {
+  if (categoria == null || String(categoria).trim() === "") return categoriaDeGasto(concepto);
+  const buscada = normalizarTexto(String(categoria));
+  return CATEGORIAS_GASTO.find((c) => normalizarTexto(c) === buscada) ?? "Otros";
+}
+
+function validarFecha(fecha: unknown): string | null {
+  if (fecha == null || String(fecha).trim() === "") return null;
+  const f = String(fecha).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f) || Number.isNaN(Date.parse(f))) throw new Error(`Fecha invalida: "${f}". Tiene que ser AAAA-MM-DD.`);
+  return f;
+}
+
+export async function registrarGasto(args: { concepto: string; monto: number; moneda?: string; categoria?: string; fecha?: string; nota?: string }) {
+  const concepto = String(args.concepto ?? "").trim();
+  if (!concepto) throw new Error("Falta el concepto del gasto (ej: alquiler, sueldo, envio).");
+  const monto = Number(args.monto);
+  if (!Number.isFinite(monto) || monto <= 0) throw new Error("El monto del gasto tiene que ser un numero mayor a 0.");
+  const moneda = args.moneda === "USD" ? "USD" : "ARS";
+  const categoria = validarCategoriaGasto(args.categoria, concepto);
+  const fecha = validarFecha(args.fecha);
+  const info = await run(
+    `INSERT INTO gastos (fecha, concepto, categoria, monto, moneda, nota) VALUES (COALESCE(?, date('now','localtime')), ?, ?, ?, ?, ?)`,
+    [fecha, concepto, categoria, monto, moneda, args.nota ?? null]
+  );
+  const gasto = await get(`SELECT * FROM gastos WHERE id = ?`, [info.lastInsertRowid]);
+  return { ok: true, gasto_id: gasto.id, mensaje: `Gasto registrado: ${concepto} (${categoria}) por ${monto} ${moneda} el ${gasto.fecha}.`, gasto };
+}
+
+export async function listarGastos(args: { desde?: string; hasta?: string } = {}) {
+  const condiciones: string[] = [];
+  const params: any[] = [];
+  if (args.desde) {
+    condiciones.push(`date(fecha) >= date(?)`);
+    params.push(validarFecha(args.desde));
+  }
+  if (args.hasta) {
+    condiciones.push(`date(fecha) <= date(?)`);
+    params.push(validarFecha(args.hasta));
+  }
+  return all(`SELECT * FROM gastos ${condiciones.length ? `WHERE ${condiciones.join(" AND ")}` : ""} ORDER BY date(fecha) DESC, id DESC`, params);
+}
+
+export async function consultarGastos(args: { desde?: string; hasta?: string }) {
+  const gastos = await listarGastos(args);
+  const totales: Record<string, number> = {};
+  for (const g of gastos) totales[g.moneda] = (totales[g.moneda] ?? 0) + g.monto;
+  return { total_gastos: gastos.length, totales_por_moneda: totales, ultimos: gastos.slice(0, 30) };
+}
+
+export async function anularGasto(args: { gasto_id: number }) {
+  const id = Number(args.gasto_id);
+  const gasto = await get(`SELECT * FROM gastos WHERE id = ?`, [id]);
+  if (!gasto) throw new Error(`No existe ningun gasto con id #${id} (buscalo con consultar_gastos).`);
+  await run(`DELETE FROM gastos WHERE id = ?`, [id]);
+  return { ok: true, mensaje: `Gasto anulado: ${gasto.concepto} por ${gasto.monto} ${gasto.moneda} del ${gasto.fecha}.` };
+}
+
+// ---------- objetivos mensuales ----------
+// Cada fila vale desde su mes hasta el mes en que se cargue otra.
+
+export async function listarObjetivos() {
+  return all(`SELECT * FROM objetivos ORDER BY mes`);
+}
+
+export async function guardarObjetivos(args: { mes?: string; facturacion?: number | null; ganancia?: number | null; unidades?: number | null; moneda?: string }) {
+  const mes = String(args.mes ?? "").trim();
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) throw new Error(`Mes invalido: "${mes}". Tiene que ser AAAA-MM.`);
+  const numero = (v: unknown) => {
+    if (v == null || String(v).trim() === "") return null;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) throw new Error("Los objetivos tienen que ser numeros positivos.");
+    return n;
+  };
+  const moneda = args.moneda === "ARS" ? "ARS" : "USD";
+  await run(
+    `INSERT INTO objetivos (mes, facturacion, ganancia, unidades, moneda, actualizado_en) VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))
+     ON CONFLICT(mes) DO UPDATE SET facturacion = excluded.facturacion, ganancia = excluded.ganancia, unidades = excluded.unidades, moneda = excluded.moneda, actualizado_en = excluded.actualizado_en`,
+    [mes, numero(args.facturacion), numero(args.ganancia), numero(args.unidades) == null ? null : Math.round(numero(args.unidades)!), moneda]
+  );
+  return { ok: true, objetivos: await listarObjetivos() };
+}
+
+// ---------- datos para los dashboards del Resumen ----------
+// Todo agrupado por dia (y producto/cliente en las ventas), de los ultimos 25 meses: el panel
+// arma con esto cualquier periodo, las comparaciones con el periodo anterior y los graficos.
+// Los montos van en su moneda original; el panel los pasa a una sola con el dolar blue.
+export async function datosDashboard() {
+  const desde = (await get(`SELECT date('now','localtime','start of month','-24 months') as d`)).d;
+  const [ventas, compras, gastos, prestamos, objetivos, stock, porCobrar, canjes, hoy] = await Promise.all([
+    all(
+      `SELECT date(m.fecha) as fecha, m.producto_id, p.nombre as producto, COALESCE(p.categoria, 'Otros') as categoria, m.persona_id as cliente_id,
+              COALESCE(m.moneda, 'ARS') as moneda, COALESCE(p.moneda, 'USD') as costo_moneda,
+              SUM(m.cantidad) as unidades, COUNT(*) as operaciones,
+              SUM(CASE WHEN m.precio_unitario IS NOT NULL THEN m.precio_unitario * m.cantidad ELSE 0 END) as facturado,
+              SUM(CASE WHEN m.precio_unitario IS NOT NULL AND p.costo IS NOT NULL THEN m.precio_unitario * m.cantidad ELSE 0 END) as facturado_con_costo,
+              SUM(CASE WHEN m.precio_unitario IS NOT NULL AND p.costo IS NOT NULL THEN p.costo * m.cantidad ELSE 0 END) as costo
+       FROM movimientos_stock m JOIN productos p ON p.id = m.producto_id
+       WHERE m.tipo = 'salida' AND date(m.fecha) >= date(?)
+       GROUP BY date(m.fecha), m.producto_id, m.persona_id, COALESCE(m.moneda, 'ARS')`,
+      [desde]
+    ),
+    // Compras de mercaderia: lo que entro al stock a su costo. En la reposicion automatica (compra
+    // y venta en el momento) el precio guardado es el de venta, asi que ahi se usa el costo.
+    all(
+      `SELECT date(m.fecha) as fecha, COALESCE(p.moneda, 'USD') as moneda,
+              SUM(m.cantidad * COALESCE(CASE WHEN m.nota = ? THEN NULL ELSE m.precio_unitario END, p.costo, 0)) as monto
+       FROM movimientos_stock m JOIN productos p ON p.id = m.producto_id
+       WHERE m.tipo = 'entrada' AND date(m.fecha) >= date(?)
+       GROUP BY date(m.fecha), COALESCE(p.moneda, 'USD')`,
+      [NOTA_REPOSICION_AUTOMATICA, desde]
+    ),
+    all(`SELECT id, date(fecha) as fecha, concepto, categoria, monto, moneda, nota FROM gastos WHERE date(fecha) >= date(?) ORDER BY date(fecha) DESC, id DESC`, [desde]),
+    all(
+      `SELECT date(fecha) as fecha, 'otorgado' as tipo, moneda, SUM(monto_original) as monto FROM prestamos WHERE date(fecha) >= date(?) GROUP BY date(fecha), moneda
+       UNION ALL
+       SELECT date(pp.fecha) as fecha, 'cobrado' as tipo, pr.moneda, SUM(pp.monto) as monto FROM pagos_prestamo pp JOIN prestamos pr ON pr.id = pp.prestamo_id
+       WHERE date(pp.fecha) >= date(?) GROUP BY date(pp.fecha), pr.moneda`,
+      [desde, desde]
+    ),
+    listarObjetivos(),
+    all(
+      `SELECT COALESCE(moneda, 'USD') as moneda, SUM(cantidad) as unidades, SUM(COALESCE(costo, 0) * cantidad) as al_costo, SUM(COALESCE(precio_venta, 0) * cantidad) as a_precio_venta
+       FROM productos WHERE cantidad > 0 GROUP BY COALESCE(moneda, 'USD')`
+    ),
+    all(`SELECT moneda, SUM(monto_pendiente) as monto, COUNT(*) as cantidad FROM prestamos WHERE estado != 'pagado' GROUP BY moneda`),
+    get(`SELECT COUNT(*) as n FROM canjes WHERE estado = 'pendiente'`),
+    get(`SELECT date('now','localtime') as d`),
+  ]);
+  return {
+    hoy: hoy.d,
+    desde,
+    ventas,
+    compras,
+    gastos,
+    prestamos,
+    objetivos,
+    posicion: { stock, por_cobrar: porCobrar, canjes_pendientes: Number(canjes?.n ?? 0) },
+  };
+}
+
 export async function limpiarRegistrosViejos() {
   const updates = await run(`DELETE FROM updates_procesados WHERE procesado_en < datetime('now','localtime','-7 days')`);
   const logs = await run(`DELETE FROM logs_bot WHERE fecha < datetime('now','localtime','-90 days')`);
@@ -1368,6 +1528,8 @@ const TABLAS_BACKUP = [
   "canjes",
   "pedidos_pendientes",
   "respuestas_predefinidas",
+  "gastos",
+  "objetivos",
 ];
 
 export async function exportarTodo(): Promise<Record<string, any[]>> {
