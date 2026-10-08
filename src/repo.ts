@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { get, all, run, enTransaccion } from "./db.js";
+import { get, all, run, enTransaccion, sqlAhora, ZONA_ARGENTINA } from "./db.js";
 import { inferirCategoria } from "./categorizador.js";
 import { estadoYBateriaDelNombre, nombreConBateria, validarBateria, validarEstado } from "./equipos.js";
 
@@ -20,7 +20,7 @@ export async function findOrCreatePersona(
 ) {
   const persona = await findPersona(nombre);
   if (persona) return persona;
-  const info = await run(`INSERT INTO personas (nombre, telefono, es_empleado, descuento_pct, nota) VALUES (?, ?, ?, ?, ?)`, [
+  const info = await run(`INSERT INTO personas (nombre, telefono, es_empleado, descuento_pct, nota, creado_en) VALUES (?, ?, ?, ?, ?, ${sqlAhora()})`, [
     nombre,
     opts.telefono ?? null,
     opts.es_empleado ? 1 : 0,
@@ -75,10 +75,10 @@ export async function agregarProducto(args: {
       const estado = equipo.estado ?? existente.estado ?? null;
       const bateria = estado === "Sellado" ? null : (equipo.bateria ?? existente.bateria ?? null);
       await run(
-        `UPDATE productos SET cantidad = cantidad + ?, costo = COALESCE(?, costo), precio_venta = COALESCE(?, precio_venta), moneda = COALESCE(?, moneda), categoria = COALESCE(?, categoria), estado = ?, bateria = ?, actualizado_en = datetime('now','localtime') WHERE id = ?`,
+        `UPDATE productos SET cantidad = cantidad + ?, costo = COALESCE(?, costo), precio_venta = COALESCE(?, precio_venta), moneda = COALESCE(?, moneda), categoria = COALESCE(?, categoria), estado = ?, bateria = ?, actualizado_en = ${sqlAhora()} WHERE id = ?`,
         [args.cantidad, args.costo ?? null, args.precio_venta ?? null, args.moneda ?? null, args.categoria ?? null, estado, bateria, existente.id]
       );
-      await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, precio_unitario, nota) VALUES (?, 'entrada', ?, ?, ?)`, [
+      await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, precio_unitario, nota, fecha) VALUES (?, 'entrada', ?, ?, ?, ${sqlAhora()})`, [
         existente.id,
         args.cantidad,
         args.costo ?? null,
@@ -88,7 +88,7 @@ export async function agregarProducto(args: {
       return { ok: true, mensaje: `Sumado stock a "${args.nombre}". Cantidad total ahora: ${actualizado.cantidad}.`, producto: actualizado };
     }
     const info = await run(
-      `INSERT INTO productos (nombre, categoria, cantidad, costo, precio_venta, moneda, nota, estado, bateria) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO productos (nombre, categoria, cantidad, costo, precio_venta, moneda, nota, estado, bateria, actualizado_en) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${sqlAhora()})`,
       [
         args.nombre,
         categoriaSiEsNuevo ?? "Otros",
@@ -101,7 +101,7 @@ export async function agregarProducto(args: {
         equipo.bateria,
       ]
     );
-    await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, precio_unitario, nota) VALUES (?, 'entrada', ?, ?, 'alta inicial')`, [
+    await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, precio_unitario, nota, fecha) VALUES (?, 'entrada', ?, ?, 'alta inicial', ${sqlAhora()})`, [
       info.lastInsertRowid,
       args.cantidad,
       args.costo ?? null,
@@ -118,8 +118,8 @@ export async function ajustarStock(args: { nombre_producto: string; cantidad_del
     if (nuevaCantidad < 0) {
       throw new Error(`El ajuste dejaria stock negativo (${nuevaCantidad}) para "${args.nombre_producto}". Cantidad actual: ${p.cantidad}.`);
     }
-    await run(`UPDATE productos SET cantidad = ?, actualizado_en = datetime('now','localtime') WHERE id = ?`, [nuevaCantidad, p.id]);
-    await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, nota) VALUES (?, 'ajuste', ?, ?)`, [
+    await run(`UPDATE productos SET cantidad = ?, actualizado_en = ${sqlAhora()} WHERE id = ?`, [nuevaCantidad, p.id]);
+    await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, nota, fecha) VALUES (?, 'ajuste', ?, ?, ${sqlAhora()})`, [
       p.id,
       args.cantidad_delta,
       args.motivo ?? "ajuste manual",
@@ -154,7 +154,7 @@ async function registrarVentaEnTransaccion(args: ArgsVenta, categoriaSiEsNuevo: 
   if (!p) {
     const { estado, bateria } = estadoYBateriaDelNombre(args.nombre_producto);
     await run(
-      `INSERT INTO productos (nombre, categoria, cantidad, precio_venta, moneda, nota, estado, bateria) VALUES (?, ?, 0, ?, ?, ?, ?, ?)`,
+      `INSERT INTO productos (nombre, categoria, cantidad, precio_venta, moneda, nota, estado, bateria, actualizado_en) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ${sqlAhora()})`,
       [args.nombre_producto, categoriaSiEsNuevo ?? "Otros", args.precio_unitario ?? null, args.moneda ?? "ARS", NOTA_PRODUCTO_CREADO_AL_VENDER, estado, bateria]
     );
     p = await findProducto(args.nombre_producto);
@@ -176,13 +176,13 @@ async function registrarVentaEnTransaccion(args: ArgsVenta, categoriaSiEsNuevo: 
   if (faltante > 0) {
     await run(`UPDATE productos SET cantidad = cantidad + ? WHERE id = ?`, [faltante, p.id]);
     await run(
-      `INSERT INTO movimientos_stock (producto_id, tipo, cantidad, precio_unitario, nota) VALUES (?, 'entrada', ?, ?, ?)`,
+      `INSERT INTO movimientos_stock (producto_id, tipo, cantidad, precio_unitario, nota, fecha) VALUES (?, 'entrada', ?, ?, ?, ${sqlAhora()})`,
       [p.id, faltante, args.precio_unitario ?? null, NOTA_REPOSICION_AUTOMATICA]
     );
   }
-  await run(`UPDATE productos SET cantidad = cantidad - ?, actualizado_en = datetime('now','localtime') WHERE id = ?`, [args.cantidad, p.id]);
+  await run(`UPDATE productos SET cantidad = cantidad - ?, actualizado_en = ${sqlAhora()} WHERE id = ?`, [args.cantidad, p.id]);
   const salida = await run(
-    `INSERT INTO movimientos_stock (producto_id, tipo, cantidad, persona_id, precio_unitario, moneda, nota) VALUES (?, 'salida', ?, ?, ?, ?, ?)`,
+    `INSERT INTO movimientos_stock (producto_id, tipo, cantidad, persona_id, precio_unitario, moneda, nota, fecha) VALUES (?, 'salida', ?, ?, ?, ?, ?, ${sqlAhora()})`,
     [p.id, args.cantidad, persona?.id ?? null, precioUnitario, moneda, args.nota ?? null]
   );
   // OJO: si habia stock de sobra, "faltante" queda negativo (no representa una reposicion real,
@@ -232,7 +232,7 @@ export async function anularVenta(args: { venta_id: number }) {
     await run(`DELETE FROM movimientos_stock WHERE id = ?`, [id]);
     if (reposicion) await run(`DELETE FROM movimientos_stock WHERE id = ?`, [reposicion.id]);
     const devolver = venta.cantidad - (reposicion?.cantidad ?? 0);
-    await run(`UPDATE productos SET cantidad = cantidad + ?, actualizado_en = datetime('now','localtime') WHERE id = ?`, [devolver, venta.producto_id]);
+    await run(`UPDATE productos SET cantidad = cantidad + ?, actualizado_en = ${sqlAhora()} WHERE id = ?`, [devolver, venta.producto_id]);
 
     let productoBorrado = false;
     if (venta.producto_nota === NOTA_PRODUCTO_CREADO_AL_VENDER) {
@@ -293,7 +293,7 @@ export async function actualizarProductoPorId(
     const otro = await findProducto(nombre);
     if (otro && Number(otro.id) !== Number(id)) throw new Error(`Ya hay otro producto llamado "${nombre}" en el stock.`);
     await run(
-      `UPDATE productos SET nombre = ?, categoria = ?, cantidad = ?, costo = ?, precio_venta = ?, moneda = ?, nota = ?, estado = ?, bateria = ?, actualizado_en = datetime('now','localtime') WHERE id = ?`,
+      `UPDATE productos SET nombre = ?, categoria = ?, cantidad = ?, costo = ?, precio_venta = ?, moneda = ?, nota = ?, estado = ?, bateria = ?, actualizado_en = ${sqlAhora()} WHERE id = ?`,
       [
         nombre,
         campos.categoria ?? actual.categoria,
@@ -308,7 +308,7 @@ export async function actualizarProductoPorId(
       ]
     );
     if (campos.cantidad != null && campos.cantidad !== actual.cantidad) {
-      await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, nota) VALUES (?, 'ajuste', ?, 'edicion manual desde el panel')`, [
+      await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, nota, fecha) VALUES (?, 'ajuste', ?, 'edicion manual desde el panel', ${sqlAhora()})`, [
         id,
         campos.cantidad - actual.cantidad,
       ]);
@@ -372,7 +372,7 @@ export async function registrarPrestamo(args: { persona: string; monto: number; 
   return enTransaccion(async () => {
     const persona = await findOrCreatePersona(args.persona);
     const info = await run(
-      `INSERT INTO prestamos (persona_id, monto_original, monto_pendiente, moneda, interes_pct, nota) VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO prestamos (persona_id, monto_original, monto_pendiente, moneda, interes_pct, nota, fecha) VALUES (?, ?, ?, ?, ?, ?, ${sqlAhora()})`,
       [persona.id, args.monto, args.monto, args.moneda, args.interes_pct ?? 0, args.nota ?? null]
     );
     return { ok: true, mensaje: `Prestamo registrado: ${args.monto} ${args.moneda} a ${args.persona}.`, prestamo_id: info.lastInsertRowid };
@@ -411,7 +411,7 @@ export async function registrarPagoPrestamo(args: { persona: string; monto: numb
       const nuevoPendiente = Math.round((pr.monto_pendiente - aplicado) * 100) / 100;
       const nuevoEstado = nuevoPendiente <= 0 ? "pagado" : "parcial";
       await run(`UPDATE prestamos SET monto_pendiente = ?, estado = ? WHERE id = ?`, [nuevoPendiente, nuevoEstado, pr.id]);
-      await run(`INSERT INTO pagos_prestamo (prestamo_id, monto, nota) VALUES (?, ?, ?)`, [pr.id, aplicado, args.nota ?? null]);
+      await run(`INSERT INTO pagos_prestamo (prestamo_id, monto, nota, fecha) VALUES (?, ?, ?, ${sqlAhora()})`, [pr.id, aplicado, args.nota ?? null]);
       afectados.push({ prestamo_id: pr.id, moneda: pr.moneda, aplicado, nuevoPendiente });
       restante -= aplicado;
     }
@@ -462,7 +462,7 @@ export async function registrarPagoPrestamoPorId(prestamoId: number, monto: numb
     const nuevoPendiente = Math.round((pr.monto_pendiente - aplicado) * 100) / 100;
     const nuevoEstado = nuevoPendiente <= 0 ? "pagado" : "parcial";
     await run(`UPDATE prestamos SET monto_pendiente = ?, estado = ? WHERE id = ?`, [nuevoPendiente, nuevoEstado, prestamoId]);
-    await run(`INSERT INTO pagos_prestamo (prestamo_id, monto, nota) VALUES (?, ?, ?)`, [prestamoId, aplicado, nota ?? null]);
+    await run(`INSERT INTO pagos_prestamo (prestamo_id, monto, nota, fecha) VALUES (?, ?, ?, ${sqlAhora()})`, [prestamoId, aplicado, nota ?? null]);
     return obtenerPrestamo(prestamoId);
   });
 }
@@ -489,8 +489,8 @@ export async function agregarCanje(args: {
   return enTransaccion(async () => {
     const persona = await findOrCreatePersona(args.persona);
     const info = await run(
-      `INSERT INTO canjes (persona_id, descripcion, condicion, valor_tomado, moneda_valor, producto_entregado, saldo_monto, saldo_moneda, nota)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO canjes (persona_id, descripcion, condicion, valor_tomado, moneda_valor, producto_entregado, saldo_monto, saldo_moneda, nota, fecha)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${sqlAhora()})`,
       [
         persona.id,
         args.descripcion,
@@ -730,7 +730,7 @@ function puntajeDestacado(clave: string): number {
 async function asegurarCatalogoInicial() {
   if (await get(`SELECT 1 FROM configuracion WHERE clave = 'catalogo_inicial'`)) return;
   await enTransaccion(async () => {
-    const marca = await run(`INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('catalogo_inicial', datetime('now','localtime'))`);
+    const marca = await run(`INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('catalogo_inicial', ${sqlAhora()})`);
     if (marca.changes === 0) return; // otro pedido lo armo justo al mismo tiempo
     if (Number((await get(`SELECT COUNT(*) as n FROM catalogo_items`)).n) > 0) return;
     const productos = await all(`SELECT nombre, categoria, precio_venta, moneda, estado FROM productos WHERE cantidad > 0 ORDER BY nombre`);
@@ -753,7 +753,7 @@ async function asegurarCatalogoInicial() {
     for (const [i, g] of ordenados.entries()) {
       g.memorias.sort((x: MemoriaCatalogo, y: MemoriaCatalogo) => parseInt(x.capacidad) * (/tb/i.test(x.capacidad) ? 1024 : 1) - parseInt(y.capacidad) * (/tb/i.test(y.capacidad) ? 1024 : 1));
       await run(
-        `INSERT INTO catalogo_items (nombre, categoria, estado, detalle, precio, moneda, memorias, orden) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO catalogo_items (nombre, categoria, estado, detalle, precio, moneda, memorias, orden, creado_en, actualizado_en) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${sqlAhora()}, ${sqlAhora()})`,
         [g.nombre, g.categoria, g.estado, g.detalle, g.precio, g.moneda, JSON.stringify(g.memorias), i + 1]
       );
     }
@@ -809,7 +809,7 @@ export async function crearItemCatalogo(datos: any) {
   const v = validarItemCatalogo(datos);
   const ultimo = await get(`SELECT COALESCE(MAX(orden), 0) as orden FROM catalogo_items`);
   const info = await run(
-    `INSERT INTO catalogo_items (nombre, categoria, estado, detalle, precio, moneda, memorias, disponible, visible, orden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO catalogo_items (nombre, categoria, estado, detalle, precio, moneda, memorias, disponible, visible, orden, creado_en, actualizado_en) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${sqlAhora()}, ${sqlAhora()})`,
     [v.nombre, v.categoria, v.estado, v.detalle, v.precio, v.moneda, JSON.stringify(v.memorias), v.disponible ? 1 : 0, v.visible ? 1 : 0, Number(ultimo.orden) + 1]
   );
   return { ok: true, id: info.lastInsertRowid, mensaje: `Publicación "${v.nombre}" creada.` };
@@ -824,7 +824,7 @@ export async function actualizarItemCatalogo(id: number, campos: any) {
   const v = validarItemCatalogo({ ...a, ...campos, memorias: campos.memorias ?? a.memorias });
   await run(
     `UPDATE catalogo_items SET nombre = ?, categoria = ?, estado = ?, detalle = ?, precio = ?, moneda = ?, memorias = ?, disponible = ?, visible = ?,
-       actualizado_en = datetime('now','localtime') WHERE id = ?`,
+       actualizado_en = ${sqlAhora()} WHERE id = ?`,
     [v.nombre, v.categoria, v.estado, v.detalle, v.precio, v.moneda, JSON.stringify(v.memorias), v.disponible ? 1 : 0, v.visible ? 1 : 0, id]
   );
   return { ok: true, mensaje: `Publicación "${v.nombre}" actualizada.` };
@@ -898,7 +898,7 @@ export async function cambiarVisibilidadCatalogo(args: { publicacion?: string; i
   }
   if (!elegido) throw new Error(`No existe la publicación #${args.id}.`);
   const visible = args.visible !== false;
-  await run(`UPDATE catalogo_items SET visible = ?, actualizado_en = datetime('now','localtime') WHERE id = ?`, [visible ? 1 : 0, elegido.id]);
+  await run(`UPDATE catalogo_items SET visible = ?, actualizado_en = ${sqlAhora()} WHERE id = ?`, [visible ? 1 : 0, elegido.id]);
   const nombre = [elegido.nombre, elegido.estado, elegido.detalle].filter(Boolean).join(" · ");
   return {
     ok: true,
@@ -977,9 +977,9 @@ export async function guardarFotoCatalogo(args: { modelo: string; color: string;
   if (datos.length > MAX_BYTES_FOTO) throw new Error("La imagen pesa demasiado (máximo 1,5 MB).");
   const hex = /^#[0-9a-f]{6}$/i.test(args.color_hex ?? "") ? args.color_hex! : null;
   await run(
-    `INSERT INTO fotos_catalogo (modelo, modelo_clave, color, color_clave, color_hex, mime, datos) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO fotos_catalogo (modelo, modelo_clave, color, color_clave, color_hex, mime, datos, actualizado_en) VALUES (?, ?, ?, ?, ?, ?, ?, ${sqlAhora()})
      ON CONFLICT(modelo_clave, color_clave) DO UPDATE SET modelo = excluded.modelo, color = excluded.color, color_hex = excluded.color_hex,
-       mime = excluded.mime, datos = excluded.datos, actualizado_en = datetime('now','localtime')`,
+       mime = excluded.mime, datos = excluded.datos, actualizado_en = ${sqlAhora()}`,
     [modelo, claveModelo(modelo), color, normalizarTexto(color), hex, partes[1], datos]
   );
   return { ok: true, mensaje: `Foto de ${modelo} (${color}) guardada.` };
@@ -1011,7 +1011,7 @@ export async function crearPedidoPendiente(args: {
   const precioSugerido = args.precio_unitario ?? p?.precio_venta ?? null;
   const moneda = args.moneda ?? p?.moneda ?? "ARS";
   const info = await run(
-    `INSERT INTO pedidos_pendientes (cliente_telefono, cliente_nombre, producto, cantidad, precio_unitario, moneda, nota) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO pedidos_pendientes (cliente_telefono, cliente_nombre, producto, cantidad, precio_unitario, moneda, nota, creado_en) VALUES (?, ?, ?, ?, ?, ?, ?, ${sqlAhora()})`,
     [args.cliente_telefono, args.cliente_nombre ?? null, args.producto, args.cantidad, precioSugerido, moneda, args.nota ?? null]
   );
   return {
@@ -1040,7 +1040,7 @@ async function requierePedidoPendiente(id: number) {
 // dos lo consigue: la otra recibe el error y no se registra la venta dos veces.
 async function marcarPedidoResuelto(id: number, estado: "aprobado" | "rechazado", nota?: string | null) {
   const info = await run(
-    `UPDATE pedidos_pendientes SET estado = ?, resuelto_en = datetime('now','localtime'), nota = COALESCE(?, nota) WHERE id = ? AND estado = 'pendiente'`,
+    `UPDATE pedidos_pendientes SET estado = ?, resuelto_en = ${sqlAhora()}, nota = COALESCE(?, nota) WHERE id = ? AND estado = 'pendiente'`,
     [estado, nota ?? null, id]
   );
   if (info.changes === 0) throw new Error(`El pedido #${id} ya fue resuelto por otra persona, no se puede volver a resolver.`);
@@ -1249,7 +1249,7 @@ export async function listarRespuestasPredefinidas() {
 }
 
 export async function agregarRespuestaPredefinida(args: { disparador: string; respuesta: string; activo?: boolean }) {
-  const info = await run(`INSERT INTO respuestas_predefinidas (disparador, respuesta, activo) VALUES (?, ?, ?)`, [
+  const info = await run(`INSERT INTO respuestas_predefinidas (disparador, respuesta, activo, creado_en) VALUES (?, ?, ?, ${sqlAhora()})`, [
     args.disparador,
     args.respuesta,
     args.activo === false ? 0 : 1,
@@ -1318,7 +1318,7 @@ export async function registrarLog(entrada: {
   herramientas_usadas?: string[];
 }) {
   await run(
-    `INSERT INTO logs_bot (usuario_id, usuario_nombre, tipo, entrada, salida, herramientas_usadas) VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO logs_bot (usuario_id, usuario_nombre, tipo, entrada, salida, herramientas_usadas, fecha) VALUES (?, ?, ?, ?, ?, ?, ${sqlAhora()})`,
     [
       entrada.usuario_id ?? null,
       entrada.usuario_nombre ?? null,
@@ -1352,32 +1352,10 @@ export async function listarLogs(limite?: number) {
 // reintenta un update durante unas horas, asi que 7 dias de updates_procesados sobra; los logs
 // se guardan 90 dias (el panel igual muestra solo los ultimos). Lo llama el chequeo periodico.
 // ---------- fecha de Argentina ----------
-// La base (Turso) corre en hora UTC, asi que su "localtime" no es la hora de aca: a las 22 hs
-// de Argentina ya es el dia siguiente. Para los dashboards el "hoy" se calcula en hora argentina
-// y las fechas guardadas se corren a esa hora antes de agruparlas por dia.
-const ZONA_ARGENTINA = "America/Argentina/Buenos_Aires";
-
+// La base (Turso) corre en hora UTC; las fechas se guardan con la hora argentina explicita (ver
+// sqlAhora en db.ts) y el "hoy" se calcula aca con la zona horaria.
 export function hoyEnArgentina(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: ZONA_ARGENTINA, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-}
-
-// Diferencia de la hora argentina con UTC, en segundos (hoy: -10800, o sea -3 hs).
-function desfaseArgentina(fecha = new Date()): number {
-  const p = Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", { timeZone: ZONA_ARGENTINA, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
-      .formatToParts(fecha)
-      .map((x) => [x.type, x.value])
-  );
-  const comoUtc = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second));
-  return Math.round((comoUtc - fecha.getTime()) / 1000 / 60) * 60;
-}
-
-// Modificador de SQLite que pasa una fecha guardada (en la hora local de la base, sea cual sea)
-// a la hora argentina. En Turso queda "-10800 seconds"; con una base local en hora argentina, "+0".
-async function modificadorArgentina(): Promise<string> {
-  const r = await get(`SELECT CAST(strftime('%s', datetime('now','localtime')) AS INTEGER) - CAST(strftime('%s','now') AS INTEGER) as desfase`);
-  const corrimiento = desfaseArgentina() - Math.round(Number(r?.desfase ?? 0) / 60) * 60;
-  return `${corrimiento >= 0 ? "+" : ""}${corrimiento} seconds`;
 }
 
 // ---------- gastos del negocio ----------
@@ -1392,7 +1370,7 @@ function categoriaDeGasto(concepto: string): string {
   if (/alquiler|expensa/.test(t)) return "Alquiler";
   if (/sueldo|salario|aguinaldo|jornal|empleado|vacaciones/.test(t)) return "Sueldos";
   if (/\bluz\b|\bagua\b|\bgas\b|internet|telefono|celular de la empresa|abono|edenor|edesur|metrogas|servicio/.test(t)) return "Servicios";
-  if (/envio|flete|correo|andreani|oca\b|cadete|moto|uber|nafta|combustible/.test(t)) return "Envíos";
+  if (/envio|flete|correo|andreani|oca\b|cadete|moto|uber|cabify|taxi|remis|nafta|combustible|peaje|estacionamiento/.test(t)) return "Envíos";
   if (/publicidad|anuncio|ads\b|instagram|facebook|meta\b|google|marketing|promocion/.test(t)) return "Publicidad";
   if (/impuesto|afip|arca|iibb|ingresos brutos|monotributo|iva\b|tasa|municipal/.test(t)) return "Impuestos";
   if (/comision|mercado ?pago|posnet|tarjeta|banco|transferencia/.test(t)) return "Comisiones";
@@ -1421,7 +1399,7 @@ export async function registrarGasto(args: { concepto: string; monto: number; mo
   const categoria = validarCategoriaGasto(args.categoria, concepto);
   const fecha = validarFecha(args.fecha) ?? hoyEnArgentina();
   const info = await run(
-    `INSERT INTO gastos (fecha, concepto, categoria, monto, moneda, nota) VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO gastos (fecha, concepto, categoria, monto, moneda, nota, creado_en) VALUES (?, ?, ?, ?, ?, ?, ${sqlAhora()})`,
     [fecha, concepto, categoria, monto, moneda, args.nota ?? null]
   );
   const gasto = await get(`SELECT * FROM gastos WHERE id = ?`, [info.lastInsertRowid]);
@@ -1475,7 +1453,7 @@ export async function guardarObjetivos(args: { mes?: string; facturacion?: numbe
   };
   const moneda = args.moneda === "ARS" ? "ARS" : "USD";
   await run(
-    `INSERT INTO objetivos (mes, facturacion, ganancia, unidades, moneda, actualizado_en) VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))
+    `INSERT INTO objetivos (mes, facturacion, ganancia, unidades, moneda, actualizado_en) VALUES (?, ?, ?, ?, ?, ${sqlAhora()})
      ON CONFLICT(mes) DO UPDATE SET facturacion = excluded.facturacion, ganancia = excluded.ganancia, unidades = excluded.unidades, moneda = excluded.moneda, actualizado_en = excluded.actualizado_en`,
     [mes, numero(args.facturacion), numero(args.ganancia), numero(args.unidades) == null ? null : Math.round(numero(args.unidades)!), moneda]
   );
@@ -1488,40 +1466,38 @@ export async function guardarObjetivos(args: { mes?: string; facturacion?: numbe
 // Los montos van en su moneda original; el panel los pasa a una sola con el dolar blue.
 export async function datosDashboard() {
   const hoy = hoyEnArgentina();
-  const mod = await modificadorArgentina();
   const [anio, mes] = hoy.split("-").map(Number);
   const desde = new Date(Date.UTC(anio, mes - 1 - 24, 1)).toISOString().slice(0, 10);
   const [ventas, compras, gastos, prestamos, objetivos, stock, porCobrar, canjes] = await Promise.all([
     all(
-      `SELECT date(m.fecha, ?) as fecha, m.producto_id, p.nombre as producto, COALESCE(p.categoria, 'Otros') as categoria, m.persona_id as cliente_id,
+      `SELECT date(m.fecha) as fecha, m.producto_id, p.nombre as producto, COALESCE(p.categoria, 'Otros') as categoria, m.persona_id as cliente_id,
               COALESCE(m.moneda, 'ARS') as moneda, COALESCE(p.moneda, 'USD') as costo_moneda,
               SUM(m.cantidad) as unidades, COUNT(*) as operaciones,
               SUM(CASE WHEN m.precio_unitario IS NOT NULL THEN m.precio_unitario * m.cantidad ELSE 0 END) as facturado,
               SUM(CASE WHEN m.precio_unitario IS NOT NULL AND p.costo IS NOT NULL THEN m.precio_unitario * m.cantidad ELSE 0 END) as facturado_con_costo,
               SUM(CASE WHEN m.precio_unitario IS NOT NULL AND p.costo IS NOT NULL THEN p.costo * m.cantidad ELSE 0 END) as costo
        FROM movimientos_stock m JOIN productos p ON p.id = m.producto_id
-       WHERE m.tipo = 'salida' AND date(m.fecha, ?) >= ?
+       WHERE m.tipo = 'salida' AND date(m.fecha) >= ?
        GROUP BY 1, m.producto_id, m.persona_id, COALESCE(m.moneda, 'ARS')`,
-      [mod, mod, desde]
+      [desde]
     ),
     // Compras de mercaderia: lo que entro al stock a su costo. En la reposicion automatica (compra
     // y venta en el momento) el precio guardado es el de venta, asi que ahi se usa el costo.
     all(
-      `SELECT date(m.fecha, ?) as fecha, COALESCE(p.moneda, 'USD') as moneda,
+      `SELECT date(m.fecha) as fecha, COALESCE(p.moneda, 'USD') as moneda,
               SUM(m.cantidad * COALESCE(CASE WHEN m.nota = ? THEN NULL ELSE m.precio_unitario END, p.costo, 0)) as monto
        FROM movimientos_stock m JOIN productos p ON p.id = m.producto_id
-       WHERE m.tipo = 'entrada' AND date(m.fecha, ?) >= ?
+       WHERE m.tipo = 'entrada' AND date(m.fecha) >= ?
        GROUP BY 1, COALESCE(p.moneda, 'USD')`,
-      [mod, NOTA_REPOSICION_AUTOMATICA, mod, desde]
+      [NOTA_REPOSICION_AUTOMATICA, desde]
     ),
-    // Los gastos ya se guardan con la fecha de Argentina (ver registrarGasto).
     all(`SELECT id, date(fecha) as fecha, concepto, categoria, monto, moneda, nota FROM gastos WHERE date(fecha) >= ? ORDER BY date(fecha) DESC, id DESC`, [desde]),
     all(
-      `SELECT date(fecha, ?) as fecha, 'otorgado' as tipo, moneda, SUM(monto_original) as monto FROM prestamos WHERE date(fecha, ?) >= ? GROUP BY 1, moneda
+      `SELECT date(fecha) as fecha, 'otorgado' as tipo, moneda, SUM(monto_original) as monto FROM prestamos WHERE date(fecha) >= ? GROUP BY 1, moneda
        UNION ALL
-       SELECT date(pp.fecha, ?) as fecha, 'cobrado' as tipo, pr.moneda, SUM(pp.monto) as monto FROM pagos_prestamo pp JOIN prestamos pr ON pr.id = pp.prestamo_id
-       WHERE date(pp.fecha, ?) >= ? GROUP BY 1, pr.moneda`,
-      [mod, mod, desde, mod, mod, desde]
+       SELECT date(pp.fecha) as fecha, 'cobrado' as tipo, pr.moneda, SUM(pp.monto) as monto FROM pagos_prestamo pp JOIN prestamos pr ON pr.id = pp.prestamo_id
+       WHERE date(pp.fecha) >= ? GROUP BY 1, pr.moneda`,
+      [desde, desde]
     ),
     listarObjetivos(),
     all(
@@ -1546,7 +1522,7 @@ export async function datosDashboard() {
 
 export async function limpiarRegistrosViejos() {
   const updates = await run(`DELETE FROM updates_procesados WHERE procesado_en < datetime('now','localtime','-7 days')`);
-  const logs = await run(`DELETE FROM logs_bot WHERE fecha < datetime('now','localtime','-90 days')`);
+  const logs = await run(`DELETE FROM logs_bot WHERE fecha < ${sqlAhora("-90 days")}`);
   return { updates_borrados: updates.changes, logs_borrados: logs.changes };
 }
 

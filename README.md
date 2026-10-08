@@ -72,7 +72,7 @@ Dejalo corriendo (la terminal abierta) mientras lo querés usar así, local. Si 
 - "Le presté 500 dólares a María Gómez"
 - "María me pagó 200"
 - "Me trajeron un Samsung S21 en canje, lo tomo a 300 dólares"
-- "Pagué 300 mil de alquiler" (gasto del negocio: va a la ganancia real y al flujo de caja)
+- "Pagué 300 mil de alquiler" o "Gasté 20 lucas en nafta" (gasto del negocio: se anota solo y va a la ganancia real y al flujo de caja)
 - "¿Cuánto stock tengo de iPhone 12?"
 - "¿Cómo estamos en general?"
 - "¿Qué me debe María?"
