@@ -565,6 +565,25 @@ export async function consultarStockPublico(args: { nombre_producto?: string }) 
   return { productos: (await listarProductos()).map(aPublico) };
 }
 
+// Catalogo publico (pagina /catalogo, la ve cualquiera sin clave): solo productos con stock y
+// solo lo que un cliente puede ver. Nunca el costo, ni notas internas, ni la cantidad exacta
+// (eso es informacion del negocio): solo si quedan pocas unidades.
+const POCAS_UNIDADES = 3;
+
+export async function listarCatalogo() {
+  const productos = await all(
+    `SELECT id, nombre, categoria, cantidad, precio_venta, moneda FROM productos WHERE cantidad > 0 ORDER BY categoria, nombre`
+  );
+  return productos.map((p) => ({
+    id: p.id,
+    nombre: p.nombre,
+    categoria: p.categoria ?? "Otros",
+    precio: p.precio_venta,
+    moneda: p.moneda,
+    pocas_unidades: p.cantidad <= POCAS_UNIDADES,
+  }));
+}
+
 // ---------- pedidos pendientes (clientes por WhatsApp) ----------
 
 export async function crearPedidoPendiente(args: {

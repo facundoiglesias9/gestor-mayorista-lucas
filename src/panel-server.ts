@@ -68,6 +68,9 @@ app.use("/api", (req, res, next) => {
   // El chequeo automatico del webhook (GitHub Actions, cada 30 min) tampoco tiene la clave del
   // panel: se autentica con su propio CRON_SECRET, verificado en api/index.ts.
   if (req.path === "/cron/verificar-webhook") return next();
+  // El catalogo es publico a proposito (es para clientes): solo devuelve lo que un cliente
+  // puede ver, ver listarCatalogo en repo.ts.
+  if (req.path === "/catalogo") return next();
   const ip = req.ip ?? "desconocida";
   if ((intentosVigentes(ip)?.cantidad ?? 0) >= MAX_INTENTOS_FALLIDOS) {
     return res.status(429).json({ ok: false, error: "Demasiados intentos con clave incorrecta. Esperá 15 minutos y probá de nuevo." });
@@ -140,20 +143,39 @@ app.get("/api/resumen", envolver(() => repo.consultarEstadoGeneral()));
 
 // ---------- cotizacion del dolar (blue y cripto/USDT), con cache de 60s ----------
 let dolarCache: { data: any; ts: number } | null = null;
-app.get(
-  "/api/dolar",
-  envolver(async () => {
-    if (dolarCache && Date.now() - dolarCache.ts < 60_000) return dolarCache.data;
-    const [blueResp, criptoResp] = await Promise.all([
-      fetch("https://dolarapi.com/v1/dolares/blue"),
-      fetch("https://dolarapi.com/v1/dolares/cripto"),
-    ]);
-    if (!blueResp.ok || !criptoResp.ok) throw new Error("No se pudo obtener la cotización del dólar.");
-    const datos = { blue: await blueResp.json(), cripto: await criptoResp.json() };
-    dolarCache = { data: datos, ts: Date.now() };
-    return datos;
-  })
-);
+
+async function obtenerDolar() {
+  if (dolarCache && Date.now() - dolarCache.ts < 60_000) return dolarCache.data;
+  const [blueResp, criptoResp] = await Promise.all([
+    fetch("https://dolarapi.com/v1/dolares/blue"),
+    fetch("https://dolarapi.com/v1/dolares/cripto"),
+  ]);
+  if (!blueResp.ok || !criptoResp.ok) throw new Error("No se pudo obtener la cotización del dólar.");
+  const datos = { blue: await blueResp.json(), cripto: await criptoResp.json() };
+  dolarCache = { data: datos, ts: Date.now() };
+  return datos;
+}
+
+app.get("/api/dolar", envolver(() => obtenerDolar()));
+
+// ---------- catalogo publico (pagina /catalogo, para clientes, sin clave) ----------
+app.get("/api/catalogo", async (_req, res) => {
+  try {
+    const [productos, dolar] = await Promise.all([repo.listarCatalogo(), obtenerDolar().catch(() => null)]);
+    // Que Vercel lo guarde 60 s: si muchos clientes entran a la vez, no le pegan todos a la base.
+    res.setHeader("Cache-Control", "public, max-age=30, s-maxage=60, stale-while-revalidate=300");
+    res.json({
+      tienda: {
+        nombre: process.env.CATALOGO_NOMBRE || "Gestor Mayorista",
+        whatsapp: (process.env.CATALOGO_WHATSAPP || "").replace(/\D/g, "") || null,
+      },
+      dolar_blue_venta: dolar?.blue?.venta ?? null,
+      productos,
+    });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: "No se pudo cargar el catálogo." });
+  }
+});
 
 // ---------- respuestas predefinidas ----------
 app.get("/api/respuestas", envolver(() => repo.listarRespuestasPredefinidas()));
@@ -214,6 +236,8 @@ app.get(
 );
 
 // ---------- frontend estatico ----------
+// /catalogo sin el ".html" (en Vercel lo resuelve el rewrite de vercel.json).
+app.get("/catalogo", (_req, res) => res.sendFile(path.join(__dirname, "..", "public", "catalogo.html")));
 app.use(express.static(path.join(__dirname, "..", "public")));
 
 export function iniciarPanel() {
