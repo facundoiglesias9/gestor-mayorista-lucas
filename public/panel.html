@@ -141,43 +141,39 @@
     <main id="app-main">
 
       <section id="tab-resumen" class="panel">
-        <div class="cards cards-kpi" id="resumen-cards"></div>
-        <div class="grilla-bloques">
-          <div class="bloque">
-            <div class="bloque-header">
-              <div>
-                <h3 class="bloque-titulo">Préstamos activos</h3>
-                <p class="subtitulo" id="sub-resumen-prestamos"></p>
-              </div>
-              <button type="button" class="btn-link" onclick="irATab('prestamos')">Ver todos
-                <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-              </button>
-            </div>
-            <div class="tabla-wrap">
-              <table id="tabla-resumen-prestamos">
-                <thead><tr><th>Persona</th><th class="num">Pendiente</th><th>Estado</th></tr></thead>
-                <tbody></tbody>
-              </table>
-            </div>
+        <!-- Dashboards: los arma dashboard.js con /api/dashboard. Los filtros de esta fila valen
+             para todo lo de abajo. -->
+        <div class="dash-barra">
+          <div class="segmentado dash-esquemas" id="dash-esquemas" role="tablist" aria-label="Dashboards">
+            <button type="button" role="tab" data-esquema="ejecutivo" class="activo" aria-selected="true">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16"/><path d="M6 15l4-4 3 3 5-6"/><path d="M15 8h3v3"/></svg>Ejecutivo
+            </button>
+            <button type="button" role="tab" data-esquema="ventas" aria-selected="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V11M12 20V5M19 20v-7"/></svg>Ventas
+            </button>
+            <button type="button" role="tab" data-esquema="financiero" aria-selected="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18"/><path d="M7 15h3"/></svg>Financiero
+            </button>
           </div>
-          <div class="bloque">
-            <div class="bloque-header">
-              <div>
-                <h3 class="bloque-titulo">Plan canje en curso</h3>
-                <p class="subtitulo" id="sub-resumen-canjes"></p>
-              </div>
-              <button type="button" class="btn-link" onclick="irATab('prendas')">Ver todos
-                <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-              </button>
-            </div>
-            <div class="tabla-wrap">
-              <table id="tabla-resumen-canjes">
-                <thead><tr><th>Persona</th><th>Celular</th><th class="num">Saldo</th></tr></thead>
-                <tbody></tbody>
-              </table>
+          <div class="dash-filtros">
+            <label class="dash-select">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+              <select id="dash-periodo" aria-label="Período">
+                <option value="mes">Este mes</option>
+                <option value="mes-anterior">Mes pasado</option>
+                <option value="3m">Últimos 3 meses</option>
+                <option value="anio">Este año</option>
+                <option value="12m">Últimos 12 meses</option>
+              </select>
+            </label>
+            <div class="segmentado segmentado-chico" id="dash-moneda" role="group" aria-label="Moneda">
+              <button type="button" data-moneda="USD" class="activo" aria-pressed="true">U$D</button>
+              <button type="button" data-moneda="ARS" aria-pressed="false">$</button>
             </div>
           </div>
         </div>
+        <p class="dash-nota" id="dash-nota"></p>
+        <div id="dash-contenido" class="dash-contenido"></div>
       </section>
 
       <section id="tab-stock" class="panel oculto">
@@ -657,6 +653,52 @@
   </nav>
 </div>
 
+<dialog id="dialogo-objetivos">
+  <form id="form-objetivos">
+    <div class="dialogo-header">
+      <h3 class="dialogo-titulo">Objetivos mensuales</h3>
+      <p class="ayuda">Valen desde el mes que elijas en adelante, hasta que cargues otros. Dejá vacío lo que no quieras medir.</p>
+    </div>
+    <div class="fila-campos">
+      <label>Desde el mes<input name="mes" type="month" required /></label>
+      <label>Moneda<select name="moneda"><option value="USD">Dólares (U$D)</option><option value="ARS">Pesos ($)</option></select></label>
+    </div>
+    <p class="ayuda ayuda-campo" id="objetivos-vigente"></p>
+    <div class="fila-campos">
+      <label>Facturación por mes<input name="facturacion" type="number" min="0" step="0.01" placeholder="Ej: 20000" /></label>
+      <label>Ganancia bruta por mes<input name="ganancia" type="number" min="0" step="0.01" placeholder="Ej: 4000" /></label>
+    </div>
+    <label>Unidades vendidas por mes<input name="unidades" type="number" min="0" step="1" placeholder="Ej: 40" /></label>
+    <div class="dialogo-botones">
+      <button type="button" class="btn-secundario" onclick="cerrarDialogo('dialogo-objetivos')">Cancelar</button>
+      <button type="submit" class="btn-primario">Guardar objetivos</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dialogo-gasto">
+  <form id="form-gasto">
+    <div class="dialogo-header">
+      <h3 class="dialogo-titulo">Registrar gasto</h3>
+      <p class="ayuda">Lo que pagás y no es mercadería: alquiler, sueldos, envíos, publicidad, impuestos… También lo podés cargar por Telegram.</p>
+    </div>
+    <label>Concepto<input name="concepto" placeholder="Ej: Alquiler del local" autocomplete="off" required /></label>
+    <div class="fila-campos">
+      <label>Monto<input name="monto" type="number" min="0.01" step="0.01" placeholder="Monto" required /></label>
+      <label>Moneda<select name="moneda"><option value="ARS">Pesos ($)</option><option value="USD">Dólares (U$D)</option></select></label>
+    </div>
+    <div class="fila-campos">
+      <label>Categoría<select name="categoria"><option value="">Detectar sola</option></select></label>
+      <label>Fecha<input name="fecha" type="date" required /></label>
+    </div>
+    <label>Nota (opcional)<input name="nota" placeholder="Opcional" autocomplete="off" /></label>
+    <div class="dialogo-botones">
+      <button type="button" class="btn-secundario" onclick="cerrarDialogo('dialogo-gasto')">Cancelar</button>
+      <button type="submit" class="btn-primario">Registrar gasto</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- Confirmacion propia (reemplaza los confirm()/prompt() grises del navegador). Ver confirmar() en app.js. -->
 <dialog id="dialogo-confirmar" class="dialogo-chico">
   <form id="form-confirmar">
@@ -677,6 +719,9 @@
 
 <div id="toast" role="status" aria-live="polite"></div>
 
+<!-- graficos.js y dashboard.js van antes: app.js puede pedir el Resumen apenas valida la clave. -->
+<script src="/graficos.js"></script>
+<script src="/dashboard.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

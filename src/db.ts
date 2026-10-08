@@ -255,6 +255,30 @@ CREATE TABLE IF NOT EXISTS configuracion (
   valor TEXT
 );
 
+-- Gastos del negocio que no son mercaderia (alquiler, sueldos, envios, publicidad...): con
+-- esto el dashboard Financiero calcula la ganancia real y el flujo de caja.
+CREATE TABLE IF NOT EXISTS gastos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  fecha TEXT NOT NULL DEFAULT (date('now', 'localtime')),
+  concepto TEXT NOT NULL,
+  categoria TEXT NOT NULL DEFAULT 'Otros',
+  monto REAL NOT NULL,
+  moneda TEXT NOT NULL DEFAULT 'ARS' CHECK (moneda IN ('USD','ARS')),
+  nota TEXT,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+-- Objetivos mensuales (facturacion, ganancia y unidades). Cada fila vale desde ese mes
+-- ('YYYY-MM') hasta el mes en que se cargue otra: se definen una vez y quedan.
+CREATE TABLE IF NOT EXISTS objetivos (
+  mes TEXT PRIMARY KEY,
+  facturacion REAL,
+  ganancia REAL,
+  unidades INTEGER,
+  moneda TEXT NOT NULL DEFAULT 'USD' CHECK (moneda IN ('USD','ARS')),
+  actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
 -- Registro de actividad del bot (para verlo desde el panel sin depender de logs de Vercel).
 CREATE TABLE IF NOT EXISTS logs_bot (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

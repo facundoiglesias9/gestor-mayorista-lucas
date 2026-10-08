@@ -159,6 +159,20 @@ async function obtenerDolar() {
 
 app.get("/api/dolar", envolver(() => obtenerDolar()));
 
+// ---------- dashboards del Resumen, gastos y objetivos ----------
+app.get(
+  "/api/dashboard",
+  envolver(async () => {
+    const [datos, dolar] = await Promise.all([repo.datosDashboard(), obtenerDolar().catch(() => null)]);
+    return { ...datos, dolar_blue_venta: dolar?.blue?.venta ?? null, categorias_gasto: repo.CATEGORIAS_GASTO };
+  })
+);
+app.get("/api/gastos", envolver((req) => repo.listarGastos({ desde: req.query.desde as string, hasta: req.query.hasta as string })));
+app.post("/api/gastos", envolver((req) => repo.registrarGasto(req.body)));
+app.delete("/api/gastos/:id", envolver((req) => repo.anularGasto({ gasto_id: Number(req.params.id) })));
+app.get("/api/objetivos", envolver(() => repo.listarObjetivos()));
+app.put("/api/objetivos", envolver((req) => repo.guardarObjetivos(req.body)));
+
 // ---------- catalogo publico (pagina /catalogo, para clientes, sin clave) ----------
 app.get("/api/catalogo", async (_req, res) => {
   try {
