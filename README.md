@@ -156,6 +156,7 @@ El panel y el chat de Telegram comparten exactamente la misma base de datos (Tur
 La dirección principal (ej. `https://gestor-mayorista-lucas.vercel.app`) es un catálogo público, para pasarle a los clientes: buscador, filtros, memorias y colores para elegir, y un botón para consultar por WhatsApp. No muestra costos, notas internas ni el stock.
 
 - El catálogo va **aparte del stock**: son "publicaciones" que se manejan desde el panel, en la sección **Catálogo** (nombre, estado, memorias con su precio, si lo tenés o no, si se muestra o no, y el orden). La primera vez se arma solo con lo que haya en stock.
+- **Estado**: Sellado, Usado - como nuevo o Usado. En los usados, el cliente elige entre los equipos de ese modelo que tengas en stock según la batería: se toma del % que diga el nombre en el stock (ej. "Iphone 15 pro 128gb 85%"), con su precio de venta, y cuando uno se vende desaparece solo.
 - **Visible** apagado saca una publicación de la vista de los clientes sin borrarla; **Lo tengo** apagado la muestra como "sin stock". Por Telegram podés pedirle al bot que saque o vuelva a mostrar una publicación ("sacá el iPhone 15 Pro del catálogo"): solo la oculta, nunca la borra.
 - Las fotos se cargan en la misma sección: una por modelo y color. Cada publicación muestra las fotos de su modelo con puntitos de color para cambiar entre ellas.
 - El número de WhatsApp de los botones sale de la variable `CATALOGO_WHATSAPP` (con código de país, ej. `5491112345678`).

@@ -272,4 +272,13 @@ CREATE TABLE IF NOT EXISTS logs_bot (
   // Identifica QUIEN tiene tomado el bloqueo de una conversacion, para que cada mensaje
   // libere solo el suyo (ver intentarBloquear/liberarBloqueo en repo.ts).
   await agregarColumnaSiFalta("bloqueos_conversacion", "token", "TEXT");
+  // Estados del catalogo: se unificaron en "Sellado", "Usado - como nuevo" y "Usado". Y la
+  // bateria de los usados ahora sale del stock (el cliente la elige en el catalogo), asi que se
+  // saca el "Bateria NN%" fijo que habia puesto el armado inicial en el detalle. Son idempotentes:
+  // corren en cada arranque y despues de la primera vez no cambian nada.
+  await db.executeMultiple(`
+UPDATE catalogo_items SET estado = 'Sellado' WHERE estado IN ('Nuevo sellado', 'Nuevo');
+UPDATE catalogo_items SET estado = 'Usado - como nuevo' WHERE estado = 'Seminuevo';
+UPDATE catalogo_items SET detalle = NULL WHERE detalle GLOB 'Batería [0-9]*%';
+`);
 }

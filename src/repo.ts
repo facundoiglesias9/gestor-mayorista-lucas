@@ -624,18 +624,34 @@ function analizarNombreProducto(nombre: string) {
   const conUnidad = /(\d+)\s?(gb|tb)\b/.exec(t);
   const suelta = esCelular ? /\b(64|128|256|512)\b/.exec(t) : null;
   const capacidad = conUnidad ? `${conUnidad[1]} ${conUnidad[2].toUpperCase()}` : suelta ? `${suelta[1]} GB` : null;
-  const estado = /\bsellad[oa]s?\b/.test(t)
-    ? "Nuevo sellado"
-    : /\bsemi/.test(t)
-      ? "Seminuevo"
-      : /\busad[oa]s?\b/.test(t)
-        ? "Usado"
-        : /\bnuev[oa]s?\b/.test(t)
-          ? "Nuevo"
-          : null;
-  const bateria = /\b(\d{2,3})\s?%/.exec(nombre);
-  const detalle = bateria && Number(bateria[1]) <= 100 ? `Batería ${bateria[1]}%` : null;
-  return { clave, nombre: clave.startsWith("iphone") ? nombreModeloBonito(clave) : String(nombre).trim(), capacidad, estado, detalle };
+  const estado = /\bsellad[oa]s?\b|\bnuev[oa]s?\b/.test(t) ? "Sellado" : /\bsemi/.test(t) ? "Usado - como nuevo" : /\busad[oa]s?\b/.test(t) ? "Usado" : null;
+  const porcentaje = /\b(\d{2,3})\s?%/.exec(nombre);
+  const bateria = porcentaje && Number(porcentaje[1]) <= 100 ? Number(porcentaje[1]) : null;
+  return { clave, nombre: clave.startsWith("iphone") ? nombreModeloBonito(clave) : String(nombre).trim(), capacidad, estado, bateria, detalle: null as string | null };
+}
+
+// Equipos del stock que tienen el % de bateria en el nombre ("Iphone 15 pro 128gb 79%"): en el
+// catalogo, el cliente elige entre los que hay de ese modelo segun la bateria. Se toman del
+// stock en el momento, asi que cuando uno se vende (queda en 0) desaparece solo.
+type UnidadEnStock = { clave: string; bateria: number; capacidad: string | null; precio: number | null; moneda: string };
+
+async function unidadesConBateria(): Promise<UnidadEnStock[]> {
+  const productos = await all(`SELECT nombre, precio_venta, moneda FROM productos WHERE cantidad > 0`);
+  return productos
+    .map((p) => ({ ...analizarNombreProducto(p.nombre), precio: p.precio_venta ?? null, moneda: String(p.moneda ?? "USD") }))
+    .filter((u) => u.bateria != null)
+    .map((u) => ({ clave: u.clave, bateria: u.bateria!, capacidad: u.capacidad, precio: u.precio, moneda: u.moneda }));
+}
+
+// Las unidades que le corresponden a una publicacion: mismo modelo, y solo si no es "Sellado"
+// (un sellado no tiene bateria usada). De la mejor bateria a la peor.
+function unidadesDeItem(item: { nombre: string; estado: string | null }, unidades: UnidadEnStock[]) {
+  if (item.estado === "Sellado") return [];
+  const clave = claveModelo(item.nombre);
+  return unidades
+    .filter((u) => u.clave === clave)
+    .map(({ clave: _clave, ...u }) => u)
+    .sort((a, b) => b.bateria - a.bateria);
 }
 
 // Para el orden inicial: primero los iPhone, del mas nuevo al mas viejo; despues el resto.
@@ -659,7 +675,9 @@ async function asegurarCatalogoInicial() {
     const grupos = new Map<string, any>();
     for (const p of productos) {
       const a = analizarNombreProducto(p.nombre);
-      const llave = `${a.clave}|${a.estado ?? ""}|${a.detalle ?? ""}`;
+      // La bateria no separa publicaciones: los usados del mismo modelo van juntos y el cliente
+      // elige la bateria en el catalogo (ver unidadesConBateria).
+      const llave = `${a.clave}|${a.estado ?? ""}`;
       const g = grupos.get(llave) ?? { ...a, categoria: p.categoria ?? "Otros", moneda: p.moneda ?? "USD", precio: null, memorias: [] as MemoriaCatalogo[] };
       if (a.capacidad && !g.memorias.some((m: MemoriaCatalogo) => m.capacidad === a.capacidad)) {
         g.memorias.push({ capacidad: a.capacidad, precio: p.precio_venta ?? null, disponible: true });
@@ -682,10 +700,14 @@ async function asegurarCatalogoInicial() {
 // Todas las publicaciones (para el panel y el bot), con sus fotos.
 export async function listarItemsCatalogo() {
   await asegurarCatalogoInicial();
-  const [filas, fotos] = await Promise.all([all(`SELECT * FROM catalogo_items ORDER BY orden, id`), listarFotosCatalogo()]);
+  const [filas, fotos, unidades] = await Promise.all([all(`SELECT * FROM catalogo_items ORDER BY orden, id`), listarFotosCatalogo(), unidadesConBateria()]);
   return filas.map((f) => {
     const item = filaAItem(f);
-    return { ...item, fotos: fotosDeProducto(item.nombre, fotos).map((x) => ({ color: x.color, hex: x.color_hex, url: x.url })) };
+    return {
+      ...item,
+      fotos: fotosDeProducto(item.nombre, fotos).map((x) => ({ color: x.color, hex: x.color_hex, url: x.url })),
+      unidades: unidadesDeItem(item, unidades),
+    };
   });
 }
 
@@ -784,6 +806,7 @@ export async function consultarCatalogoParaBot() {
       visible_para_clientes: i.visible,
       lo_tengo: i.disponible,
       memorias: i.memorias.map((m) => `${m.capacidad}${m.precio != null ? ` (${m.precio} ${i.moneda})` : ""}${m.disponible ? "" : " - sin stock"}`),
+      baterias_en_stock: i.unidades.map((u) => `${u.bateria}%${u.capacidad ? ` ${u.capacidad}` : ""}${u.precio != null ? ` (${u.precio} ${u.moneda})` : ""}`),
       precio: i.memorias.length ? undefined : i.precio,
       moneda: i.moneda,
     })),

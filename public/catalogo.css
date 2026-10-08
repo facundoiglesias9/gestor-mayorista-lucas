@@ -365,6 +365,36 @@ main { max-width: 1240px; margin: 0 auto; padding: 0 24px 80px; }
 .memoria.agotada { color: var(--texto-tenue); text-decoration: line-through; opacity: 0.55; cursor: default; }
 .precio.cambio .precio-valor { animation: subir 320ms var(--ease) both; }
 
+/* bateria de los usados en stock */
+.baterias { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.baterias:empty { display: none; }
+.baterias-titulo { width: 100%; font-size: 0.72rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--texto-tenue); }
+.bateria {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--borde);
+  background: var(--superficie);
+  color: var(--texto-suave);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: border-color var(--dur-rapida) var(--ease), color var(--dur-rapida) var(--ease), transform var(--dur-rapida) var(--ease);
+  animation: subir 300ms var(--ease) both;
+}
+.bateria:hover { border-color: var(--borde-fuerte); color: var(--texto); }
+.bateria:active { transform: scale(0.96); }
+.bateria.activo { border-color: var(--acento); color: var(--texto); box-shadow: inset 0 0 0 1px var(--acento); }
+.pila { width: 20px; height: 10px; flex: none; }
+.pila-carga { fill: currentColor; }
+.pila-alta { color: var(--verde); }
+.pila-media { color: var(--texto-suave); }
+.pila-baja { color: var(--naranja); }
+
 /* publicacion marcada "no lo tengo": se ve, pero apagada */
 .producto.agotado .producto-imagen > * { opacity: 0.5; filter: grayscale(0.4); }
 .producto.agotado .producto-imagen > .insignia { opacity: 1; filter: none; }
