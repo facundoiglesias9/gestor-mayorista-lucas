@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { get, all, run, enTransaccion } from "./db.js";
 import { inferirCategoria } from "./categorizador.js";
+import { estadoYBateriaDelNombre, nombreConBateria, validarBateria, validarEstado } from "./equipos.js";
 
 // Esta es la UNICA capa que toca la base de datos. Tanto el cerebro (Claude, via tools.ts)
 // como el panel web (via panel-server.ts) llaman a estas mismas funciones, para que el chat
@@ -41,6 +42,17 @@ async function requireProducto(nombre: string) {
 
 // ---------- productos / stock ----------
 
+// Estado y bateria de un equipo que se carga: lo que se indica manda y, si no se indico, se lee
+// del nombre ("Iphone 15 pro 128gb 79%"). Un sellado no tiene bateria. El % queda en el nombre
+// (ver nombreConBateria), asi cada usado con su bateria es un producto aparte.
+function prepararEquipo(nombre: string, estado?: unknown, bateria?: unknown) {
+  const delNombre = estadoYBateriaDelNombre(nombre);
+  const estadoFinal = estado === undefined ? delNombre.estado : validarEstado(estado);
+  const bateriaFinal = estadoFinal === "Sellado" ? null : bateria === undefined ? delNombre.bateria : validarBateria(bateria);
+  const tocaElNombre = estadoFinal != null || bateriaFinal != null;
+  return { nombre: tocaElNombre ? nombreConBateria(nombre, bateriaFinal) : String(nombre).trim(), estado: estadoFinal, bateria: bateriaFinal };
+}
+
 export async function agregarProducto(args: {
   nombre: string;
   cantidad: number;
@@ -49,16 +61,22 @@ export async function agregarProducto(args: {
   moneda?: string;
   categoria?: string;
   nota?: string;
+  estado?: string | null;
+  bateria?: number | null;
 }) {
+  const equipo = prepararEquipo(args.nombre, args.estado, args.bateria);
+  args = { ...args, nombre: equipo.nombre };
   // Producto nuevo sin categoria: se la pedimos a la IA (ej: "iPhone 12" -> Celulares). Va ANTES
   // de abrir la transaccion porque es una llamada lenta y no tiene que trabar la base.
   const categoriaSiEsNuevo = args.categoria || ((await findProducto(args.nombre)) ? null : await inferirCategoria(args.nombre));
   return enTransaccion(async () => {
     const existente = await findProducto(args.nombre);
     if (existente) {
+      const estado = equipo.estado ?? existente.estado ?? null;
+      const bateria = estado === "Sellado" ? null : (equipo.bateria ?? existente.bateria ?? null);
       await run(
-        `UPDATE productos SET cantidad = cantidad + ?, costo = COALESCE(?, costo), precio_venta = COALESCE(?, precio_venta), moneda = COALESCE(?, moneda), categoria = COALESCE(?, categoria), actualizado_en = datetime('now','localtime') WHERE id = ?`,
-        [args.cantidad, args.costo ?? null, args.precio_venta ?? null, args.moneda ?? null, args.categoria ?? null, existente.id]
+        `UPDATE productos SET cantidad = cantidad + ?, costo = COALESCE(?, costo), precio_venta = COALESCE(?, precio_venta), moneda = COALESCE(?, moneda), categoria = COALESCE(?, categoria), estado = ?, bateria = ?, actualizado_en = datetime('now','localtime') WHERE id = ?`,
+        [args.cantidad, args.costo ?? null, args.precio_venta ?? null, args.moneda ?? null, args.categoria ?? null, estado, bateria, existente.id]
       );
       await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, precio_unitario, nota) VALUES (?, 'entrada', ?, ?, ?)`, [
         existente.id,
@@ -69,15 +87,20 @@ export async function agregarProducto(args: {
       const actualizado = await findProducto(args.nombre);
       return { ok: true, mensaje: `Sumado stock a "${args.nombre}". Cantidad total ahora: ${actualizado.cantidad}.`, producto: actualizado };
     }
-    const info = await run(`INSERT INTO productos (nombre, categoria, cantidad, costo, precio_venta, moneda, nota) VALUES (?, ?, ?, ?, ?, ?, ?)`, [
-      args.nombre,
-      categoriaSiEsNuevo ?? "Otros",
-      args.cantidad,
-      args.costo ?? null,
-      args.precio_venta ?? null,
-      args.moneda ?? "USD",
-      args.nota ?? null,
-    ]);
+    const info = await run(
+      `INSERT INTO productos (nombre, categoria, cantidad, costo, precio_venta, moneda, nota, estado, bateria) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        args.nombre,
+        categoriaSiEsNuevo ?? "Otros",
+        args.cantidad,
+        args.costo ?? null,
+        args.precio_venta ?? null,
+        args.moneda ?? "USD",
+        args.nota ?? null,
+        equipo.estado,
+        equipo.bateria,
+      ]
+    );
     await run(`INSERT INTO movimientos_stock (producto_id, tipo, cantidad, precio_unitario, nota) VALUES (?, 'entrada', ?, ?, 'alta inicial')`, [
       info.lastInsertRowid,
       args.cantidad,
@@ -129,9 +152,10 @@ async function registrarVentaEnTransaccion(args: ArgsVenta, categoriaSiEsNuevo: 
   // stock nunca quede en negativo.
   let p = await findProducto(args.nombre_producto);
   if (!p) {
+    const { estado, bateria } = estadoYBateriaDelNombre(args.nombre_producto);
     await run(
-      `INSERT INTO productos (nombre, categoria, cantidad, precio_venta, moneda, nota) VALUES (?, ?, 0, ?, ?, ?)`,
-      [args.nombre_producto, categoriaSiEsNuevo ?? "Otros", args.precio_unitario ?? null, args.moneda ?? "ARS", NOTA_PRODUCTO_CREADO_AL_VENDER]
+      `INSERT INTO productos (nombre, categoria, cantidad, precio_venta, moneda, nota, estado, bateria) VALUES (?, ?, 0, ?, ?, ?, ?, ?)`,
+      [args.nombre_producto, categoriaSiEsNuevo ?? "Otros", args.precio_unitario ?? null, args.moneda ?? "ARS", NOTA_PRODUCTO_CREADO_AL_VENDER, estado, bateria]
     );
     p = await findProducto(args.nombre_producto);
   }
@@ -245,21 +269,41 @@ export async function obtenerProducto(id: number) {
 
 export async function actualizarProductoPorId(
   id: number,
-  campos: { nombre?: string; categoria?: string; cantidad?: number; costo?: number; precio_venta?: number; moneda?: string; nota?: string }
+  campos: {
+    nombre?: string;
+    categoria?: string;
+    cantidad?: number;
+    costo?: number;
+    precio_venta?: number;
+    moneda?: string;
+    nota?: string;
+    estado?: string | null;
+    bateria?: number | null;
+  }
 ) {
   return enTransaccion(async () => {
     const actual = await obtenerProducto(id);
     if (!actual) throw new Error(`No existe el producto #${id}.`);
+    // Estado y bateria: null o vacio los borra; sin mandarlos, quedan como estaban.
+    const estado = campos.estado !== undefined ? validarEstado(campos.estado) : (actual.estado ?? null);
+    const bateria = estado === "Sellado" ? null : campos.bateria !== undefined ? validarBateria(campos.bateria) : (actual.bateria ?? null);
+    let nombre = String(campos.nombre ?? actual.nombre).trim();
+    if (estado != null || bateria != null || actual.bateria != null) nombre = nombreConBateria(nombre, bateria);
+    if (!nombre) throw new Error("El nombre no puede quedar vacio.");
+    const otro = await findProducto(nombre);
+    if (otro && Number(otro.id) !== Number(id)) throw new Error(`Ya hay otro producto llamado "${nombre}" en el stock.`);
     await run(
-      `UPDATE productos SET nombre = ?, categoria = ?, cantidad = ?, costo = ?, precio_venta = ?, moneda = ?, nota = ?, actualizado_en = datetime('now','localtime') WHERE id = ?`,
+      `UPDATE productos SET nombre = ?, categoria = ?, cantidad = ?, costo = ?, precio_venta = ?, moneda = ?, nota = ?, estado = ?, bateria = ?, actualizado_en = datetime('now','localtime') WHERE id = ?`,
       [
-        campos.nombre ?? actual.nombre,
+        nombre,
         campos.categoria ?? actual.categoria,
         campos.cantidad ?? actual.cantidad,
         campos.costo ?? actual.costo,
         campos.precio_venta ?? actual.precio_venta,
         campos.moneda ?? actual.moneda,
         campos.nota ?? actual.nota,
+        estado,
+        bateria,
         id,
       ]
     );
@@ -556,7 +600,15 @@ export async function consultarStock(args: { nombre_producto?: string }) {
 // Version para el bot de CLIENTES (WhatsApp): igual que consultarStock, pero nunca expone el
 // costo de compra (eso es informacion del negocio, no del cliente) ni notas internas.
 export async function consultarStockPublico(args: { nombre_producto?: string }) {
-  const aPublico = (p: any) => ({ nombre: p.nombre, categoria: p.categoria, cantidad_disponible: p.cantidad, precio_venta: p.precio_venta, moneda: p.moneda });
+  const aPublico = (p: any) => ({
+    nombre: p.nombre,
+    categoria: p.categoria,
+    estado: p.estado ?? null,
+    bateria: p.bateria ?? null,
+    cantidad_disponible: p.cantidad,
+    precio_venta: p.precio_venta,
+    moneda: p.moneda,
+  });
   if (args.nombre_producto) {
     const p = await findProducto(args.nombre_producto);
     if (!p) return { encontrado: false, mensaje: `No hay ningun producto llamado "${args.nombre_producto}".` };
@@ -630,27 +682,37 @@ function analizarNombreProducto(nombre: string) {
   return { clave, nombre: clave.startsWith("iphone") ? nombreModeloBonito(clave) : String(nombre).trim(), capacidad, estado, bateria, detalle: null as string | null };
 }
 
-// Equipos del stock que tienen el % de bateria en el nombre ("Iphone 15 pro 128gb 79%"): en el
-// catalogo, el cliente elige entre los que hay de ese modelo segun la bateria. Se toman del
+// Equipos usados del stock que tienen la bateria cargada (campos Estado y Bateria del stock): en
+// el catalogo, el cliente elige entre los que hay de ese modelo segun la bateria. Se toman del
 // stock en el momento, asi que cuando uno se vende (queda en 0) desaparece solo.
-type UnidadEnStock = { clave: string; bateria: number; capacidad: string | null; precio: number | null; moneda: string };
+type UnidadEnStock = { clave: string; estado: string | null; bateria: number; capacidad: string | null; precio: number | null; moneda: string };
 
 async function unidadesConBateria(): Promise<UnidadEnStock[]> {
-  const productos = await all(`SELECT nombre, precio_venta, moneda FROM productos WHERE cantidad > 0`);
-  return productos
-    .map((p) => ({ ...analizarNombreProducto(p.nombre), precio: p.precio_venta ?? null, moneda: String(p.moneda ?? "USD") }))
-    .filter((u) => u.bateria != null)
-    .map((u) => ({ clave: u.clave, bateria: u.bateria!, capacidad: u.capacidad, precio: u.precio, moneda: u.moneda }));
+  const productos = await all(
+    `SELECT nombre, precio_venta, moneda, estado, bateria FROM productos WHERE cantidad > 0 AND bateria IS NOT NULL AND COALESCE(estado, '') <> 'Sellado'`
+  );
+  return productos.map((p) => {
+    const a = analizarNombreProducto(p.nombre);
+    return {
+      clave: a.clave,
+      estado: p.estado ?? null,
+      bateria: Number(p.bateria),
+      capacidad: a.capacidad,
+      precio: p.precio_venta ?? null,
+      moneda: String(p.moneda ?? "USD"),
+    };
+  });
 }
 
-// Las unidades que le corresponden a una publicacion: mismo modelo, y solo si no es "Sellado"
-// (un sellado no tiene bateria usada). De la mejor bateria a la peor.
+// Las unidades que le corresponden a una publicacion: mismo modelo y mismo estado (una "Usado -
+// como nuevo" muestra solo los como nuevo; un equipo sin estado cargado entra en cualquiera). Un
+// "Sellado" no tiene bateria usada. De la mejor bateria a la peor.
 function unidadesDeItem(item: { nombre: string; estado: string | null }, unidades: UnidadEnStock[]) {
   if (item.estado === "Sellado") return [];
   const clave = claveModelo(item.nombre);
   return unidades
-    .filter((u) => u.clave === clave)
-    .map(({ clave: _clave, ...u }) => u)
+    .filter((u) => u.clave === clave && (u.estado == null || item.estado == null || u.estado === item.estado))
+    .map(({ clave: _clave, estado: _estado, ...u }) => u)
     .sort((a, b) => b.bateria - a.bateria);
 }
 
@@ -671,10 +733,11 @@ async function asegurarCatalogoInicial() {
     const marca = await run(`INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('catalogo_inicial', datetime('now','localtime'))`);
     if (marca.changes === 0) return; // otro pedido lo armo justo al mismo tiempo
     if (Number((await get(`SELECT COUNT(*) as n FROM catalogo_items`)).n) > 0) return;
-    const productos = await all(`SELECT nombre, categoria, precio_venta, moneda FROM productos WHERE cantidad > 0 ORDER BY nombre`);
+    const productos = await all(`SELECT nombre, categoria, precio_venta, moneda, estado FROM productos WHERE cantidad > 0 ORDER BY nombre`);
     const grupos = new Map<string, any>();
     for (const p of productos) {
       const a = analizarNombreProducto(p.nombre);
+      if (p.estado) a.estado = p.estado;
       // La bateria no separa publicaciones: los usados del mismo modelo van juntos y el cliente
       // elige la bateria en el catalogo (ver unidadesConBateria).
       const llave = `${a.clave}|${a.estado ?? ""}`;

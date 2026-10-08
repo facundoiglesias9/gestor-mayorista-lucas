@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createClient, type Transaction } from "@libsql/client";
+import { estadoYBateriaDelNombre } from "./equipos.js";
 
 const url = process.env.TURSO_DATABASE_URL;
 const authToken = process.env.TURSO_AUTH_TOKEN;
@@ -248,7 +249,7 @@ CREATE TABLE IF NOT EXISTS catalogo_items (
   actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
--- Ajustes sueltos del sistema (clave/valor). Por ahora: si ya se armo el catalogo inicial.
+-- Ajustes sueltos del sistema (clave/valor). Ej: si ya se armo el catalogo inicial.
 CREATE TABLE IF NOT EXISTS configuracion (
   clave TEXT PRIMARY KEY,
   valor TEXT
@@ -281,4 +282,27 @@ UPDATE catalogo_items SET estado = 'Sellado' WHERE estado IN ('Nuevo sellado', '
 UPDATE catalogo_items SET estado = 'Usado - como nuevo' WHERE estado = 'Seminuevo';
 UPDATE catalogo_items SET detalle = NULL WHERE detalle GLOB 'Batería [0-9]*%';
 `);
+  // Estado y bateria de cada equipo del stock (Sellado / Usado - como nuevo / Usado, y el % de
+  // bateria si es usado). Antes solo estaban escritos en el nombre ("Iphone 15 pro 128gb 79%"),
+  // asi que la primera vez se completan leyendo los nombres. Una sola vez: despues se cargan a mano.
+  await agregarColumnaSiFalta("productos", "estado", "TEXT");
+  await agregarColumnaSiFalta("productos", "bateria", "INTEGER");
+  await completarEstadoYBateriaDesdeNombres();
+}
+
+async function completarEstadoYBateriaDesdeNombres() {
+  if ((await db.execute(`SELECT 1 FROM configuracion WHERE clave = 'stock_estado_bateria'`)).rows.length) return;
+  const productos = await db.execute(`SELECT id, nombre FROM productos WHERE estado IS NULL AND bateria IS NULL`);
+  const cambios: { sql: string; args: any[] }[] = [];
+  for (const p of productos.rows) {
+    const { estado, bateria } = estadoYBateriaDelNombre(String(p.nombre));
+    if (estado == null && bateria == null) continue;
+    cambios.push({
+      sql: `UPDATE productos SET estado = ?, bateria = ? WHERE id = ? AND estado IS NULL AND bateria IS NULL`,
+      args: [estado, bateria, p.id],
+    });
+  }
+  // La marca va en la misma tanda: si algo falla, no queda marcado y se reintenta en el proximo arranque.
+  cambios.push({ sql: `INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('stock_estado_bateria', datetime('now','localtime'))`, args: [] });
+  await db.batch(cambios, "write");
 }
