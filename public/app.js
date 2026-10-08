@@ -1448,16 +1448,25 @@ function dibujarCatalogoPanel() {
   );
 }
 
+// Equipos usados de este modelo que hay en stock, con su bateria (el cliente elige entre estos).
+function lineaBaterias(item) {
+  if (!item.unidades?.length) return "";
+  return `<div class="baterias-celda" title="Equipos en stock de este modelo: el cliente elige según la batería">
+    <span>En stock:</span>${item.unidades
+      .map((u) => `<span class="bateria-chip">${u.bateria}%${u.capacidad ? ` · ${escapeHtml(u.capacidad)}` : ""}${u.precio != null ? ` · ${formatoConSimbolo(u.precio, u.moneda)}` : ""}</span>`)
+      .join("")}</div>`;
+}
+
 function celdaMemorias(item) {
   if (!item.memorias.length) {
-    return item.precio != null ? `<span class="texto-fuerte">${formatoConSimbolo(item.precio, item.moneda)}</span>` : `<span class="texto-tenue">Sin precio</span>`;
+    return `${item.precio != null ? `<span class="texto-fuerte">${formatoConSimbolo(item.precio, item.moneda)}</span>` : `<span class="texto-tenue">Sin precio</span>`}${lineaBaterias(item)}`;
   }
   return `<div class="memorias-celda">${item.memorias
     .map(
       (m) =>
         `<span class="memoria-chip${m.disponible ? "" : " agotada"}" title="${m.disponible ? "" : "Sin stock"}">${escapeHtml(m.capacidad)}<b>${m.precio != null ? formatoConSimbolo(m.precio, item.moneda) : "—"}</b></span>`
     )
-    .join("")}</div>`;
+    .join("")}</div>${lineaBaterias(item)}`;
 }
 
 function interruptor(item, campo, etiqueta) {
@@ -1625,7 +1634,13 @@ function abrirDialogoItem(item = null) {
   form.elements.id.value = item?.id ?? "";
   form.elements.nombre.value = item?.nombre ?? "";
   form.elements.categoria.value = item?.categoria ?? "Celulares";
-  form.elements.estado.value = item?.estado ?? "";
+  // Si la publicacion tiene un estado viejo que no esta en la lista, se agrega para no perderlo.
+  const selectEstado = form.elements.estado;
+  selectEstado.querySelectorAll("option[data-extra]").forEach((o) => o.remove());
+  if (item?.estado && ![...selectEstado.options].some((o) => o.value === item.estado)) {
+    selectEstado.insertAdjacentHTML("beforeend", `<option value="${escapeAttr(item.estado)}" data-extra>${escapeHtml(item.estado)}</option>`);
+  }
+  selectEstado.value = item?.estado ?? "";
   form.elements.detalle.value = item?.detalle ?? "";
   form.elements.moneda.value = item?.moneda ?? "USD";
   form.elements.precio.value = item?.precio ?? "";

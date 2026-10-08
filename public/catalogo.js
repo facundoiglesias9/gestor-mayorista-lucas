@@ -168,25 +168,95 @@ function indiceMemoria(p) {
   return memoriaElegida.get(p.id);
 }
 
-// Precio que se muestra: el de la memoria elegida, o el de la publicacion si no tiene memorias.
+// ---------- bateria (equipos usados en stock) ----------
+// En los usados, el cliente elige entre los equipos de ese modelo que hay en stock segun la
+// bateria. Equipo elegido en cada tarjeta: id -> indice en p.unidades.
+const unidadElegida = new Map();
+
+// Los equipos que se pueden elegir: los de la memoria elegida (o todos, si no hay memorias).
+function unidadesVisibles(p) {
+  if (!p.unidades?.length) return [];
+  if (!p.memorias.length) return p.unidades;
+  const capacidad = normalizar(p.memorias[indiceMemoria(p)].capacidad).replace(/\s/g, "");
+  return p.unidades.filter((u) => !u.capacidad || normalizar(u.capacidad).replace(/\s/g, "") === capacidad);
+}
+
+// El equipo elegido; si el elegido no es de la memoria actual, el de mejor bateria.
+function unidadActual(p) {
+  const visibles = unidadesVisibles(p);
+  return visibles.find((u) => p.unidades.indexOf(u) === unidadElegida.get(p.id)) ?? visibles[0] ?? null;
+}
+
+// Precio que se muestra: el del equipo elegido (si tiene), si no el de la memoria elegida, y si
+// no hay memorias el de la publicacion.
 function precioActual(p) {
-  return p.memorias.length ? p.memorias[indiceMemoria(p)].precio : p.precio;
+  const unidad = unidadActual(p);
+  if (unidad && unidad.precio != null) return { precio: unidad.precio, moneda: unidad.moneda };
+  return { precio: p.memorias.length ? p.memorias[indiceMemoria(p)].precio : p.precio, moneda: p.moneda };
 }
 
 // Para ordenar por precio: el mas barato de lo que haya (en dolares, si hay cotizacion).
 function precioParaOrdenar(p) {
-  const precios = p.memorias.length ? p.memorias.filter((m) => m.disponible || !p.disponible).map((m) => m.precio) : [p.precio];
-  const validos = precios.filter((x) => x != null);
-  if (!validos.length) return Infinity;
-  const min = Math.min(...validos);
-  return p.moneda === "ARS" && estado.dolar ? min / estado.dolar : min;
+  const aDolares = (precio, moneda) => (precio != null && moneda === "ARS" && estado.dolar ? precio / estado.dolar : precio);
+  const precios = [
+    ...(p.memorias.length ? p.memorias.filter((m) => m.disponible || !p.disponible).map((m) => aDolares(m.precio, p.moneda)) : [aDolares(p.precio, p.moneda)]),
+    ...(p.unidades ?? []).map((u) => aDolares(u.precio, u.moneda)),
+  ].filter((x) => x != null && !Number.isNaN(x));
+  return precios.length ? Math.min(...precios) : Infinity;
+}
+
+// Pila chiquita, llena segun el % (verde si esta muy bien, naranja si esta baja).
+function iconoBateria(porcentaje) {
+  const nivel = porcentaje >= 90 ? "alta" : porcentaje >= 80 ? "media" : "baja";
+  const ancho = Math.max(2, Math.round((14 * porcentaje) / 100));
+  return `<svg class="pila pila-${nivel}" viewBox="0 0 20 10" aria-hidden="true"><rect x="0.6" y="0.6" width="16.8" height="8.8" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="18.2" y="3.2" width="1.4" height="3.6" rx="0.6" fill="currentColor"/><rect x="2" y="2" width="${ancho}" height="6" rx="1.2" class="pila-carga"/></svg>`;
+}
+
+function selectorBaterias(p) {
+  const visibles = unidadesVisibles(p);
+  if (!visibles.length) return `<div class="baterias" data-baterias="${p.id}"></div>`;
+  const actual = unidadActual(p);
+  return `<div class="baterias" data-baterias="${p.id}" role="radiogroup" aria-label="Batería">
+    <span class="baterias-titulo">Batería</span>
+    ${visibles
+      .map((u) => {
+        const i = p.unidades.indexOf(u);
+        return `<button type="button" class="bateria${u === actual ? " activo" : ""}" role="radio" aria-checked="${u === actual}" data-producto="${p.id}" data-unidad="${i}" title="Condición de batería ${u.bateria}%">${iconoBateria(u.bateria)}${u.bateria}%</button>`;
+      })
+      .join("")}
+  </div>`;
+}
+
+function refrescarPrecioYMensaje(p, tarjeta) {
+  const precio = tarjeta.querySelector(".precio");
+  precio.innerHTML = htmlPrecio(p);
+  precio.classList.remove("cambio");
+  void precio.offsetWidth;
+  precio.classList.add("cambio");
+  const boton = tarjeta.querySelector(".btn-consultar");
+  if (boton) boton.href = linkWhatsapp(mensajeWhatsapp(p));
+}
+
+function cambiarBateria(idProducto, indiceUnidad) {
+  const p = estado.productos.find((x) => x.id === idProducto);
+  if (!p || unidadActual(p) === p.unidades[indiceUnidad]) return;
+  unidadElegida.set(idProducto, indiceUnidad);
+  const tarjeta = document.querySelector(`.producto[data-id="${idProducto}"]`);
+  tarjeta.querySelectorAll(".bateria").forEach((b) => {
+    const activo = Number(b.dataset.unidad) === indiceUnidad;
+    b.classList.toggle("activo", activo);
+    b.setAttribute("aria-checked", String(activo));
+  });
+  refrescarPrecioYMensaje(p, tarjeta);
 }
 
 function productosFiltrados() {
   const terminos = normalizar(estado.busqueda).split(/\s+/).filter(Boolean);
   let lista = estado.productos.filter((p) => {
     if (estado.categoria !== "Todos" && p.categoria !== estado.categoria) return false;
-    const texto = normalizar([p.nombre, p.categoria, p.estado, p.detalle, ...p.memorias.map((m) => m.capacidad)].filter(Boolean).join(" "));
+    const texto = normalizar(
+      [p.nombre, p.categoria, p.estado, p.detalle, ...p.memorias.map((m) => m.capacidad), ...(p.unidades ?? []).map((u) => `${u.bateria}%`)].filter(Boolean).join(" ")
+    );
     return terminos.every((t) => texto.includes(t));
   });
   const precioOrden = precioParaOrdenar;
@@ -220,17 +290,18 @@ function fotoElegida(p) {
 function mensajeWhatsapp(p) {
   const foto = p.fotos.length > 1 ? fotoElegida(p) : null;
   const memoria = p.memorias.length ? p.memorias[indiceMemoria(p)] : null;
-  const descripcion = `${p.nombre}${p.estado ? ` (${p.estado})` : ""}${memoria ? ` de ${memoria.capacidad}` : ""}${foto ? ` en ${foto.color}` : ""}`;
+  const unidad = unidadActual(p);
+  const descripcion = `${p.nombre}${p.estado ? ` (${p.estado})` : ""}${memoria ? ` de ${memoria.capacidad}` : ""}${foto ? ` en ${foto.color}` : ""}${unidad ? ` con batería ${unidad.bateria}%` : ""}`;
   if (!p.disponible) return `Hola! Vi ${descripcion} en el catálogo, que figura sin stock. ¿Te va a volver a entrar?`;
-  const precio = precioActual(p);
-  return `Hola! Me interesa ${descripcion}${precio != null ? ` (${formatoPrecio(precio, p.moneda)})` : ""} que vi en el catálogo. ¿Está disponible?`;
+  const { precio, moneda } = precioActual(p);
+  return `Hola! Me interesa ${descripcion}${precio != null ? ` (${formatoPrecio(precio, moneda)})` : ""} que vi en el catálogo. ¿Está disponible?`;
 }
 
 function htmlPrecio(p) {
-  const precio = precioActual(p);
+  const { precio, moneda } = precioActual(p);
   return precio != null
-    ? `<span class="precio-valor">${formatoPrecio(precio, p.moneda)}</span>${
-        p.moneda === "USD" && estado.dolar ? `<span class="precio-equivalente">≈ ${formatoPrecio(precio * estado.dolar, "ARS")}</span>` : ""
+    ? `<span class="precio-valor">${formatoPrecio(precio, moneda)}</span>${
+        moneda === "USD" && estado.dolar ? `<span class="precio-equivalente">≈ ${formatoPrecio(precio * estado.dolar, "ARS")}</span>` : ""
       }`
     : `<span class="precio-consultar">Consultar precio</span>`;
 }
@@ -259,13 +330,9 @@ function cambiarMemoria(idProducto, indice) {
     b.classList.toggle("activo", i === indice);
     b.setAttribute("aria-checked", String(i === indice));
   });
-  const precio = tarjeta.querySelector(".precio");
-  precio.innerHTML = htmlPrecio(p);
-  precio.classList.remove("cambio");
-  void precio.offsetWidth;
-  precio.classList.add("cambio");
-  const boton = tarjeta.querySelector(".btn-consultar");
-  if (boton) boton.href = linkWhatsapp(mensajeWhatsapp(p));
+  // Al cambiar de memoria cambian los equipos (baterias) que se pueden elegir.
+  tarjeta.querySelector(".baterias").outerHTML = selectorBaterias(p);
+  refrescarPrecioYMensaje(p, tarjeta);
 }
 
 function selectorColores(p) {
@@ -336,6 +403,7 @@ function tarjetaProducto(p, i) {
             : ""
         }
         ${selectorMemorias(p)}
+        ${selectorBaterias(p)}
         ${selectorColores(p)}
         <span class="disponibilidad${p.disponible ? "" : " agotado"}">${p.disponible ? "Disponible" : "Sin stock por ahora"}</span>
         <div class="producto-pie">
@@ -442,7 +510,9 @@ document.getElementById("grilla").addEventListener("click", (ev) => {
   const color = ev.target.closest(".color");
   if (color) return cambiarColor(Number(color.dataset.producto), Number(color.dataset.indice));
   const memoria = ev.target.closest(".memoria");
-  if (memoria && !memoria.disabled) cambiarMemoria(Number(memoria.dataset.producto), Number(memoria.dataset.indice));
+  if (memoria && !memoria.disabled) return cambiarMemoria(Number(memoria.dataset.producto), Number(memoria.dataset.indice));
+  const bateria = ev.target.closest(".bateria");
+  if (bateria) cambiarBateria(Number(bateria.dataset.producto), Number(bateria.dataset.unidad));
 });
 
 let temporizadorBusqueda;

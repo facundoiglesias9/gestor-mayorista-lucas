@@ -508,15 +508,15 @@
           <input type="hidden" name="id" />
           <div class="dialogo-header">
             <h3 class="dialogo-titulo" id="titulo-dialogo-item">Nueva publicación</h3>
-            <p class="ayuda">Así la ven los clientes en el catálogo. Las fotos salen del modelo (sección de fotos, abajo de la lista).</p>
+            <p class="ayuda">Así la ven los clientes en el catálogo. Las fotos salen del modelo (sección de fotos, abajo de la lista). En los usados, el cliente elige entre los equipos de ese modelo que tengas en stock según la batería (se toma del % que diga el nombre en el stock, ej. "Iphone 15 pro 128gb 85%").</p>
           </div>
           <label>Nombre<input name="nombre" placeholder="Ej: iPhone 17 Pro Max" autocomplete="off" required list="lista-modelos" /></label>
           <div class="fila-campos">
             <label>Categoría<input name="categoria" placeholder="Ej: Celulares" autocomplete="off" list="lista-categorias-catalogo" /></label>
-            <label>Estado<input name="estado" placeholder="Ej: Nuevo sellado" autocomplete="off" list="lista-estados" /></label>
+            <label>Estado<select name="estado"><option value="">Sin especificar</option><option value="Sellado">Sellado</option><option value="Usado - como nuevo">Usado - como nuevo</option><option value="Usado">Usado</option></select></label>
           </div>
           <div class="fila-campos">
-            <label>Detalle (opcional)<input name="detalle" placeholder="Ej: Batería 79%" autocomplete="off" /></label>
+            <label>Detalle (opcional)<input name="detalle" placeholder="Ej: Con caja y cargador" autocomplete="off" /></label>
             <label>Moneda<select name="moneda"><option value="USD">Dólares (U$D)</option><option value="ARS">Pesos ($)</option></select></label>
           </div>
           <div class="bloque-memorias">
@@ -538,7 +538,6 @@
           </div>
         </form>
       </dialog>
-      <datalist id="lista-estados"><option value="Nuevo sellado"><option value="Nuevo"><option value="Seminuevo"><option value="Usado"><option value="Reacondicionado"></datalist>
       <datalist id="lista-categorias-catalogo"></datalist>
       <datalist id="lista-capacidades"><option value="64 GB"><option value="128 GB"><option value="256 GB"><option value="512 GB"><option value="1 TB"><option value="2 TB"></datalist>
 
