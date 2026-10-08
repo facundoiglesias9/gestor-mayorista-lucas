@@ -2,7 +2,7 @@ import "dotenv/config";
 import { webhookCallback } from "grammy";
 import { app } from "../src/panel-server.js";
 import { bot } from "../src/bot.js";
-import { registrarLogSeguro, limpiarRegistrosViejos } from "../src/repo.js";
+import { registrarLogSeguro, limpiarRegistrosViejos, registrarEvento, guardarConfiguracion, hoyEnArgentina } from "../src/repo.js";
 import { claveCoincide } from "../src/seguridad.js";
 
 // Punto de entrada para Vercel: la app de Express normal, mas la ruta del webhook de Telegram
@@ -30,14 +30,27 @@ app.get("/api/cron/verificar-webhook", async (req, res) => {
   if (!process.env.CRON_SECRET || !claveCoincide(recibida, process.env.CRON_SECRET)) {
     return res.status(401).json({ ok: false, error: "No autorizado." });
   }
-  const limpieza = await limpiarRegistrosViejos().catch((e) => {
-    console.error("No se pudieron limpiar los registros viejos:", e);
+  const limpieza = await limpiarRegistrosViejos().catch(async (e) => {
+    await registrarEvento({ nivel: "aviso", origen: "cron", evento: "No se pudieron borrar los registros viejos", detalle: e });
     return null;
   });
   const urlEsperada = process.env.TELEGRAM_WEBHOOK_URL_ESPERADA;
+  // El resultado del ultimo chequeo queda guardado para mostrarlo en Logs ("ultimo chequeo hace 10 min").
+  const anotarChequeo = (estado: string, extra: Record<string, unknown> = {}) =>
+    guardarConfiguracion("ultimo_chequeo_webhook", JSON.stringify({ fecha: new Date().toISOString(), dia: hoyEnArgentina(), estado, ...extra })).catch(() => {});
   try {
     const info = await bot.api.getWebhookInfo();
+    // Telegram cuenta si los ultimos envios al webhook fallaron: eso se ve en Logs.
+    if (info.last_error_message && info.last_error_date && Date.now() / 1000 - info.last_error_date < 35 * 60) {
+      await registrarEvento({
+        nivel: "aviso",
+        origen: "telegram",
+        evento: `Telegram no pudo entregar mensajes al bot: ${info.last_error_message}`.slice(0, 300),
+        detalle: `Pendientes en Telegram: ${info.pending_update_count ?? 0}\nÚltimo error: ${new Date(info.last_error_date * 1000).toISOString()}`,
+      });
+    }
     if (!urlEsperada || info.url === urlEsperada) {
+      await anotarChequeo("ok", { pendientes: info.pending_update_count ?? 0, limpieza });
       return res.json({ ok: true, reparado: false, limpieza });
     }
     await bot.api.setWebhook(urlEsperada, WEBHOOK_SECRET ? { secret_token: WEBHOOK_SECRET } : undefined);
@@ -49,12 +62,16 @@ app.get("/api/cron/verificar-webhook", async (req, res) => {
       entrada: "Chequeo periódico del webhook (cron)",
       salida: detalle,
     });
+    await registrarEvento({ nivel: "error", origen: "telegram", evento: "El webhook de Telegram estaba caído: se repuso solo", detalle });
+    await anotarChequeo("reparado", { url_anterior: info.url });
     if (OWNER_ID) {
       await bot.api.sendMessage(OWNER_ID, `⚠️ ${detalle}\n\nYa deberías poder volver a escribirme normal.`).catch((e) => console.error("No se pudo avisar por Telegram:", e));
     }
     return res.json({ ok: true, reparado: true, urlAnterior: info.url, limpieza });
   } catch (e: any) {
     console.error("Error verificando/reparando el webhook:", e);
+    await registrarEvento({ nivel: "error", origen: "cron", evento: `El chequeo automático del webhook falló: ${String(e?.message ?? e).slice(0, 160)}`, detalle: e });
+    await anotarChequeo("error", { error: String(e?.message ?? e).slice(0, 200) });
     return res.status(500).json({ ok: false, error: e.message ?? String(e) });
   }
 });
@@ -69,6 +86,7 @@ let ultimoAvisoSinSecreto = 0;
 async function avisarFaltaSecreto() {
   if (!OWNER_ID || Date.now() - ultimoAvisoSinSecreto < AVISO_SIN_SECRETO_CADA_MS) return;
   ultimoAvisoSinSecreto = Date.now();
+  await registrarEvento({ nivel: "error", origen: "telegram", evento: "El bot no procesa mensajes: falta TELEGRAM_WEBHOOK_SECRET en Vercel" });
   await bot.api
     .sendMessage(
       OWNER_ID,
@@ -89,6 +107,7 @@ app.post("/api/telegram-webhook", async (req, res) => {
     // Si algo se rompe aca (fuera de los try/catch normales del bot), no dependemos de mirar
     // logs de Vercel (eso es de pago): le avisamos directo al dueno por Telegram.
     console.error("Error no controlado en el webhook de Telegram:", e);
+    await registrarEvento({ nivel: "error", origen: "telegram", evento: `Error no controlado en el webhook: ${String(e?.message ?? e).slice(0, 160)}`, detalle: e });
     if (OWNER_ID) {
       try {
         await bot.api.sendMessage(

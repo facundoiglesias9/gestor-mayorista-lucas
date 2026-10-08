@@ -305,6 +305,22 @@ CREATE TABLE IF NOT EXISTS objetivos (
   actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
+-- Registro del SISTEMA (no solo del chat): errores y avisos del bot, la IA, las herramientas,
+-- el panel, Telegram, el cron, la cotizacion del dolar, los intentos de clave incorrecta y los
+-- errores del navegador. Para ver desde el panel que esta fallando sin depender de Vercel.
+CREATE TABLE IF NOT EXISTS logs_sistema (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  fecha TEXT NOT NULL,
+  nivel TEXT NOT NULL CHECK (nivel IN ('info','aviso','error')),
+  origen TEXT NOT NULL,
+  evento TEXT NOT NULL,
+  detalle TEXT,
+  duracion_ms INTEGER,
+  usuario TEXT,
+  ruta TEXT
+);
+CREATE INDEX IF NOT EXISTS logs_sistema_fecha ON logs_sistema (fecha);
+
 -- Registro de actividad del bot (para verlo desde el panel sin depender de logs de Vercel).
 CREATE TABLE IF NOT EXISTS logs_bot (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -339,6 +355,8 @@ UPDATE catalogo_items SET detalle = NULL WHERE detalle GLOB 'Batería [0-9]*%';
   await agregarColumnaSiFalta("productos", "bateria", "INTEGER");
   await completarEstadoYBateriaDesdeNombres();
   await pasarFechasAHoraArgentina();
+  // Cuanto tardo el bot en contestar cada mensaje (para ver en Logs si se pone lento).
+  await agregarColumnaSiFalta("logs_bot", "duracion_ms", "INTEGER");
 }
 
 // Lo que ya estaba guardado quedo en la hora de la base (UTC en Turso): una sola vez se pasa a hora

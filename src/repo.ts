@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { get, all, run, enTransaccion, sqlAhora, ZONA_ARGENTINA } from "./db.js";
+import { get, all, run, enTransaccion, sqlAhora, ZONA_ARGENTINA, db, asegurarTablas } from "./db.js";
 import { inferirCategoria } from "./categorizador.js";
 import { estadoYBateriaDelNombre, nombreConBateria, validarBateria, validarEstado } from "./equipos.js";
 
@@ -1316,9 +1316,10 @@ export async function registrarLog(entrada: {
   entrada?: string;
   salida?: string;
   herramientas_usadas?: string[];
+  duracion_ms?: number;
 }) {
   await run(
-    `INSERT INTO logs_bot (usuario_id, usuario_nombre, tipo, entrada, salida, herramientas_usadas, fecha) VALUES (?, ?, ?, ?, ?, ?, ${sqlAhora()})`,
+    `INSERT INTO logs_bot (usuario_id, usuario_nombre, tipo, entrada, salida, herramientas_usadas, duracion_ms, fecha) VALUES (?, ?, ?, ?, ?, ?, ?, ${sqlAhora()})`,
     [
       entrada.usuario_id ?? null,
       entrada.usuario_nombre ?? null,
@@ -1326,6 +1327,7 @@ export async function registrarLog(entrada: {
       entrada.entrada ?? null,
       entrada.salida ?? null,
       entrada.herramientas_usadas?.length ? JSON.stringify(entrada.herramientas_usadas) : null,
+      entrada.duracion_ms != null ? Math.round(entrada.duracion_ms) : null,
     ]
   );
 }
@@ -1340,10 +1342,163 @@ export async function registrarLogSeguro(entrada: Parameters<typeof registrarLog
   }
 }
 
-export async function listarLogs(limite?: number) {
-  const n = Number.isFinite(limite) ? Math.min(Math.max(Math.trunc(limite!), 1), 500) : 100;
-  const filas = await all(`SELECT * FROM logs_bot ORDER BY id DESC LIMIT ?`, [n]);
+// Conversaciones del bot, de la mas nueva a la mas vieja. Se pagina con antes_de_id (el id del
+// ultimo que ya se mostro).
+export async function listarLogs(args: { limite?: number; tipo?: string; q?: string; antes_de_id?: number; dias?: number } = {}) {
+  const n = Number.isFinite(args.limite) ? Math.min(Math.max(Math.trunc(args.limite!), 1), 500) : 100;
+  const condiciones: string[] = [];
+  const params: any[] = [];
+  if (args.tipo && ["mensaje", "respuesta_predefinida", "error"].includes(args.tipo)) {
+    condiciones.push(`tipo = ?`);
+    params.push(args.tipo);
+  }
+  if (args.q) {
+    condiciones.push(`(entrada LIKE ? OR salida LIKE ? OR usuario_nombre LIKE ? OR herramientas_usadas LIKE ?)`);
+    const patron = `%${String(args.q).slice(0, 100)}%`;
+    params.push(patron, patron, patron, patron);
+  }
+  if (args.antes_de_id) {
+    condiciones.push(`id < ?`);
+    params.push(Number(args.antes_de_id));
+  }
+  if (args.dias) {
+    condiciones.push(`fecha >= ${sqlAhora(`-${Math.min(Math.max(Math.trunc(Number(args.dias)), 1), 90)} days`)}`);
+  }
+  const filas = await all(`SELECT * FROM logs_bot ${condiciones.length ? `WHERE ${condiciones.join(" AND ")}` : ""} ORDER BY id DESC LIMIT ?`, [...params, n]);
   return filas.map((f) => ({ ...f, herramientas_usadas: f.herramientas_usadas ? JSON.parse(f.herramientas_usadas) : [] }));
+}
+
+// ---------- logs del sistema ----------
+// Que esta fallando (o anduvo raro) en cualquier parte: bot, IA, herramientas, panel, Telegram,
+// cron, dolar, seguridad, navegador. Se escribe fuera de cualquier transaccion en curso (si la
+// operacion se deshace, el registro de que fallo igual tiene que quedar) y nunca tira error.
+
+export type NivelEvento = "info" | "aviso" | "error";
+
+// Texto legible de un error: tipo, mensaje, codigo HTTP si tiene (ej: la API de la IA) y las
+// primeras lineas de donde salto.
+export function detalleDeError(e: any): string {
+  if (e == null) return "";
+  if (typeof e === "string") return e;
+  if (e instanceof Error) {
+    const extra: string[] = [];
+    const conEstado = e as any;
+    if (conEstado.status) extra.push(`HTTP ${conEstado.status}`);
+    if (conEstado.error && typeof conEstado.error === "object") extra.push(JSON.stringify(conEstado.error).slice(0, 800));
+    const pila = (e.stack ?? "").split("\n").slice(1, 9).map((l) => l.trim()).join("\n");
+    return [`${e.name}: ${e.message}`, ...extra, pila].filter(Boolean).join("\n");
+  }
+  try {
+    return JSON.stringify(e, null, 2);
+  } catch {
+    return String(e);
+  }
+}
+
+export async function registrarEvento(e: {
+  nivel: NivelEvento;
+  origen: string;
+  evento: string;
+  detalle?: unknown;
+  duracion_ms?: number;
+  usuario?: string | null;
+  ruta?: string | null;
+}) {
+  const mostrar = e.nivel === "error" ? console.error : e.nivel === "aviso" ? console.warn : console.log;
+  mostrar(`[${e.origen}] ${e.evento}`);
+  try {
+    await asegurarTablas();
+    const detalle = e.detalle == null || e.detalle === "" ? null : (typeof e.detalle === "string" ? e.detalle : detalleDeError(e.detalle)).slice(0, 6000);
+    await db.execute({
+      sql: `INSERT INTO logs_sistema (fecha, nivel, origen, evento, detalle, duracion_ms, usuario, ruta) VALUES (${sqlAhora()}, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [e.nivel, e.origen.slice(0, 40), e.evento.slice(0, 400), detalle, e.duracion_ms != null ? Math.round(e.duracion_ms) : null, e.usuario ?? null, e.ruta?.slice(0, 200) ?? null],
+    });
+  } catch (err) {
+    console.error("No se pudo guardar el evento del sistema:", err);
+  }
+}
+
+export async function listarEventos(args: { nivel?: string; origen?: string; q?: string; dias?: number; antes_de_id?: number; limite?: number } = {}) {
+  const n = Number.isFinite(args.limite) ? Math.min(Math.max(Math.trunc(args.limite!), 1), 300) : 60;
+  const condiciones: string[] = [];
+  const params: any[] = [];
+  if (args.nivel && ["info", "aviso", "error"].includes(args.nivel)) {
+    condiciones.push(`nivel = ?`);
+    params.push(args.nivel);
+  }
+  if (args.origen) {
+    condiciones.push(`origen = ?`);
+    params.push(String(args.origen));
+  }
+  if (args.q) {
+    condiciones.push(`(evento LIKE ? OR detalle LIKE ? OR usuario LIKE ? OR ruta LIKE ?)`);
+    const patron = `%${String(args.q).slice(0, 100)}%`;
+    params.push(patron, patron, patron, patron);
+  }
+  if (args.dias) condiciones.push(`fecha >= ${sqlAhora(`-${Math.min(Math.max(Math.trunc(Number(args.dias)), 1), 90)} days`)}`);
+  if (args.antes_de_id) {
+    condiciones.push(`id < ?`);
+    params.push(Number(args.antes_de_id));
+  }
+  return all(`SELECT * FROM logs_sistema ${condiciones.length ? `WHERE ${condiciones.join(" AND ")}` : ""} ORDER BY id DESC LIMIT ?`, [...params, n]);
+}
+
+// Para la cabecera de Logs: como viene todo en los ultimos dias (1, 7 o 30).
+export async function resumenLogs(diasPedidos?: number) {
+  const dias = [1, 7, 30].includes(Number(diasPedidos)) ? Number(diasPedidos) : 1;
+  const desde = (await get(`SELECT ${sqlAhora(`-${dias} days`)} as d`)).d;
+  const formatoBalde = dias === 1 ? "%Y-%m-%d %H" : "%Y-%m-%d";
+  const [porNivel, porOrigen, serie, ultimoError, bot, botSerie, chequeo] = await Promise.all([
+    all(`SELECT nivel, COUNT(*) as n FROM logs_sistema WHERE fecha >= ? GROUP BY nivel`, [desde]),
+    all(
+      `SELECT origen, SUM(nivel = 'error') as errores, SUM(nivel = 'aviso') as avisos, COUNT(*) as total FROM logs_sistema WHERE fecha >= ? GROUP BY origen ORDER BY errores DESC, avisos DESC, total DESC`,
+      [desde]
+    ),
+    all(
+      `SELECT strftime('${formatoBalde}', fecha) as balde, SUM(nivel = 'error') as errores, SUM(nivel = 'aviso') as avisos, SUM(nivel = 'info') as info
+       FROM logs_sistema WHERE fecha >= ? GROUP BY balde ORDER BY balde`,
+      [desde]
+    ),
+    get(`SELECT fecha, origen, evento FROM logs_sistema WHERE nivel = 'error' ORDER BY id DESC LIMIT 1`),
+    get(
+      `SELECT COUNT(*) as mensajes, SUM(tipo = 'error') as errores, COUNT(DISTINCT usuario_id) as usuarios,
+              AVG(duracion_ms) as duracion_media, MAX(duracion_ms) as duracion_max
+       FROM logs_bot WHERE fecha >= ?`,
+      [desde]
+    ),
+    all(`SELECT strftime('${formatoBalde}', fecha) as balde, COUNT(*) as mensajes FROM logs_bot WHERE fecha >= ? GROUP BY balde ORDER BY balde`, [desde]),
+    get(`SELECT valor FROM configuracion WHERE clave = 'ultimo_chequeo_webhook'`),
+  ]);
+  const ahora = (await get(`SELECT ${sqlAhora()} as d`)).d;
+  let ultimoChequeo: any = null;
+  try {
+    ultimoChequeo = chequeo?.valor ? JSON.parse(chequeo.valor) : null;
+  } catch {
+    ultimoChequeo = null;
+  }
+  return {
+    dias,
+    desde,
+    ahora,
+    por_nivel: Object.fromEntries(["info", "aviso", "error"].map((k) => [k, Number(porNivel.find((x) => x.nivel === k)?.n ?? 0)])),
+    por_origen: porOrigen.map((o) => ({ origen: o.origen, errores: Number(o.errores), avisos: Number(o.avisos), total: Number(o.total) })),
+    serie: serie.map((x) => ({ balde: x.balde, errores: Number(x.errores), avisos: Number(x.avisos), info: Number(x.info) })),
+    bot_serie: botSerie.map((x) => ({ balde: x.balde, mensajes: Number(x.mensajes) })),
+    ultimo_error: ultimoError ?? null,
+    bot: {
+      mensajes: Number(bot?.mensajes ?? 0),
+      errores: Number(bot?.errores ?? 0),
+      usuarios: Number(bot?.usuarios ?? 0),
+      duracion_media_ms: bot?.duracion_media != null ? Math.round(Number(bot.duracion_media)) : null,
+      duracion_max_ms: bot?.duracion_max != null ? Number(bot.duracion_max) : null,
+    },
+    ultimo_chequeo_webhook: ultimoChequeo,
+  };
+}
+
+// Ajustes sueltos que se guardan como texto (ej: el resultado del ultimo chequeo del webhook).
+export async function guardarConfiguracion(clave: string, valor: string) {
+  await run(`INSERT INTO configuracion (clave, valor) VALUES (?, ?) ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor`, [clave, valor]);
 }
 
 // ---------- mantenimiento ----------
@@ -1523,7 +1678,9 @@ export async function datosDashboard() {
 export async function limpiarRegistrosViejos() {
   const updates = await run(`DELETE FROM updates_procesados WHERE procesado_en < datetime('now','localtime','-7 days')`);
   const logs = await run(`DELETE FROM logs_bot WHERE fecha < ${sqlAhora("-90 days")}`);
-  return { updates_borrados: updates.changes, logs_borrados: logs.changes };
+  // Del sistema: lo informativo dura 2 semanas; avisos y errores, 2 meses.
+  const eventos = await run(`DELETE FROM logs_sistema WHERE (nivel = 'info' AND fecha < ${sqlAhora("-14 days")}) OR fecha < ${sqlAhora("-60 days")}`);
+  return { updates_borrados: updates.changes, logs_borrados: logs.changes, eventos_borrados: eventos.changes };
 }
 
 // Todas las tablas con datos del negocio (no las internas del bot, como el historial de chat o

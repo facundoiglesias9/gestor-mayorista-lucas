@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { toolDefinitions, toolDefinitionsCliente, ejecutarHerramienta } from "./tools.js";
-import { cargarHistorialConversacion, guardarHistorialConversacion, registrarLogSeguro, reiniciarConversacion } from "./repo.js";
+import { cargarHistorialConversacion, guardarHistorialConversacion, registrarLogSeguro, reiniciarConversacion, registrarEvento, detalleDeError as detalleDeErrorSeguro } from "./repo.js";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-5";
@@ -144,6 +144,8 @@ export async function procesarMensaje(
   const tools = esCliente ? toolsClienteConCache : toolsInternoConCache;
 
   const herramientasUsadas: string[] = [];
+  const inicio = Date.now();
+  const perfil = esCliente ? "bot de clientes" : "bot interno";
   let vueltas = 0;
   while (vueltas < 6) {
     vueltas++;
@@ -158,6 +160,13 @@ export async function procesarMensaje(
       });
     } catch (e: any) {
       if (esErrorHistorialCorrupto(e)) {
+        await registrarEvento({
+          nivel: "aviso",
+          origen: "bot",
+          evento: "Memoria de una conversación trabada: se reinició sola",
+          detalle: e,
+          usuario: nombreUsuario,
+        });
         await reiniciarConversacion(usuarioId);
         await registrarLogSeguro({
           usuario_id: usuarioId,
@@ -169,6 +178,18 @@ export async function procesarMensaje(
         });
         return "Tuve un corte interno con la memoria de esta charla. Ya lo solucione solo — contame de nuevo.";
       }
+      // La IA no contesto: saturada / limite de pedidos (aviso, se arregla solo) o algo peor
+      // (sin credito, clave invalida, caida: error).
+      const estado = Number(e?.status ?? 0);
+      const pasajero = estado === 429 || estado === 529 || /overloaded|rate.?limit/i.test(String(e?.message));
+      await registrarEvento({
+        nivel: pasajero ? "aviso" : "error",
+        origen: "ia",
+        evento: pasajero ? `La IA está saturada o con límite de pedidos (HTTP ${estado || "?"})` : `La IA no respondió${estado ? ` (HTTP ${estado})` : ""}: ${String(e?.message ?? e).slice(0, 160)}`,
+        detalle: e,
+        duracion_ms: Date.now() - inicio,
+        usuario: nombreUsuario,
+      });
       throw e;
     }
 
@@ -191,6 +212,7 @@ export async function procesarMensaje(
         .join("\n")
         .trim();
       await guardarHistorial(usuarioId, historial);
+      const duracion = Date.now() - inicio;
       await registrarLogSeguro({
         usuario_id: usuarioId,
         usuario_nombre: nombreUsuario,
@@ -198,7 +220,18 @@ export async function procesarMensaje(
         entrada: imagen ? `${texto} (con imagen adjunta)` : texto,
         salida: textoFinal || "Listo.",
         herramientas_usadas: herramientasUsadas,
+        duracion_ms: duracion,
       });
+      if (duracion > 25_000) {
+        await registrarEvento({
+          nivel: "aviso",
+          origen: "bot",
+          evento: `Respuesta lenta del bot: ${(duracion / 1000).toLocaleString("es-AR", { maximumFractionDigits: 1 })} s`,
+          detalle: `Mensaje: ${texto.slice(0, 300)}\nHerramientas: ${herramientasUsadas.join(", ") || "ninguna"}\nVueltas con la IA: ${vueltas}`,
+          duracion_ms: duracion,
+          usuario: nombreUsuario,
+        });
+      }
       return textoFinal || "Listo.";
     }
 
@@ -208,7 +241,25 @@ export async function procesarMensaje(
       try {
         const resultado = await ejecutarHerramienta(bloque.name, bloque.input, { usuarioId, nombreUsuario, esCliente });
         resultados.push({ type: "tool_result", tool_use_id: bloque.id, content: JSON.stringify(resultado) });
+        // La herramienta contesto con un error (ej: "no existe ese producto"): el bot se lo
+        // explica a la persona, pero queda anotado para ver que pidio y por que no se pudo.
+        if (resultado && typeof resultado === "object" && (resultado as any).ok === false) {
+          await registrarEvento({
+            nivel: "aviso",
+            origen: "herramienta",
+            evento: `${bloque.name}: ${String((resultado as any).error ?? "no se pudo").slice(0, 200)}`,
+            detalle: `Pedido de la IA (${perfil}):\n${JSON.stringify(bloque.input, null, 2).slice(0, 2500)}`,
+            usuario: nombreUsuario,
+          });
+        }
       } catch (e: any) {
+        await registrarEvento({
+          nivel: "error",
+          origen: "herramienta",
+          evento: `${bloque.name} se rompió: ${String(e?.message ?? e).slice(0, 200)}`,
+          detalle: `${detalleDeErrorSeguro(e)}\n\nPedido de la IA (${perfil}):\n${JSON.stringify(bloque.input, null, 2).slice(0, 2500)}`,
+          usuario: nombreUsuario,
+        });
         // Si UNA herramienta explota, igual le mandamos un tool_result (marcado como error) en
         // vez de dejar tirar la excepcion para afuera: asi el turno queda siempre balanceado
         // (cada tool_use con su tool_result) y el historial nunca se corrompe, sin importar que
@@ -225,6 +276,14 @@ export async function procesarMensaje(
   }
 
   await guardarHistorial(usuarioId, historial);
+  await registrarEvento({
+    nivel: "aviso",
+    origen: "bot",
+    evento: "El bot cortó por hacer demasiados pasos para un mensaje",
+    detalle: `Mensaje: ${texto.slice(0, 300)}\nHerramientas: ${herramientasUsadas.join(", ")}`,
+    duracion_ms: Date.now() - inicio,
+    usuario: nombreUsuario,
+  });
   return "Me colgue haciendo demasiados pasos para esto. Contame de nuevo mas simple, o de a un tema por vez.";
 }
 
