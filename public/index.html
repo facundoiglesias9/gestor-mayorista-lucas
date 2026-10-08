@@ -3,490 +3,93 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="theme-color" content="#101216" />
-<title>Gestor Mayorista</title>
-<link rel="icon" type="image/png" href="img/logo-lv.png" />
+<meta name="theme-color" content="#f5f5f7" />
+<title>Catálogo</title>
+<meta name="description" content="Catálogo con stock disponible y precios actualizados." />
+<link rel="icon" type="image/png" href="/img/logo-lv.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
-<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="/catalogo.css" />
+<script>
+  // Tema claro/oscuro: se elige ANTES de dibujar la pagina, asi no hay un parpadeo del tema
+  // equivocado. Lo que haya elegido la persona (guardado en este navegador) y si no, el de su
+  // sistema.
+  (function () {
+    var tema = null;
+    try { tema = localStorage.getItem("catalogo_tema"); } catch (e) {}
+    if (tema !== "claro" && tema !== "oscuro") tema = window.matchMedia("(prefers-color-scheme: dark)").matches ? "oscuro" : "claro";
+    document.documentElement.dataset.tema = tema;
+  })();
+</script>
 </head>
 <body>
-<div id="login-overlay" class="verificando">
-  <div class="login-fondo" aria-hidden="true"><span></span><span></span></div>
-  <form id="form-login">
-    <div class="login-marca">
-      <div class="marca-icono marca-icono-grande">
-        <img src="img/logo-lv.png" alt="LV" />
-      </div>
-      <h1>Gestor Mayorista</h1>
-      <p>Panel interno de gestión</p>
-    </div>
-    <div class="login-campos">
-      <label class="campo-con-icono">
-        <svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-        <input id="login-clave" type="password" placeholder="Clave del panel" autocomplete="current-password" required />
-      </label>
-      <button type="submit" class="btn-primario btn-bloque">Entrar</button>
-      <p id="login-error" class="oculto" role="alert">Clave incorrecta.</p>
-    </div>
-  </form>
-</div>
 
-<div id="app-shell" class="oculto">
-
-  <header class="topbar-app">
-    <div class="marca">
-      <div class="marca-icono">
-        <img src="img/logo-lv.png" alt="LV" />
-      </div>
-      <div class="marca-texto">
-        <strong>Gestor Mayorista</strong>
-        <span>Panel interno</span>
-      </div>
-    </div>
-
-    <h2><strong id="titulo-seccion">Resumen</strong></h2>
-
-    <button type="button" id="btn-menu" class="btn-hamburguesa" aria-label="Abrir menú" aria-expanded="false" aria-controls="tabs">
-      <span></span><span></span><span></span>
+<header class="barra">
+  <div class="barra-contenido">
+    <a class="marca" href="#arriba" aria-label="Ir arriba">
+      <img src="/img/logo-lv.png" alt="Logo" class="marca-logo" />
+    </a>
+    <div class="barra-botones">
+    <button type="button" class="btn-redondo" id="cambiar-tema" aria-label="Cambiar a fondo oscuro" title="Cambiar a fondo oscuro">
+      <svg class="icono-sol" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg>
+      <svg class="icono-luna" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z"/></svg>
     </button>
-  </header>
-
-  <div id="menu-backdrop" class="menu-backdrop"></div>
-
-  <nav id="tabs" class="menu-desplegable">
-      <button data-tab="resumen" class="tab activo">
-        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-        Resumen
-      </button>
-      <button data-tab="stock" class="tab">
-        <svg viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
-        Stock
-      </button>
-      <button data-tab="ventas" class="tab">
-        <svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>
-        Ventas
-      </button>
-      <button data-tab="pedidos" class="tab">
-        <svg viewBox="0 0 24 24"><path d="M20 7 12 3 4 7l8 4 8-4z"/><path d="M4 7v10l8 4 8-4V7"/><path d="M12 11v10"/></svg>
-        Pedidos
-        <span id="badge-pedidos" class="badge-contador oculto">0</span>
-      </button>
-      <button data-tab="prestamos" class="tab">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10"/><path d="M9.5 9.5a2.5 2.5 0 0 1 2.5-1.5c1.4 0 2.5.9 2.5 2s-1.1 1.8-2.5 2c-1.4.2-2.5.9-2.5 2s1.1 2 2.5 2a2.5 2.5 0 0 0 2.5-1.5"/></svg>
-        Préstamos
-      </button>
-      <button data-tab="prendas" class="tab">
-        <svg viewBox="0 0 24 24"><path d="M20.6 12.3 12.7 20a2 2 0 0 1-2.8 0l-7-7a2 2 0 0 1 0-2.8L10.9 2.5H18a2 2 0 0 1 2 2v7.1z"/><circle cx="15" cy="7" r="1.3"/></svg>
-        Plan Canje
-      </button>
-      <button data-tab="empleados" class="tab">
-        <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17.5" cy="8.5" r="2.4"/><path d="M16 14.2c2.7.4 4.5 2.4 4.5 5.3"/></svg>
-        Empleados
-      </button>
-      <button data-tab="bot" class="tab">
-        <svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="12" rx="2.5"/><path d="M12 8V4"/><circle cx="12" cy="3" r="1"/><circle cx="9" cy="14" r="1.3"/><circle cx="15" cy="14" r="1.3"/><path d="M4 13H2M22 13h-2"/></svg>
-        Bot
-      </button>
-      <button data-tab="logs" class="tab">
-        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-        Logs
-      </button>
-  </nav>
-
-  <div class="contenido">
-    <main id="app-main">
-
-      <section id="tab-resumen" class="panel">
-        <div class="cards cards-kpi" id="resumen-cards"></div>
-        <div class="grilla-bloques">
-          <div class="bloque">
-            <div class="bloque-header">
-              <div>
-                <h3 class="bloque-titulo">Préstamos activos</h3>
-                <p class="subtitulo" id="sub-resumen-prestamos"></p>
-              </div>
-              <button type="button" class="btn-link" onclick="irATab('prestamos')">Ver todos
-                <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-              </button>
-            </div>
-            <div class="tabla-wrap">
-              <table id="tabla-resumen-prestamos">
-                <thead><tr><th>Persona</th><th class="num">Pendiente</th><th>Estado</th></tr></thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
-          <div class="bloque">
-            <div class="bloque-header">
-              <div>
-                <h3 class="bloque-titulo">Plan canje en curso</h3>
-                <p class="subtitulo" id="sub-resumen-canjes"></p>
-              </div>
-              <button type="button" class="btn-link" onclick="irATab('prendas')">Ver todos
-                <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-              </button>
-            </div>
-            <div class="tabla-wrap">
-              <table id="tabla-resumen-canjes">
-                <thead><tr><th>Persona</th><th>Celular</th><th class="num">Saldo</th></tr></thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="tab-stock" class="panel oculto">
-        <div class="barra-acciones">
-          <div>
-            <h3 class="titulo-bloque">Inventario</h3>
-            <p class="subtitulo" id="sub-stock"></p>
-          </div>
-          <button type="button" class="btn-primario" onclick="abrirDialogoProducto()">
-            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-            Agregar stock
-          </button>
-        </div>
-        <div class="tabla-wrap">
-          <table id="tabla-productos">
-            <thead><tr><th>Nombre</th><th>Categoría</th><th class="num">Cantidad</th><th class="num">Costo</th><th class="num">Precio venta</th><th class="col-acciones"></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </section>
-
-      <dialog id="dialogo-producto">
-        <form id="form-producto">
-          <input type="hidden" name="id" />
-          <div class="dialogo-header">
-            <h3 class="dialogo-titulo" id="titulo-dialogo-producto">Agregar stock</h3>
-            <p class="ayuda">La categoría se detecta sola con IA a partir del nombre (por ej. "iPhone 12" → Celulares). Dejala vacía salvo que quieras forzar otra.</p>
-          </div>
-          <label>Nombre del producto<input name="nombre" placeholder="Ej: iPhone 12 128GB" autocomplete="off" required /></label>
-          <div class="fila-campos">
-            <label>Cantidad<input name="cantidad" type="number" placeholder="Cantidad" required /></label>
-            <label>Moneda<select name="moneda"><option value="USD">Dólares (U$D)</option><option value="ARS">Pesos ($)</option></select></label>
-          </div>
-          <div class="fila-campos">
-            <label>Costo unitario<input name="costo" type="number" step="0.01" placeholder="Costo unitario" /></label>
-            <label>Precio de venta<input name="precio_venta" type="number" step="0.01" placeholder="Opcional" /></label>
-          </div>
-          <label>Categoría<input name="categoria" placeholder="Se detecta sola (opcional)" autocomplete="off" /></label>
-          <div class="dialogo-botones">
-            <button type="button" class="btn-secundario" onclick="cerrarDialogo('dialogo-producto')">Cancelar</button>
-            <button type="submit" class="btn-primario" id="boton-guardar-producto">Generar stock</button>
-          </div>
-        </form>
-      </dialog>
-
-      <dialog id="dialogo-venta">
-        <form id="form-venta">
-          <div class="dialogo-header">
-            <h3 class="dialogo-titulo">Nueva venta</h3>
-          </div>
-          <label>Producto<input name="nombre_producto" placeholder="Producto" autocomplete="off" required list="lista-productos" /></label>
-          <div class="fila-campos">
-            <label>Cantidad<input name="cantidad" type="number" placeholder="Cantidad" required /></label>
-            <label>Moneda<select name="moneda"><option value="ARS">Pesos ($)</option><option value="USD">Dólares (U$D)</option></select></label>
-          </div>
-          <label>Cliente (opcional)<input name="nombre_cliente" placeholder="Cliente" autocomplete="off" list="lista-personas" /></label>
-          <label>Precio unitario (opcional)<input name="precio_unitario" type="number" step="0.01" placeholder="Se usa el precio de lista si lo dejás vacío" /></label>
-          <div class="dialogo-botones">
-            <button type="button" class="btn-secundario" onclick="cerrarDialogo('dialogo-venta')">Cancelar</button>
-            <button type="submit" class="btn-primario">Generar venta</button>
-          </div>
-        </form>
-      </dialog>
-
-      <section id="tab-ventas" class="panel oculto">
-        <div class="barra-acciones">
-          <div>
-            <h3 class="titulo-bloque">Ventas</h3>
-            <p class="subtitulo" id="sub-ventas"></p>
-          </div>
-          <button type="button" class="btn-primario" onclick="abrirDialogo('dialogo-venta')">
-            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-            Nueva venta
-          </button>
-        </div>
-        <div id="widget-dolar" class="widget-dolar"></div>
-
-        <div id="ventas-paneles" class="paneles-moneda"></div>
-
-        <div class="tabla-wrap">
-          <table id="tabla-ventas">
-            <thead><tr><th>Fecha</th><th>Producto</th><th class="num">Cantidad</th><th>Cliente</th><th class="num">Precio unit.</th><th class="num">Total</th><th>Nota</th><th class="col-acciones"></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section id="tab-pedidos" class="panel oculto">
-        <div class="barra-acciones">
-          <div>
-            <h3 class="titulo-bloque">Pedidos de clientes</h3>
-            <p class="subtitulo" id="sub-pedidos"></p>
-          </div>
-          <button type="button" class="btn-secundario" onclick="cargarPedidos()">
-            <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
-            Actualizar
-          </button>
-        </div>
-        <p class="ayuda">Pedidos que arman los clientes por WhatsApp. No son ventas todavía — hay que aprobarlos (ahí sí se registran) o rechazarlos.</p>
-        <div class="tabla-wrap">
-          <table id="tabla-pedidos">
-            <thead><tr><th>Fecha</th><th>Cliente</th><th>Producto</th><th class="num">Cantidad</th><th class="num">Precio est.</th><th>Estado</th><th class="col-acciones"></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section id="tab-prestamos" class="panel oculto">
-        <div class="barra-acciones">
-          <div>
-            <h3 class="titulo-bloque">Préstamos</h3>
-            <p class="subtitulo" id="sub-prestamos"></p>
-          </div>
-          <button type="button" class="btn-primario" onclick="abrirDialogo('dialogo-prestamo')">
-            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-            Nuevo préstamo
-          </button>
-        </div>
-        <div class="tabla-wrap">
-          <table id="tabla-prestamos">
-            <thead><tr><th class="num">#</th><th>Persona</th><th class="num">Original</th><th>Pendiente</th><th>Estado</th><th>Fecha</th><th>Registrar pago</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </section>
-
-      <dialog id="dialogo-prestamo">
-        <form id="form-prestamo">
-          <div class="dialogo-header">
-            <h3 class="dialogo-titulo">Nuevo préstamo</h3>
-          </div>
-          <label>Persona<input name="persona" placeholder="Persona" autocomplete="off" required list="lista-personas" /></label>
-          <div class="fila-campos">
-            <label>Monto<input name="monto" type="number" step="0.01" placeholder="Monto" required /></label>
-            <label>Moneda<select name="moneda"><option value="ARS">Pesos ($)</option><option value="USD">Dólares (U$D)</option></select></label>
-          </div>
-          <label>Interés % (opcional)<input name="interes_pct" type="number" step="0.01" placeholder="Ej: 10" /></label>
-          <label>Nota (opcional)<input name="nota" placeholder="Nota" /></label>
-          <div class="dialogo-botones">
-            <button type="button" class="btn-secundario" onclick="cerrarDialogo('dialogo-prestamo')">Cancelar</button>
-            <button type="submit" class="btn-primario">Generar préstamo</button>
-          </div>
-        </form>
-      </dialog>
-
-      <section id="tab-prendas" class="panel oculto">
-        <div class="barra-acciones">
-          <div>
-            <h3 class="titulo-bloque">Plan Canje</h3>
-            <p class="subtitulo" id="sub-prendas"></p>
-          </div>
-          <button type="button" class="btn-primario" onclick="abrirDialogoCanje()">
-            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-            Nuevo canje
-          </button>
-        </div>
-        <div class="tabla-wrap">
-          <table id="tabla-prendas">
-            <thead><tr><th>Persona</th><th>Celular</th><th>Estado del equipo</th><th class="num">Valor tomado</th><th>Entregado</th><th class="num">Saldo</th><th>Situación</th><th>Fecha</th><th class="col-acciones"></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </section>
-
-      <dialog id="dialogo-canje">
-        <form id="form-canje">
-          <input type="hidden" name="id" />
-          <div class="dialogo-header">
-            <h3 class="dialogo-titulo" id="titulo-dialogo-canje">Nuevo canje</h3>
-            <p class="ayuda">Recibís un celular en cierto estado, lo tomás a un precio, y de ahí sale una diferencia a favor tuyo o del cliente (en plata o en producto).</p>
-          </div>
-          <label>Persona<input name="persona" placeholder="Persona" autocomplete="off" required list="lista-personas" /></label>
-          <label>Celular que recibís<input name="descripcion" placeholder="Ej: iPhone 11 128GB" autocomplete="off" required /></label>
-          <label>Estado del equipo<input name="condicion" placeholder="Ej: excelente, con detalles, para repuestos" autocomplete="off" /></label>
-          <div class="fila-campos">
-            <label>Precio al que lo tomás<input name="valor_tomado" type="number" step="0.01" placeholder="Monto" /></label>
-            <label>Moneda<select name="moneda_valor"><option value="ARS">Pesos ($)</option><option value="USD">Dólares (U$D)</option></select></label>
-          </div>
-          <label>Producto que entregás a cambio (opcional)<input name="producto_entregado" placeholder="Ej: iPhone 13 128GB" autocomplete="off" /></label>
-          <div class="fila-campos">
-            <label>Diferencia en plata (opcional)<input name="saldo_monto" type="number" step="0.01" placeholder="+ te dan / − les debés" /></label>
-            <label>Moneda<select name="saldo_moneda"><option value="ARS">Pesos ($)</option><option value="USD">Dólares (U$D)</option></select></label>
-          </div>
-          <p class="ayuda ayuda-campo">Positivo = te tienen que dar esa plata. Negativo = se la debés vos.</p>
-          <label>Nota (opcional)<input name="nota" placeholder="Nota" /></label>
-          <div class="dialogo-botones">
-            <button type="button" class="btn-secundario" onclick="cerrarDialogo('dialogo-canje')">Cancelar</button>
-            <button type="submit" class="btn-primario" id="boton-guardar-canje">Generar canje</button>
-          </div>
-        </form>
-      </dialog>
-
-      <section id="tab-empleados" class="panel oculto">
-        <div class="barra-acciones">
-          <div>
-            <h3 class="titulo-bloque">Empleados</h3>
-            <p class="subtitulo" id="sub-empleados"></p>
-          </div>
-          <button type="button" class="btn-primario" onclick="abrirDialogo('dialogo-empleado')">
-            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-            Nuevo usuario
-          </button>
-        </div>
-        <div class="tabla-wrap">
-          <table id="tabla-empleados">
-            <thead><tr><th>Nombre</th><th>Teléfono</th><th class="num">Descuento</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </section>
-
-      <dialog id="dialogo-empleado">
-        <form id="form-empleado">
-          <div class="dialogo-header">
-            <h3 class="dialogo-titulo">Nuevo usuario (precio amigo)</h3>
-          </div>
-          <label>Nombre<input name="nombre" placeholder="Nombre" autocomplete="off" required /></label>
-          <div class="fila-campos">
-            <label>Teléfono (opcional)<input name="telefono" placeholder="Teléfono" autocomplete="off" /></label>
-            <label>% descuento<input name="descuento_pct" type="number" step="0.01" placeholder="Ej: 10" /></label>
-          </div>
-          <div class="dialogo-botones">
-            <button type="button" class="btn-secundario" onclick="cerrarDialogo('dialogo-empleado')">Cancelar</button>
-            <button type="submit" class="btn-primario">Generar usuario</button>
-          </div>
-        </form>
-      </dialog>
-
-      <section id="tab-bot" class="panel oculto">
-        <div class="barra-acciones">
-          <div>
-            <h3 class="titulo-bloque">Estado de conexión</h3>
-            <p class="subtitulo">Cómo están el bot, la base de datos y la IA ahora mismo</p>
-          </div>
-          <div class="grupo-botones">
-            <button type="button" class="btn-secundario" onclick="descargarBackup(this)" title="Descarga un archivo con todos los datos del negocio">
-              <svg viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>
-              Descargar backup
-            </button>
-            <button type="button" class="btn-secundario" onclick="cargarEstadoSistema()">
-              <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
-              Actualizar
-            </button>
-          </div>
-        </div>
-        <div class="cards cards-estado" id="estado-cards"></div>
-
-        <div class="barra-acciones">
-          <div>
-            <h3 class="titulo-bloque">Cómo funciona</h3>
-          </div>
-        </div>
-        <div class="surface">
-          <p class="ayuda-grande">
-            El bot escucha por Telegram (texto y fotos) a los usuarios autorizados. Cada mensaje se lo pasa a un modelo de IA
-            (<span id="info-modelo" class="chip-codigo">Claude</span>) junto con las reglas del negocio y una lista de "herramientas" que puede usar para leer o
-            modificar la base de datos. Vos le contás lo que pasó en lenguaje normal, y el modelo decide qué acción ejecutar (o qué
-            preguntarte si falta un dato importante). El panel web y el chat comparten exactamente la misma base — lo que carga uno lo ve el otro
-            al instante.
-          </p>
-          <p class="ayuda-grande">
-            Si el bot se queda repitiendo el mismo error con alguien, esa persona puede mandarle <strong>/reiniciar</strong> por Telegram:
-            le borra la memoria de esa charla puntual (nunca los datos de ventas, stock, etc.) y sigue funcionando normal.
-          </p>
-          <details class="desplegable">
-            <summary>
-              <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
-              Herramientas que puede usar <span class="etiqueta" id="cantidad-herramientas"></span>
-            </summary>
-            <div id="lista-herramientas" class="lista-herramientas"></div>
-          </details>
-        </div>
-
-        <div class="barra-acciones">
-          <div>
-            <h3 class="titulo-bloque">Respuestas predefinidas</h3>
-            <p class="subtitulo" id="sub-respuestas"></p>
-          </div>
-          <button type="button" class="btn-primario" onclick="abrirDialogoRespuesta()">
-            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-            Nueva respuesta
-          </button>
-        </div>
-        <p class="ayuda">Si un mensaje corto (hasta 8 palabras) contiene el disparador, el bot responde esto directo — sin gastar IA. No importan mayúsculas ni tildes. Útil para preguntas fijas tipo horarios, dirección, etc. Los mensajes más largos siempre van a la IA, para que una venta contada junto a una pregunta no se pierda.</p>
-        <div class="tabla-wrap">
-          <table id="tabla-respuestas">
-            <thead><tr><th>Disparador</th><th>Respuesta</th><th>Activa</th><th class="col-acciones"></th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </section>
-
-      <dialog id="dialogo-respuesta">
-        <form id="form-respuesta">
-          <input type="hidden" name="id" />
-          <div class="dialogo-header">
-            <h3 class="dialogo-titulo" id="titulo-dialogo-respuesta">Nueva respuesta</h3>
-          </div>
-          <label>Disparador (texto que activa la respuesta)<input name="disparador" placeholder="Ej: horario" autocomplete="off" required /></label>
-          <label>Respuesta<textarea name="respuesta" rows="3" placeholder="Lo que le contesta el bot" required></textarea></label>
-          <label class="fila-check"><input type="checkbox" name="activo" checked /> Activa</label>
-          <div class="dialogo-botones">
-            <button type="button" class="btn-secundario" onclick="cerrarDialogo('dialogo-respuesta')">Cancelar</button>
-            <button type="submit" class="btn-primario" id="boton-guardar-respuesta">Generar respuesta</button>
-          </div>
-        </form>
-      </dialog>
-
-      <section id="tab-logs" class="panel oculto">
-        <div class="barra-acciones">
-          <div>
-            <h3 class="titulo-bloque">Actividad reciente del bot</h3>
-            <p class="subtitulo" id="sub-logs"></p>
-          </div>
-          <button type="button" class="btn-secundario" onclick="cargarLogs()">
-            <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
-            Actualizar
-          </button>
-        </div>
-        <div class="tabla-wrap">
-          <table id="tabla-logs">
-            <thead><tr><th>Fecha</th><th>Usuario</th><th>Tipo</th><th>Mensaje</th><th>Respuesta</th><th>Herramientas usadas</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </section>
-
-    </main>
+    <a class="btn btn-contorno btn-chico" href="/panel" title="Ingresar al panel">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20.5c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5"/></svg>
+      <span class="texto-boton">Ingresar</span>
+    </a>
+    <a class="btn btn-whatsapp btn-chico oculto" id="whatsapp-barra" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 3.5A11.8 11.8 0 0 0 12 0C5.4 0 .1 5.3.1 11.9c0 2.1.6 4.1 1.6 5.9L0 24l6.4-1.7a11.9 11.9 0 0 0 5.6 1.4h.1c6.6 0 11.9-5.3 11.9-11.9 0-3.2-1.2-6.2-3.5-8.3zM12 21.7c-1.8 0-3.5-.5-5-1.4l-.4-.2-3.8 1 1-3.7-.2-.4a9.8 9.8 0 0 1-1.5-5.2c0-5.4 4.4-9.9 9.9-9.9 2.6 0 5.1 1 7 2.9a9.8 9.8 0 0 1 2.9 7c0 5.5-4.4 9.9-9.9 9.9zm5.4-7.4c-.3-.1-1.8-.9-2-1s-.5-.1-.7.1-.8 1-.9 1.2-.3.2-.6.1a8.1 8.1 0 0 1-4-3.5c-.3-.5.3-.5.9-1.6.1-.2 0-.4 0-.5l-.9-2.2c-.2-.6-.5-.5-.7-.5h-.6a1.1 1.1 0 0 0-.8.4 3.4 3.4 0 0 0-1.1 2.5c0 1.5 1.1 2.9 1.2 3.1s2.1 3.2 5.1 4.5c1.9.8 2.6.9 3.6.7.6-.1 1.8-.7 2-1.5s.3-1.3.2-1.5c-.1-.1-.3-.2-.6-.3z"/></svg>
+      Escribinos
+    </a>
+    </div>
   </div>
-</div>
+</header>
 
-<!-- Confirmacion propia (reemplaza los confirm()/prompt() grises del navegador). Ver confirmar() en app.js. -->
-<dialog id="dialogo-confirmar" class="dialogo-chico">
-  <form id="form-confirmar">
-    <div class="dialogo-header">
-      <h3 class="dialogo-titulo" id="confirmar-titulo">¿Confirmar?</h3>
-      <p class="ayuda" id="confirmar-mensaje"></p>
+<main id="arriba">
+  <section class="hero">
+    <p class="hero-etiqueta" id="hero-etiqueta">Stock disponible</p>
+    <h1>Elegí tu próximo equipo.</h1>
+    <p class="hero-texto">Precios actualizados al día. Consultanos por WhatsApp y te respondemos al toque.</p>
+  </section>
+
+  <section class="herramientas" aria-label="Filtros">
+    <label class="buscador">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="buscar" type="search" placeholder="Buscar modelo, capacidad, color…" autocomplete="off" />
+    </label>
+    <div class="filtros-fila">
+      <div class="categorias" id="categorias" role="tablist" aria-label="Categorías"></div>
+      <label class="orden">
+        <span>Ordenar</span>
+        <select id="orden">
+          <option value="destacados">Destacados</option>
+          <option value="precio-asc">Menor precio</option>
+          <option value="precio-desc">Mayor precio</option>
+          <option value="nombre">Nombre (A–Z)</option>
+        </select>
+      </label>
     </div>
-    <label id="confirmar-motivo" class="oculto">Motivo (opcional)<input name="motivo" autocomplete="off" /></label>
-    <div class="dialogo-botones">
-      <button type="button" class="btn-secundario" id="confirmar-cancelar">Cancelar</button>
-      <button type="submit" class="btn-primario" id="confirmar-aceptar">Confirmar</button>
+  </section>
+
+  <p class="resultado-info" id="resultado-info" aria-live="polite"></p>
+  <section class="grilla" id="grilla" aria-label="Productos"></section>
+</main>
+
+<footer class="pie">
+  <div class="pie-contenido">
+    <div class="pie-marca">
+      <img src="/img/logo-lv.png" alt="Logo" class="marca-logo" />
     </div>
-  </form>
-</dialog>
+    <p class="pie-texto" id="pie-texto">Precios sujetos a cambio sin previo aviso. Stock actualizado en tiempo real.</p>
+  </div>
+</footer>
 
-<datalist id="lista-personas"></datalist>
-<datalist id="lista-productos"></datalist>
+<a class="whatsapp-flotante oculto" id="whatsapp-flotante" target="_blank" rel="noopener" aria-label="Escribinos por WhatsApp">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 3.5A11.8 11.8 0 0 0 12 0C5.4 0 .1 5.3.1 11.9c0 2.1.6 4.1 1.6 5.9L0 24l6.4-1.7a11.9 11.9 0 0 0 5.6 1.4h.1c6.6 0 11.9-5.3 11.9-11.9 0-3.2-1.2-6.2-3.5-8.3zM12 21.7c-1.8 0-3.5-.5-5-1.4l-.4-.2-3.8 1 1-3.7-.2-.4a9.8 9.8 0 0 1-1.5-5.2c0-5.4 4.4-9.9 9.9-9.9 2.6 0 5.1 1 7 2.9a9.8 9.8 0 0 1 2.9 7c0 5.5-4.4 9.9-9.9 9.9zm5.4-7.4c-.3-.1-1.8-.9-2-1s-.5-.1-.7.1-.8 1-.9 1.2-.3.2-.6.1a8.1 8.1 0 0 1-4-3.5c-.3-.5.3-.5.9-1.6.1-.2 0-.4 0-.5l-.9-2.2c-.2-.6-.5-.5-.7-.5h-.6a1.1 1.1 0 0 0-.8.4 3.4 3.4 0 0 0-1.1 2.5c0 1.5 1.1 2.9 1.2 3.1s2.1 3.2 5.1 4.5c1.9.8 2.6.9 3.6.7.6-.1 1.8-.7 2-1.5s.3-1.3.2-1.5c-.1-.1-.3-.2-.6-.3z"/></svg>
+</a>
 
-<div id="toast" role="status" aria-live="polite"></div>
-
-<script src="app.js"></script>
+<script src="/catalogo.js"></script>
 </body>
 </html>

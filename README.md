@@ -129,8 +129,10 @@ Además del chat, hay un panel web para ver y editar todo (stock, ventas, prést
 
 ### Acceder
 
-- **Corriendo local** (`npm start`): **http://localhost:4000**, o desde el celu/otra compu en tu wifi con la IP de tu PC (`ipconfig` en Windows) en vez de `localhost`.
-- **Desplegado en Vercel**: la URL que te dio Vercel (ej. `https://gestor-mayorista-lucas.vercel.app`), accesible desde cualquier lado con internet.
+El panel está en **`/panel`**: la dirección principal es el catálogo para clientes (ver más abajo).
+
+- **Corriendo local** (`npm start`, o `npm run panel` para levantar solo la web sin el bot): **http://localhost:4000/panel**, o desde el celu/otra compu en tu wifi con la IP de tu PC (`ipconfig` en Windows) en vez de `localhost`.
+- **Desplegado en Vercel**: la URL que te dio Vercel con `/panel` al final (ej. `https://gestor-mayorista-lucas.vercel.app/panel`), accesible desde cualquier lado con internet.
 
 En los dos casos te va a pedir una clave — es el valor de `PANEL_PASSWORD` (en tu `.env` local, o en las variables de entorno de Vercel).
 
@@ -148,6 +150,13 @@ El panel y el chat de Telegram comparten exactamente la misma base de datos (Tur
 > Después de 10 intentos con clave incorrecta desde una misma conexión, el panel la bloquea 15 minutos.
 
 > Importante: quien tenga la clave del panel puede ver y editar todos tus datos. Si lo desplegás en Vercel queda accesible desde cualquier internet — la única traba es esa clave, así que elegí una que no sea obvia y no la compartas. Si sospechás que alguien más la tiene, cambiá `PANEL_PASSWORD` (en tu `.env` y/o en Vercel) y volvé a desplegar/reiniciar.
+
+## Catálogo para clientes
+
+La dirección principal (ej. `https://gestor-mayorista-lucas.vercel.app`) es un catálogo público, para pasarle a los clientes: muestra los productos con stock, con precio, buscador y filtros, y un botón para consultar por WhatsApp. No muestra costos, notas internas ni cantidades exactas.
+
+- El número de WhatsApp de los botones sale de la variable `CATALOGO_WHATSAPP` (con código de país, ej. `5491112345678`).
+- Las fotos se cargan desde el panel, en la sección **Catálogo**: una por modelo y color. En el catálogo, cada producto muestra las fotos de su modelo con puntitos de color para cambiar entre ellas.
 
 ## Sumar otro usuario autorizado
 

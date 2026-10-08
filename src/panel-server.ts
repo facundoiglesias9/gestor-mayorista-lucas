@@ -17,7 +17,8 @@ if (!PANEL_PASSWORD) throw new Error("Falta PANEL_PASSWORD en el .env");
 // para siempre en este proceso (es una proteccion propia de la libreria para no correr el
 // bot en los dos modos a la vez) y romperia el modo local con polling que usa index.ts.
 export const app = express();
-app.use(express.json());
+// Limite mas alto que el de fabrica (100 KB) para poder subir las fotos del catalogo.
+app.use(express.json({ limit: "4mb" }));
 // Para que req.ip sea la IP real de quien entra (en Vercel llega en el header X-Forwarded-For)
 // y no la del proxy de Vercel: la usa el freno de intentos fallidos de abajo.
 app.set("trust proxy", true);
@@ -68,6 +69,9 @@ app.use("/api", (req, res, next) => {
   // El chequeo automatico del webhook (GitHub Actions, cada 30 min) tampoco tiene la clave del
   // panel: se autentica con su propio CRON_SECRET, verificado en api/index.ts.
   if (req.path === "/cron/verificar-webhook") return next();
+  // El catalogo y sus fotos son publicos a proposito (son para clientes): solo devuelven lo
+  // que un cliente puede ver, ver listarCatalogo en repo.ts.
+  if (req.path === "/catalogo" || req.path.startsWith("/catalogo/")) return next();
   const ip = req.ip ?? "desconocida";
   if ((intentosVigentes(ip)?.cantidad ?? 0) >= MAX_INTENTOS_FALLIDOS) {
     return res.status(429).json({ ok: false, error: "Demasiados intentos con clave incorrecta. Esperá 15 minutos y probá de nuevo." });
@@ -140,20 +144,38 @@ app.get("/api/resumen", envolver(() => repo.consultarEstadoGeneral()));
 
 // ---------- cotizacion del dolar (blue y cripto/USDT), con cache de 60s ----------
 let dolarCache: { data: any; ts: number } | null = null;
-app.get(
-  "/api/dolar",
-  envolver(async () => {
-    if (dolarCache && Date.now() - dolarCache.ts < 60_000) return dolarCache.data;
-    const [blueResp, criptoResp] = await Promise.all([
-      fetch("https://dolarapi.com/v1/dolares/blue"),
-      fetch("https://dolarapi.com/v1/dolares/cripto"),
-    ]);
-    if (!blueResp.ok || !criptoResp.ok) throw new Error("No se pudo obtener la cotización del dólar.");
-    const datos = { blue: await blueResp.json(), cripto: await criptoResp.json() };
-    dolarCache = { data: datos, ts: Date.now() };
-    return datos;
-  })
-);
+
+async function obtenerDolar() {
+  if (dolarCache && Date.now() - dolarCache.ts < 60_000) return dolarCache.data;
+  const [blueResp, criptoResp] = await Promise.all([
+    fetch("https://dolarapi.com/v1/dolares/blue"),
+    fetch("https://dolarapi.com/v1/dolares/cripto"),
+  ]);
+  if (!blueResp.ok || !criptoResp.ok) throw new Error("No se pudo obtener la cotización del dólar.");
+  const datos = { blue: await blueResp.json(), cripto: await criptoResp.json() };
+  dolarCache = { data: datos, ts: Date.now() };
+  return datos;
+}
+
+app.get("/api/dolar", envolver(() => obtenerDolar()));
+
+// ---------- catalogo publico (pagina /catalogo, para clientes, sin clave) ----------
+app.get("/api/catalogo", async (_req, res) => {
+  try {
+    const [productos, dolar] = await Promise.all([repo.listarCatalogo(), obtenerDolar().catch(() => null)]);
+    // Que Vercel lo guarde 60 s: si muchos clientes entran a la vez, no le pegan todos a la base.
+    res.setHeader("Cache-Control", "public, max-age=30, s-maxage=60, stale-while-revalidate=300");
+    res.json({
+      tienda: {
+        whatsapp: (process.env.CATALOGO_WHATSAPP || "").replace(/\D/g, "") || null,
+      },
+      dolar_blue_venta: dolar?.blue?.venta ?? null,
+      productos,
+    });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: "No se pudo cargar el catálogo." });
+  }
+});
 
 // ---------- respuestas predefinidas ----------
 app.get("/api/respuestas", envolver(() => repo.listarRespuestasPredefinidas()));
@@ -213,11 +235,34 @@ app.get(
   })
 );
 
+// Foto de un producto del catalogo (publica). La url cambia cuando se reemplaza la foto, asi que
+// se puede guardar en cache "para siempre".
+app.get("/api/catalogo/fotos/:id", async (req, res) => {
+  try {
+    const foto = await repo.obtenerFotoCatalogo(Number(req.params.id));
+    if (!foto) return res.status(404).end();
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.type(foto.mime).send(foto.datos);
+  } catch {
+    res.status(500).end();
+  }
+});
+
+// ---------- fotos del catalogo (panel, con clave) ----------
+app.get("/api/fotos-catalogo", envolver(() => repo.estadoFotosCatalogo()));
+app.post("/api/fotos-catalogo", envolver((req) => repo.guardarFotoCatalogo(req.body)));
+app.delete("/api/fotos-catalogo/:id", envolver((req) => repo.eliminarFotoCatalogo(Number(req.params.id))));
+
 // ---------- frontend estatico ----------
+// La pagina principal ("/", public/index.html) es el catalogo para clientes; el panel interno
+// esta en /panel. /catalogo era la direccion vieja del catalogo: redirige a la principal para
+// que no se rompan los links que ya se hayan pasado. (En Vercel lo mismo lo hace vercel.json.)
+app.get("/panel", (_req, res) => res.sendFile(path.join(__dirname, "..", "public", "panel.html")));
+app.get("/catalogo", (_req, res) => res.redirect(302, "/"));
 app.use(express.static(path.join(__dirname, "..", "public")));
 
 export function iniciarPanel() {
   app.listen(PANEL_PORT, "0.0.0.0", () => {
-    console.log(`Panel web corriendo en http://localhost:${PANEL_PORT} (y en tu red local en ese mismo puerto).`);
+    console.log(`Catalogo en http://localhost:${PANEL_PORT} y panel en http://localhost:${PANEL_PORT}/panel (y en tu red local en ese mismo puerto).`);
   });
 }

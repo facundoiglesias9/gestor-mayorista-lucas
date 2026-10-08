@@ -210,6 +210,23 @@ CREATE TABLE IF NOT EXISTS pedidos_pendientes (
   resuelto_en TEXT
 );
 
+-- Fotos del catalogo publico: una por modelo y color (ej: "iPhone 17 Pro Max" + "Naranja
+-- cosmico"). Van en la base y no en archivos porque en Vercel no hay disco donde guardarlas.
+-- modelo_clave y color_clave son el modelo y el color normalizados (ver claveModelo en
+-- repo.ts): con eso se emparejan con los productos y se evita cargar dos veces la misma foto.
+CREATE TABLE IF NOT EXISTS fotos_catalogo (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  modelo TEXT NOT NULL,
+  modelo_clave TEXT NOT NULL,
+  color TEXT NOT NULL,
+  color_clave TEXT NOT NULL,
+  color_hex TEXT,
+  mime TEXT NOT NULL,
+  datos BLOB NOT NULL,
+  actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS fotos_catalogo_modelo_color ON fotos_catalogo (modelo_clave, color_clave);
+
 -- Registro de actividad del bot (para verlo desde el panel sin depender de logs de Vercel).
 CREATE TABLE IF NOT EXISTS logs_bot (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

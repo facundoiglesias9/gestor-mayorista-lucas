@@ -1,6 +1,10 @@
 {
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" }
+    { "source": "/api/(.*)", "destination": "/api" },
+    { "source": "/panel", "destination": "/panel.html" }
+  ],
+  "redirects": [
+    { "source": "/catalogo", "destination": "/", "permanent": false }
   ],
   "functions": {
     "api/index.ts": {

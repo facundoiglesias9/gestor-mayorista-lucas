@@ -444,6 +444,7 @@ const TITULOS_TAB = {
   empleados: "Empleados",
   bot: "Bot",
   logs: "Logs",
+  catalogo: "Catálogo",
 };
 
 function irATab(tab) {
@@ -498,6 +499,7 @@ function cargarTab(tab) {
     cargarRespuestas();
   }
   if (tab === "logs") cargarLogs();
+  if (tab === "catalogo") cargarFotosCatalogo();
 }
 
 async function cargarListaPersonas() {
@@ -1379,6 +1381,224 @@ async function cargarLogs() {
     mostrarToast(e.message, true);
   }
 }
+
+// ---------- fotos del catalogo publico ----------
+// Colores oficiales de cada modelo, solo como sugerencia al cargar una foto (se puede escribir
+// cualquier otro). El tono es aproximado: es el color del puntito en el catalogo.
+const COLORES_OFICIALES = {
+  "iPhone 17 Pro Max": [["Naranja cósmico", "#f77e2d"], ["Azul profundo", "#2f3b52"], ["Plata", "#e3e4e1"]],
+  "iPhone 17 Pro": [["Naranja cósmico", "#f77e2d"], ["Azul profundo", "#2f3b52"], ["Plata", "#e3e4e1"]],
+  "iPhone Air": [["Negro espacial", "#2b2b2d"], ["Blanco nube", "#f2f1ed"], ["Dorado claro", "#eadcc0"], ["Azul cielo", "#c9dbe9"]],
+  "iPhone 17": [["Negro", "#2c2c2e"], ["Blanco", "#f5f5f0"], ["Azul niebla", "#a9bcd0"], ["Salvia", "#b6c3a8"], ["Lavanda", "#cdbfe0"]],
+  "iPhone 16 Pro Max": [["Titanio desierto", "#c9b49a"], ["Titanio natural", "#c2bcb2"], ["Titanio blanco", "#eceae6"], ["Titanio negro", "#3d3d3f"]],
+  "iPhone 16 Pro": [["Titanio desierto", "#c9b49a"], ["Titanio natural", "#c2bcb2"], ["Titanio blanco", "#eceae6"], ["Titanio negro", "#3d3d3f"]],
+  "iPhone 16": [["Negro", "#3a3a3c"], ["Blanco", "#f5f5f0"], ["Rosa", "#f2adda"], ["Verde azulado", "#a0d6d2"], ["Ultramar", "#7b8de0"]],
+  "iPhone 16e": [["Negro", "#2c2c2e"], ["Blanco", "#f5f5f0"]],
+  "iPhone 15 Pro Max": [["Titanio natural", "#c2bcb2"], ["Titanio azul", "#3f4b5c"], ["Titanio blanco", "#eceae6"], ["Titanio negro", "#3d3d3f"]],
+  "iPhone 15 Pro": [["Titanio natural", "#c2bcb2"], ["Titanio azul", "#3f4b5c"], ["Titanio blanco", "#eceae6"], ["Titanio negro", "#3d3d3f"]],
+  "iPhone 15": [["Negro", "#3b3d40"], ["Azul", "#d4e1ea"], ["Verde", "#dfe8d5"], ["Amarillo", "#f5ecc4"], ["Rosa", "#f3dbe0"]],
+  "iPhone 14 Pro Max": [["Negro espacial", "#3b3a3c"], ["Plata", "#e9e9e4"], ["Dorado", "#f4e6cd"], ["Morado oscuro", "#594f63"]],
+  "iPhone 14 Pro": [["Negro espacial", "#3b3a3c"], ["Plata", "#e9e9e4"], ["Dorado", "#f4e6cd"], ["Morado oscuro", "#594f63"]],
+  "iPhone 14": [["Medianoche", "#2b2f36"], ["Blanco estelar", "#f0e9df"], ["Azul", "#a6bccf"], ["Morado", "#e1d5ea"], ["Rojo", "#c8323c"], ["Amarillo", "#f5e488"]],
+  "iPhone 13 Pro Max": [["Grafito", "#4a4a4c"], ["Dorado", "#f3e3c8"], ["Plata", "#e3e4e5"], ["Azul sierra", "#9bb5ce"], ["Verde alpino", "#55665a"]],
+  "iPhone 13 Pro": [["Grafito", "#4a4a4c"], ["Dorado", "#f3e3c8"], ["Plata", "#e3e4e5"], ["Azul sierra", "#9bb5ce"], ["Verde alpino", "#55665a"]],
+  "iPhone 13": [["Medianoche", "#2b2f36"], ["Blanco estelar", "#f0e9df"], ["Azul", "#2f5876"], ["Rosa", "#f6d5d0"], ["Rojo", "#c8323c"], ["Verde", "#44574a"]],
+  "iPhone 12": [["Negro", "#2c2c2e"], ["Blanco", "#f5f5f0"], ["Rojo", "#c8323c"], ["Verde", "#d8eadb"], ["Azul", "#2f4f6b"], ["Violeta", "#b9b1d6"]],
+  "iPhone 11": [["Negro", "#2c2c2e"], ["Blanco", "#f5f5f0"], ["Verde", "#aee1cd"], ["Amarillo", "#fde58b"], ["Violeta", "#d1c6e6"], ["Rojo", "#c8323c"]],
+};
+
+let fotosCache = [];
+
+function sugerenciasDeColor(modelo) {
+  const clave = Object.keys(COLORES_OFICIALES).find((m) => m.toLowerCase() === String(modelo).trim().toLowerCase());
+  return clave ? COLORES_OFICIALES[clave] : [];
+}
+
+async function cargarFotosCatalogo() {
+  try {
+    const r = await api("GET", "/api/fotos-catalogo");
+    fotosCache = r.fotos;
+    const modelos = new Set(r.fotos.map((f) => f.modelo));
+    ponerSubtitulo(
+      "sub-fotos",
+      r.fotos.length ? `${plural(r.fotos.length, "foto")} de ${plural(modelos.size, "modelo")}` : "Todavía no cargaste ninguna foto"
+    );
+
+    // Modelos que hay en stock y no tienen ninguna foto: con un clic se carga la primera.
+    const sinFoto = document.getElementById("sin-foto");
+    sinFoto.classList.toggle("oculto", !r.modelos_sin_foto.length);
+    sinFoto.innerHTML = r.modelos_sin_foto.length
+      ? `<div class="sin-foto-titulo">En stock y sin foto <span class="etiqueta">${r.modelos_sin_foto.length}</span></div>
+         <div class="sin-foto-lista">${r.modelos_sin_foto
+           .map(
+             (m) =>
+               `<button type="button" class="chip-agregar" title="${escapeAttr(m.productos.join(" · "))}" data-modelo="${escapeAttr(m.modelo)}">
+                  <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>${escapeHtml(m.modelo)}
+                </button>`
+           )
+           .join("")}</div>`
+      : "";
+
+    // Modelos sugeridos para el campo "Modelo": los oficiales y los que hay en stock.
+    document.getElementById("lista-modelos").innerHTML = [...new Set([...Object.keys(COLORES_OFICIALES), ...r.modelos_sin_foto.map((m) => m.modelo), ...modelos])]
+      .map((m) => `<option value="${escapeAttr(m)}">`)
+      .join("");
+
+    const porModelo = new Map();
+    for (const f of r.fotos) {
+      if (!porModelo.has(f.modelo_clave)) porModelo.set(f.modelo_clave, { modelo: f.modelo, fotos: [] });
+      porModelo.get(f.modelo_clave).fotos.push(f);
+    }
+    document.getElementById("lista-fotos").innerHTML = porModelo.size
+      ? [...porModelo.values()]
+          .map(
+            (g, i) => `
+        <div class="grupo-fotos" style="animation-delay:${Math.min(i, 8) * 40}ms">
+          <div class="grupo-fotos-header">
+            <strong>${escapeHtml(g.modelo)}</strong>
+            <button type="button" class="btn-link" data-agregar-modelo="${escapeAttr(g.modelo)}">
+              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Otro color
+            </button>
+          </div>
+          <div class="fotos-modelo">${g.fotos
+            .map(
+              (f) => `
+            <figure class="foto-item">
+              <div class="foto-item-imagen"><img src="${f.url}" alt="${escapeAttr(`${f.modelo} ${f.color}`)}" loading="lazy" /></div>
+              <figcaption>
+                <span class="foto-color"><span class="punto-color" style="background:${f.color_hex ?? "#c7c7cc"}"></span>${escapeHtml(f.color)}</span>
+                <button type="button" class="btn-icono peligro" title="Eliminar foto" aria-label="Eliminar foto" data-eliminar-foto="${f.id}">${ICONO_TACHO}</button>
+              </figcaption>
+            </figure>`
+            )
+            .join("")}</div>
+        </div>`
+          )
+          .join("")
+      : estadoVacio("Todavía no cargaste fotos. Empezá por los modelos que tenés en stock.");
+  } catch (e) {
+    mostrarToast(e.message, true);
+  }
+}
+
+function abrirDialogoFoto(modelo = "") {
+  abrirDialogo("dialogo-foto");
+  const form = document.getElementById("form-foto");
+  form.elements.modelo.value = modelo;
+  form.elements.color_hex.value = "#c7c7cc";
+  actualizarColoresSugeridos();
+  document.getElementById("vista-foto").classList.add("oculto");
+  document.getElementById("texto-zona-foto").classList.remove("oculto");
+  (modelo ? form.elements.color : form.elements.modelo).focus();
+}
+
+function actualizarColoresSugeridos() {
+  const form = document.getElementById("form-foto");
+  document.getElementById("lista-colores-modelo").innerHTML = sugerenciasDeColor(form.elements.modelo.value)
+    .map(([nombre]) => `<option value="${escapeAttr(nombre)}">`)
+    .join("");
+}
+
+// Achica la foto antes de subirla (lado mayor 1000 px, JPEG/WebP): queda liviana y el catalogo
+// carga rapido. El fondo se pinta de blanco por si era un PNG transparente.
+function prepararFoto(archivo) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const escala = Math.min(1, 1000 / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * escala);
+      canvas.height = Math.round(img.height * escala);
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(img.src);
+      const webp = canvas.toDataURL("image/webp", 0.86);
+      resolve(webp.startsWith("data:image/webp") ? webp : canvas.toDataURL("image/jpeg", 0.88));
+    };
+    img.onerror = () => reject(new Error("No se pudo leer esa imagen. Probá con un JPG o PNG."));
+    img.src = URL.createObjectURL(archivo);
+  });
+}
+
+function mostrarVistaPrevia(archivo) {
+  const vista = document.getElementById("vista-foto");
+  vista.src = URL.createObjectURL(archivo);
+  vista.classList.remove("oculto");
+  document.getElementById("texto-zona-foto").classList.add("oculto");
+}
+
+document.getElementById("form-foto").elements.modelo.addEventListener("input", actualizarColoresSugeridos);
+document.getElementById("form-foto").elements.color.addEventListener("input", (ev) => {
+  const form = ev.target.form;
+  const sugerido = sugerenciasDeColor(form.elements.modelo.value).find(([nombre]) => nombre.toLowerCase() === ev.target.value.trim().toLowerCase());
+  if (sugerido) form.elements.color_hex.value = sugerido[1];
+});
+document.getElementById("form-foto").elements.archivo.addEventListener("change", (ev) => {
+  if (ev.target.files[0]) mostrarVistaPrevia(ev.target.files[0]);
+});
+
+// Arrastrar y soltar la foto sobre el recuadro.
+const zonaFoto = document.getElementById("zona-foto");
+["dragenter", "dragover"].forEach((t) => zonaFoto.addEventListener(t, (ev) => (ev.preventDefault(), zonaFoto.classList.add("arrastrando"))));
+["dragleave", "drop"].forEach((t) => zonaFoto.addEventListener(t, () => zonaFoto.classList.remove("arrastrando")));
+zonaFoto.addEventListener("drop", (ev) => {
+  ev.preventDefault();
+  const archivo = ev.dataTransfer.files[0];
+  if (!archivo) return;
+  const input = document.getElementById("form-foto").elements.archivo;
+  const dt = new DataTransfer();
+  dt.items.add(archivo);
+  input.files = dt.files;
+  mostrarVistaPrevia(archivo);
+});
+
+document.getElementById("form-foto").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const form = ev.target;
+  const archivo = form.elements.archivo.files[0];
+  conCarga(ev.submitter, async () => {
+    try {
+      const imagen = await prepararFoto(archivo);
+      const r = await api("POST", "/api/fotos-catalogo", {
+        modelo: form.elements.modelo.value,
+        color: form.elements.color.value,
+        color_hex: form.elements.color_hex.value,
+        imagen,
+      });
+      cerrarDialogo("dialogo-foto");
+      mostrarToast(r.mensaje ?? "Foto guardada.");
+      cargarFotosCatalogo();
+    } catch (e) {
+      mostrarToast(e.message, true);
+    }
+  });
+});
+
+document.getElementById("tab-catalogo").addEventListener("click", async (ev) => {
+  const agregar = ev.target.closest("[data-modelo], [data-agregar-modelo]");
+  if (agregar) return abrirDialogoFoto(agregar.dataset.modelo ?? agregar.dataset.agregarModelo);
+  const eliminar = ev.target.closest("[data-eliminar-foto]");
+  if (!eliminar) return;
+  const foto = fotosCache.find((f) => f.id === Number(eliminar.dataset.eliminarFoto));
+  const ok = await confirmar({
+    titulo: "¿Eliminar esta foto?",
+    mensaje: foto ? `${foto.modelo} · ${foto.color}. Deja de aparecer en el catálogo.` : "",
+    textoBoton: "Eliminar",
+    peligro: true,
+  });
+  if (!ok) return;
+  await conCarga(eliminar, async () => {
+    try {
+      await api("DELETE", `/api/fotos-catalogo/${eliminar.dataset.eliminarFoto}`);
+      mostrarToast("Foto eliminada.");
+      cargarFotosCatalogo();
+    } catch (e) {
+      mostrarToast(e.message, true);
+    }
+  });
+});
 
 // ---------- arranque ----------
 iniciarLogin();
