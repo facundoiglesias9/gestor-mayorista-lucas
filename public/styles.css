@@ -1047,6 +1047,116 @@ tr:nth-child(even) td:nth-child(odd) .esqueleto { width: 58%; }
 .herramienta strong { font-size: 0.8rem; color: var(--acento); font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-weight: 600; }
 .herramienta span { font-size: 0.8rem; color: var(--texto-tenue); line-height: 1.5; }
 
+/* ---------- catalogo: publicaciones ---------- */
+.filtros-catalogo { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.chips-filtro { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-filtro {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--borde);
+  background: var(--bg-card);
+  color: var(--texto-suave);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 550;
+  cursor: pointer;
+  transition: border-color var(--dur-rapida) var(--ease), background var(--dur-rapida) var(--ease), color var(--dur-rapida) var(--ease);
+}
+.chip-filtro span { font-size: 0.74rem; color: var(--texto-tenue); font-variant-numeric: tabular-nums; }
+.chip-filtro:hover { border-color: var(--borde-fuerte); color: var(--texto); }
+.chip-filtro.activo { background: var(--acento-suave); border-color: color-mix(in srgb, var(--acento) 45%, transparent); color: var(--texto); }
+.buscador-panel { position: relative; display: block; width: min(280px, 100%); }
+.buscador-panel svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--texto-tenue); }
+.buscador-panel input { width: 100%; padding: 8px 12px 8px 34px; font-size: 0.85rem; border-radius: 999px; }
+
+.item-catalogo { display: flex; align-items: center; gap: 12px; min-width: 220px; }
+.item-miniatura {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 10px;
+  background: #f2f2f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: #a1a1a6;
+}
+.item-miniatura img { width: 100%; height: 100%; object-fit: contain; padding: 4px; mix-blend-mode: multiply; }
+.item-miniatura svg { width: 20px; height: 20px; }
+.item-texto { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.item-texto strong { font-weight: 650; }
+.item-sub { font-size: 0.78rem; color: var(--texto-tenue); }
+.item-colores { display: inline-flex; gap: 4px; margin-top: 3px; }
+.item-colores .punto-color { width: 10px; height: 10px; }
+.btn-link-chico { font-size: 0.76rem; padding: 2px 0; align-self: flex-start; }
+.btn-link-chico svg { width: 13px; height: 13px; }
+tr.fila-oculta .item-catalogo, tr.fila-oculta .memorias-celda, tr.fila-oculta td:nth-child(2) { opacity: 0.45; }
+
+.memorias-celda { display: flex; flex-wrap: wrap; gap: 5px; }
+.memoria-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--borde);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.memoria-chip b { font-weight: 600; color: var(--texto-suave); }
+.memoria-chip.agotada { opacity: 0.5; text-decoration: line-through; }
+
+/* interruptor (switch) */
+.switch { position: relative; display: inline-block; width: 40px; height: 23px; flex: none; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.switch span {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--borde-fuerte);
+  transition: background var(--dur) var(--ease);
+  pointer-events: none;
+}
+.switch span::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform var(--dur) var(--ease);
+}
+.switch input:checked + span { background: var(--verde); }
+.switch input:checked + span::after { transform: translateX(17px); }
+.switch input:focus-visible + span { box-shadow: var(--anillo-foco); }
+.switch input:disabled + span { opacity: 0.6; }
+
+/* formulario de publicacion */
+.dialogo-ancho { width: min(580px, 94vw); }
+dialog { overflow-y: auto; }
+.bloque-memorias { border: 1px solid var(--borde); border-radius: var(--radio); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; background: rgba(255, 255, 255, 0.015); }
+.bloque-memorias-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 0.78rem; color: var(--texto-suave); font-weight: 550; }
+.atajos-memoria { display: flex; flex-wrap: wrap; gap: 6px; }
+.atajos-memoria .chip-agregar { padding: 4px 10px 4px 7px; font-size: 0.76rem; }
+.filas-memoria { display: flex; flex-direction: column; gap: 8px; }
+.filas-memoria:empty { display: none; }
+.fila-memoria { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 8px; align-items: center; animation: subir-aparecer var(--dur) var(--ease) both; }
+.fila-memoria input { padding: 8px 10px; font-size: 0.86rem; width: 100%; }
+dialog label.mini-check { flex-direction: row; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--texto); white-space: nowrap; }
+dialog label.mini-check input { width: 15px; height: 15px; accent-color: var(--verde); }
+.fila-checks { display: flex; gap: 18px; flex-wrap: wrap; }
+.bloque-memorias .btn-link { align-self: flex-start; }
+.bloque-memorias .btn-link svg { width: 14px; height: 14px; }
+
 /* ---------- fotos del catalogo ---------- */
 a.btn-secundario { text-decoration: none; }
 .sin-foto {
@@ -1243,6 +1353,11 @@ a.btn-secundario { text-decoration: none; }
 @media (max-width: 640px) {
   .marca-texto { display: none; }
   .fila-campos { grid-template-columns: 1fr; }
+  .fila-memoria { grid-template-columns: 1fr 1fr; }
+  .item-catalogo { min-width: 0; justify-content: flex-end; text-align: right; }
+  .item-texto { align-items: flex-end; }
+  .memorias-celda { justify-content: flex-end; }
+  .buscador-panel { width: 100%; }
   .paneles-moneda { grid-template-columns: 1fr; }
   .dolar-actualizado { margin-left: 0; }
 

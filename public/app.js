@@ -499,7 +499,7 @@ function cargarTab(tab) {
     cargarRespuestas();
   }
   if (tab === "logs") cargarLogs();
-  if (tab === "catalogo") cargarFotosCatalogo();
+  if (tab === "catalogo") cargarCatalogoPanel();
 }
 
 async function cargarListaPersonas() {
@@ -1382,6 +1382,297 @@ async function cargarLogs() {
   }
 }
 
+// ---------- catalogo: publicaciones que ven los clientes ----------
+let itemsCatalogo = [];
+let filtroCatalogo = "todas";
+let busquedaCatalogo = "";
+const ICONO_ARRIBA = `<svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg>`;
+const ICONO_ABAJO = `<svg viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg>`;
+const ICONO_FOTO = `<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/></svg>`;
+
+async function cargarCatalogoPanel({ conEsqueleto = true } = {}) {
+  if (conEsqueleto) mostrarEsqueleto("tabla-catalogo");
+  try {
+    itemsCatalogo = await api("GET", "/api/catalogo-items");
+    dibujarCatalogoPanel();
+  } catch (e) {
+    mostrarToast(e.message, true);
+  }
+  cargarFotosCatalogo();
+}
+
+function contarCatalogo() {
+  return {
+    todas: itemsCatalogo.length,
+    visibles: itemsCatalogo.filter((i) => i.visible).length,
+    ocultas: itemsCatalogo.filter((i) => !i.visible).length,
+    "sin-stock": itemsCatalogo.filter((i) => !i.disponible).length,
+  };
+}
+
+function actualizarContadoresCatalogo() {
+  const c = contarCatalogo();
+  ponerSubtitulo(
+    "sub-catalogo",
+    c.todas ? `${plural(c.todas, "publicación", "publicaciones")} · ${plural(c.visibles, "visible")}${c.ocultas ? ` · ${plural(c.ocultas, "oculta")}` : ""}${c["sin-stock"] ? ` · ${c["sin-stock"]} sin stock` : ""}` : ""
+  );
+  document.querySelectorAll("#filtros-catalogo .chip-filtro").forEach((b) => {
+    b.classList.toggle("activo", b.dataset.filtro === filtroCatalogo);
+    b.querySelector("span").textContent = c[b.dataset.filtro];
+  });
+}
+
+function dibujarCatalogoPanel() {
+  actualizarContadoresCatalogo();
+  const terminos = busquedaCatalogo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/\s+/).filter(Boolean);
+  const lista = itemsCatalogo.filter((i) => {
+    if (filtroCatalogo === "visibles" && !i.visible) return false;
+    if (filtroCatalogo === "ocultas" && i.visible) return false;
+    if (filtroCatalogo === "sin-stock" && i.disponible) return false;
+    const texto = [i.nombre, i.categoria, i.estado, i.detalle, ...i.memorias.map((m) => m.capacidad)]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    return terminos.every((t) => texto.includes(t));
+  });
+  document.getElementById("lista-categorias-catalogo").innerHTML = [...new Set(["Celulares", ...itemsCatalogo.map((i) => i.categoria)])]
+    .map((c) => `<option value="${escapeAttr(c)}">`)
+    .join("");
+  renderTabla(
+    "tabla-catalogo",
+    lista,
+    filaItemCatalogo,
+    itemsCatalogo.length ? "No hay publicaciones con ese filtro." : "Todavía no hay publicaciones. Creá la primera con «Nueva publicación»."
+  );
+}
+
+function celdaMemorias(item) {
+  if (!item.memorias.length) {
+    return item.precio != null ? `<span class="texto-fuerte">${formatoConSimbolo(item.precio, item.moneda)}</span>` : `<span class="texto-tenue">Sin precio</span>`;
+  }
+  return `<div class="memorias-celda">${item.memorias
+    .map(
+      (m) =>
+        `<span class="memoria-chip${m.disponible ? "" : " agotada"}" title="${m.disponible ? "" : "Sin stock"}">${escapeHtml(m.capacidad)}<b>${m.precio != null ? formatoConSimbolo(m.precio, item.moneda) : "—"}</b></span>`
+    )
+    .join("")}</div>`;
+}
+
+function interruptor(item, campo, etiqueta) {
+  return `<label class="switch" title="${etiqueta}"><input type="checkbox" data-cambiar="${campo}" data-id="${item.id}" ${item[campo] ? "checked" : ""} aria-label="${etiqueta}" /><span></span></label>`;
+}
+
+function filaItemCatalogo(item) {
+  const foto = item.fotos[0];
+  return `
+    <tr data-id="${item.id}" class="${item.visible ? "" : "fila-oculta"}">
+      <td data-etiqueta="Publicación">
+        <div class="item-catalogo">
+          <div class="item-miniatura">${foto ? `<img src="${foto.url}" alt="" loading="lazy" />` : ICONO_FOTO}</div>
+          <div class="item-texto">
+            <strong>${escapeHtml(item.nombre)}</strong>
+            <span class="item-sub">${[item.categoria, item.estado, item.detalle].filter(Boolean).map(escapeHtml).join(" · ")}</span>
+            ${
+              item.fotos.length
+                ? `<span class="item-colores">${item.fotos.map((f) => `<span class="punto-color" title="${escapeAttr(f.color)}" style="background:${f.color_hex ?? f.hex ?? "#c7c7cc"}"></span>`).join("")}</span>`
+                : `<button type="button" class="btn-link btn-link-chico" data-modelo="${escapeAttr(item.nombre)}">${ICONO_FOTO}Agregar foto</button>`
+            }
+          </div>
+        </div>
+      </td>
+      <td data-etiqueta="Memorias y precios">${celdaMemorias(item)}</td>
+      <td data-etiqueta="Lo tengo">${interruptor(item, "disponible", "Lo tengo")}</td>
+      <td data-etiqueta="Visible">${interruptor(item, "visible", "Visible en el catálogo")}</td>
+      <td class="acciones">
+        <div class="acciones-fila">
+          <button class="btn-icono" title="Subir" aria-label="Subir" data-accion="arriba" data-id="${item.id}">${ICONO_ARRIBA}</button>
+          <button class="btn-icono" title="Bajar" aria-label="Bajar" data-accion="abajo" data-id="${item.id}">${ICONO_ABAJO}</button>
+          <button class="btn-icono" title="Editar" aria-label="Editar" data-accion="editar" data-id="${item.id}">${ICONO_LAPIZ}</button>
+          <button class="btn-icono peligro" title="Eliminar" aria-label="Eliminar" data-accion="eliminar" data-id="${item.id}">${ICONO_TACHO}</button>
+        </div>
+      </td>
+    </tr>`;
+}
+
+// Interruptores "Lo tengo" / "Visible": se guarda al toque, sin redibujar toda la lista.
+document.getElementById("tabla-catalogo").addEventListener("change", async (ev) => {
+  const input = ev.target.closest("input[data-cambiar]");
+  if (!input) return;
+  const id = Number(input.dataset.id);
+  const campo = input.dataset.cambiar;
+  const valor = input.checked;
+  input.disabled = true;
+  try {
+    await api("PUT", `/api/catalogo-items/${id}`, { [campo]: valor });
+    const item = itemsCatalogo.find((i) => i.id === id);
+    if (item) item[campo] = valor;
+    if (campo === "visible") input.closest("tr").classList.toggle("fila-oculta", !valor);
+    actualizarContadoresCatalogo();
+    mostrarToast(
+      campo === "visible"
+        ? valor
+          ? "Vuelve a aparecer en el catálogo."
+          : "Ya no aparece en el catálogo (no se borró)."
+        : valor
+          ? "Marcada como disponible."
+          : "Marcada como sin stock."
+    );
+  } catch (e) {
+    input.checked = !valor;
+    mostrarToast(e.message, true);
+  } finally {
+    input.disabled = false;
+  }
+});
+
+document.getElementById("tabla-catalogo").addEventListener("click", async (ev) => {
+  const boton = ev.target.closest("button[data-accion]");
+  if (!boton) return;
+  const id = Number(boton.dataset.id);
+  const item = itemsCatalogo.find((i) => i.id === id);
+  if (boton.dataset.accion === "editar") return abrirDialogoItem(item);
+  if (boton.dataset.accion === "arriba" || boton.dataset.accion === "abajo") {
+    return conCarga(boton, async () => {
+      try {
+        await api("POST", `/api/catalogo-items/${id}/mover`, { direccion: boton.dataset.accion });
+        await cargarCatalogoPanel({ conEsqueleto: false });
+      } catch (e) {
+        mostrarToast(e.message, true);
+      }
+    });
+  }
+  if (boton.dataset.accion === "eliminar") {
+    const ok = await confirmar({
+      titulo: "¿Eliminar esta publicación?",
+      mensaje: `${item?.nombre ?? ""}. Se borra del catálogo para siempre (no toca el stock). Si solo querés sacarla un tiempo, apagá «Visible».`,
+      textoBoton: "Eliminar",
+      peligro: true,
+    });
+    if (!ok) return;
+    await conCarga(boton, async () => {
+      try {
+        await api("DELETE", `/api/catalogo-items/${id}`);
+        mostrarToast("Publicación eliminada.");
+        await cargarCatalogoPanel({ conEsqueleto: false });
+      } catch (e) {
+        mostrarToast(e.message, true);
+      }
+    });
+  }
+});
+
+document.getElementById("filtros-catalogo").addEventListener("click", (ev) => {
+  const chip = ev.target.closest(".chip-filtro");
+  if (!chip) return;
+  filtroCatalogo = chip.dataset.filtro;
+  estadoTablas["tabla-catalogo"] && (estadoTablas["tabla-catalogo"].pagina = 1);
+  dibujarCatalogoPanel();
+});
+
+let temporizadorBusquedaCatalogo;
+document.getElementById("buscar-catalogo").addEventListener("input", (ev) => {
+  clearTimeout(temporizadorBusquedaCatalogo);
+  temporizadorBusquedaCatalogo = setTimeout(() => {
+    busquedaCatalogo = ev.target.value.trim();
+    estadoTablas["tabla-catalogo"] && (estadoTablas["tabla-catalogo"].pagina = 1);
+    dibujarCatalogoPanel();
+  }, 160);
+});
+
+// ---------- formulario de publicacion ----------
+const CAPACIDADES_RAPIDAS = ["128 GB", "256 GB", "512 GB", "1 TB"];
+
+function agregarFilaMemoria(m = { capacidad: "", precio: "", disponible: true }) {
+  const fila = document.createElement("div");
+  fila.className = "fila-memoria";
+  fila.innerHTML = `
+    <input class="m-capacidad" placeholder="Ej: 256 GB" list="lista-capacidades" autocomplete="off" value="${escapeAttr(m.capacidad)}" aria-label="Memoria" />
+    <input class="m-precio" type="number" step="0.01" placeholder="Precio" value="${m.precio ?? ""}" aria-label="Precio" />
+    <label class="mini-check"><input type="checkbox" class="m-disponible" ${m.disponible !== false ? "checked" : ""} /> La tengo</label>
+    <button type="button" class="btn-icono peligro" title="Quitar" aria-label="Quitar memoria">${ICONO_TACHO}</button>`;
+  fila.querySelector("button").addEventListener("click", () => {
+    fila.remove();
+    actualizarCampoPrecioUnico();
+  });
+  document.getElementById("filas-memoria").appendChild(fila);
+  actualizarCampoPrecioUnico();
+  if (!m.capacidad) fila.querySelector(".m-capacidad").focus();
+  return fila;
+}
+
+// Con memorias, cada una tiene su precio: el precio unico se esconde.
+function actualizarCampoPrecioUnico() {
+  const hayMemorias = document.querySelectorAll("#filas-memoria .fila-memoria").length > 0;
+  document.getElementById("campo-precio-unico").classList.toggle("oculto", hayMemorias);
+  const usadas = new Set([...document.querySelectorAll("#filas-memoria .m-capacidad")].map((i) => i.value.trim().toLowerCase()));
+  document.getElementById("atajos-memoria").innerHTML = CAPACIDADES_RAPIDAS.filter((c) => !usadas.has(c.toLowerCase()))
+    .map((c) => `<button type="button" class="chip-agregar" data-capacidad="${c}"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>${c}</button>`)
+    .join("");
+}
+
+document.getElementById("atajos-memoria").addEventListener("click", (ev) => {
+  const chip = ev.target.closest("[data-capacidad]");
+  if (!chip) return;
+  const fila = agregarFilaMemoria({ capacidad: chip.dataset.capacidad, precio: "", disponible: true });
+  fila.querySelector(".m-precio").focus();
+});
+
+function abrirDialogoItem(item = null) {
+  abrirDialogo("dialogo-item");
+  const form = document.getElementById("form-item");
+  form.elements.id.value = item?.id ?? "";
+  form.elements.nombre.value = item?.nombre ?? "";
+  form.elements.categoria.value = item?.categoria ?? "Celulares";
+  form.elements.estado.value = item?.estado ?? "";
+  form.elements.detalle.value = item?.detalle ?? "";
+  form.elements.moneda.value = item?.moneda ?? "USD";
+  form.elements.precio.value = item?.precio ?? "";
+  form.elements.disponible.checked = item ? item.disponible : true;
+  form.elements.visible.checked = item ? item.visible : true;
+  document.getElementById("filas-memoria").innerHTML = "";
+  (item?.memorias ?? []).forEach((m) => agregarFilaMemoria(m));
+  actualizarCampoPrecioUnico();
+  document.getElementById("titulo-dialogo-item").textContent = item ? "Editar publicación" : "Nueva publicación";
+  document.getElementById("boton-guardar-item").textContent = item ? "Guardar cambios" : "Crear publicación";
+  form.elements.nombre.focus();
+}
+
+document.getElementById("form-item").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const form = ev.target;
+  const id = form.elements.id.value;
+  const memorias = [...document.querySelectorAll("#filas-memoria .fila-memoria")]
+    .map((f) => ({
+      capacidad: f.querySelector(".m-capacidad").value.trim(),
+      precio: f.querySelector(".m-precio").value === "" ? null : Number(f.querySelector(".m-precio").value),
+      disponible: f.querySelector(".m-disponible").checked,
+    }))
+    .filter((m) => m.capacidad);
+  const body = {
+    nombre: form.elements.nombre.value,
+    categoria: form.elements.categoria.value,
+    estado: form.elements.estado.value,
+    detalle: form.elements.detalle.value,
+    moneda: form.elements.moneda.value,
+    precio: memorias.length || form.elements.precio.value === "" ? null : Number(form.elements.precio.value),
+    memorias,
+    disponible: form.elements.disponible.checked,
+    visible: form.elements.visible.checked,
+  };
+  conCarga(ev.submitter, async () => {
+    try {
+      const r = id ? await api("PUT", `/api/catalogo-items/${id}`, body) : await api("POST", "/api/catalogo-items", body);
+      cerrarDialogo("dialogo-item");
+      mostrarToast(r.mensaje ?? "Publicación guardada.");
+      await cargarCatalogoPanel({ conEsqueleto: false });
+    } catch (e) {
+      mostrarToast(e.message, true);
+    }
+  });
+});
+
 // ---------- fotos del catalogo publico ----------
 // Colores oficiales de cada modelo, solo como sugerencia al cargar una foto (se puede escribir
 // cualquier otro). El tono es aproximado: es el color del puntito en el catalogo.
@@ -1428,7 +1719,7 @@ async function cargarFotosCatalogo() {
     const sinFoto = document.getElementById("sin-foto");
     sinFoto.classList.toggle("oculto", !r.modelos_sin_foto.length);
     sinFoto.innerHTML = r.modelos_sin_foto.length
-      ? `<div class="sin-foto-titulo">En stock y sin foto <span class="etiqueta">${r.modelos_sin_foto.length}</span></div>
+      ? `<div class="sin-foto-titulo">Publicaciones visibles sin foto <span class="etiqueta">${r.modelos_sin_foto.length}</span></div>
          <div class="sin-foto-lista">${r.modelos_sin_foto
            .map(
              (m) =>
@@ -1569,7 +1860,7 @@ document.getElementById("form-foto").addEventListener("submit", (ev) => {
       });
       cerrarDialogo("dialogo-foto");
       mostrarToast(r.mensaje ?? "Foto guardada.");
-      cargarFotosCatalogo();
+      cargarCatalogoPanel({ conEsqueleto: false });
     } catch (e) {
       mostrarToast(e.message, true);
     }
@@ -1593,7 +1884,7 @@ document.getElementById("tab-catalogo").addEventListener("click", async (ev) => 
     try {
       await api("DELETE", `/api/fotos-catalogo/${eliminar.dataset.eliminarFoto}`);
       mostrarToast("Foto eliminada.");
-      cargarFotosCatalogo();
+      cargarCatalogoPanel({ conEsqueleto: false });
     } catch (e) {
       mostrarToast(e.message, true);
     }
