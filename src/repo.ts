@@ -1351,6 +1351,35 @@ export async function listarLogs(limite?: number) {
 // Borra registros que ya no sirven para que esas tablas no crezcan para siempre. Telegram solo
 // reintenta un update durante unas horas, asi que 7 dias de updates_procesados sobra; los logs
 // se guardan 90 dias (el panel igual muestra solo los ultimos). Lo llama el chequeo periodico.
+// ---------- fecha de Argentina ----------
+// La base (Turso) corre en hora UTC, asi que su "localtime" no es la hora de aca: a las 22 hs
+// de Argentina ya es el dia siguiente. Para los dashboards el "hoy" se calcula en hora argentina
+// y las fechas guardadas se corren a esa hora antes de agruparlas por dia.
+const ZONA_ARGENTINA = "America/Argentina/Buenos_Aires";
+
+export function hoyEnArgentina(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: ZONA_ARGENTINA, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+
+// Diferencia de la hora argentina con UTC, en segundos (hoy: -10800, o sea -3 hs).
+function desfaseArgentina(fecha = new Date()): number {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: ZONA_ARGENTINA, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+      .formatToParts(fecha)
+      .map((x) => [x.type, x.value])
+  );
+  const comoUtc = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second));
+  return Math.round((comoUtc - fecha.getTime()) / 1000 / 60) * 60;
+}
+
+// Modificador de SQLite que pasa una fecha guardada (en la hora local de la base, sea cual sea)
+// a la hora argentina. En Turso queda "-10800 seconds"; con una base local en hora argentina, "+0".
+async function modificadorArgentina(): Promise<string> {
+  const r = await get(`SELECT CAST(strftime('%s', datetime('now','localtime')) AS INTEGER) - CAST(strftime('%s','now') AS INTEGER) as desfase`);
+  const corrimiento = desfaseArgentina() - Math.round(Number(r?.desfase ?? 0) / 60) * 60;
+  return `${corrimiento >= 0 ? "+" : ""}${corrimiento} seconds`;
+}
+
 // ---------- gastos del negocio ----------
 // Lo que se paga y no es mercaderia (la mercaderia entra por agregarProducto). Con esto el
 // dashboard Financiero calcula la ganancia real y el flujo de caja.
@@ -1390,9 +1419,9 @@ export async function registrarGasto(args: { concepto: string; monto: number; mo
   if (!Number.isFinite(monto) || monto <= 0) throw new Error("El monto del gasto tiene que ser un numero mayor a 0.");
   const moneda = args.moneda === "USD" ? "USD" : "ARS";
   const categoria = validarCategoriaGasto(args.categoria, concepto);
-  const fecha = validarFecha(args.fecha);
+  const fecha = validarFecha(args.fecha) ?? hoyEnArgentina();
   const info = await run(
-    `INSERT INTO gastos (fecha, concepto, categoria, monto, moneda, nota) VALUES (COALESCE(?, date('now','localtime')), ?, ?, ?, ?, ?)`,
+    `INSERT INTO gastos (fecha, concepto, categoria, monto, moneda, nota) VALUES (?, ?, ?, ?, ?, ?)`,
     [fecha, concepto, categoria, monto, moneda, args.nota ?? null]
   );
   const gasto = await get(`SELECT * FROM gastos WHERE id = ?`, [info.lastInsertRowid]);
@@ -1458,37 +1487,41 @@ export async function guardarObjetivos(args: { mes?: string; facturacion?: numbe
 // arma con esto cualquier periodo, las comparaciones con el periodo anterior y los graficos.
 // Los montos van en su moneda original; el panel los pasa a una sola con el dolar blue.
 export async function datosDashboard() {
-  const desde = (await get(`SELECT date('now','localtime','start of month','-24 months') as d`)).d;
-  const [ventas, compras, gastos, prestamos, objetivos, stock, porCobrar, canjes, hoy] = await Promise.all([
+  const hoy = hoyEnArgentina();
+  const mod = await modificadorArgentina();
+  const [anio, mes] = hoy.split("-").map(Number);
+  const desde = new Date(Date.UTC(anio, mes - 1 - 24, 1)).toISOString().slice(0, 10);
+  const [ventas, compras, gastos, prestamos, objetivos, stock, porCobrar, canjes] = await Promise.all([
     all(
-      `SELECT date(m.fecha) as fecha, m.producto_id, p.nombre as producto, COALESCE(p.categoria, 'Otros') as categoria, m.persona_id as cliente_id,
+      `SELECT date(m.fecha, ?) as fecha, m.producto_id, p.nombre as producto, COALESCE(p.categoria, 'Otros') as categoria, m.persona_id as cliente_id,
               COALESCE(m.moneda, 'ARS') as moneda, COALESCE(p.moneda, 'USD') as costo_moneda,
               SUM(m.cantidad) as unidades, COUNT(*) as operaciones,
               SUM(CASE WHEN m.precio_unitario IS NOT NULL THEN m.precio_unitario * m.cantidad ELSE 0 END) as facturado,
               SUM(CASE WHEN m.precio_unitario IS NOT NULL AND p.costo IS NOT NULL THEN m.precio_unitario * m.cantidad ELSE 0 END) as facturado_con_costo,
               SUM(CASE WHEN m.precio_unitario IS NOT NULL AND p.costo IS NOT NULL THEN p.costo * m.cantidad ELSE 0 END) as costo
        FROM movimientos_stock m JOIN productos p ON p.id = m.producto_id
-       WHERE m.tipo = 'salida' AND date(m.fecha) >= date(?)
-       GROUP BY date(m.fecha), m.producto_id, m.persona_id, COALESCE(m.moneda, 'ARS')`,
-      [desde]
+       WHERE m.tipo = 'salida' AND date(m.fecha, ?) >= ?
+       GROUP BY 1, m.producto_id, m.persona_id, COALESCE(m.moneda, 'ARS')`,
+      [mod, mod, desde]
     ),
     // Compras de mercaderia: lo que entro al stock a su costo. En la reposicion automatica (compra
     // y venta en el momento) el precio guardado es el de venta, asi que ahi se usa el costo.
     all(
-      `SELECT date(m.fecha) as fecha, COALESCE(p.moneda, 'USD') as moneda,
+      `SELECT date(m.fecha, ?) as fecha, COALESCE(p.moneda, 'USD') as moneda,
               SUM(m.cantidad * COALESCE(CASE WHEN m.nota = ? THEN NULL ELSE m.precio_unitario END, p.costo, 0)) as monto
        FROM movimientos_stock m JOIN productos p ON p.id = m.producto_id
-       WHERE m.tipo = 'entrada' AND date(m.fecha) >= date(?)
-       GROUP BY date(m.fecha), COALESCE(p.moneda, 'USD')`,
-      [NOTA_REPOSICION_AUTOMATICA, desde]
+       WHERE m.tipo = 'entrada' AND date(m.fecha, ?) >= ?
+       GROUP BY 1, COALESCE(p.moneda, 'USD')`,
+      [mod, NOTA_REPOSICION_AUTOMATICA, mod, desde]
     ),
-    all(`SELECT id, date(fecha) as fecha, concepto, categoria, monto, moneda, nota FROM gastos WHERE date(fecha) >= date(?) ORDER BY date(fecha) DESC, id DESC`, [desde]),
+    // Los gastos ya se guardan con la fecha de Argentina (ver registrarGasto).
+    all(`SELECT id, date(fecha) as fecha, concepto, categoria, monto, moneda, nota FROM gastos WHERE date(fecha) >= ? ORDER BY date(fecha) DESC, id DESC`, [desde]),
     all(
-      `SELECT date(fecha) as fecha, 'otorgado' as tipo, moneda, SUM(monto_original) as monto FROM prestamos WHERE date(fecha) >= date(?) GROUP BY date(fecha), moneda
+      `SELECT date(fecha, ?) as fecha, 'otorgado' as tipo, moneda, SUM(monto_original) as monto FROM prestamos WHERE date(fecha, ?) >= ? GROUP BY 1, moneda
        UNION ALL
-       SELECT date(pp.fecha) as fecha, 'cobrado' as tipo, pr.moneda, SUM(pp.monto) as monto FROM pagos_prestamo pp JOIN prestamos pr ON pr.id = pp.prestamo_id
-       WHERE date(pp.fecha) >= date(?) GROUP BY date(pp.fecha), pr.moneda`,
-      [desde, desde]
+       SELECT date(pp.fecha, ?) as fecha, 'cobrado' as tipo, pr.moneda, SUM(pp.monto) as monto FROM pagos_prestamo pp JOIN prestamos pr ON pr.id = pp.prestamo_id
+       WHERE date(pp.fecha, ?) >= ? GROUP BY 1, pr.moneda`,
+      [mod, mod, desde, mod, mod, desde]
     ),
     listarObjetivos(),
     all(
@@ -1497,10 +1530,10 @@ export async function datosDashboard() {
     ),
     all(`SELECT moneda, SUM(monto_pendiente) as monto, COUNT(*) as cantidad FROM prestamos WHERE estado != 'pagado' GROUP BY moneda`),
     get(`SELECT COUNT(*) as n FROM canjes WHERE estado = 'pendiente'`),
-    get(`SELECT date('now','localtime') as d`),
   ]);
   return {
-    hoy: hoy.d,
+    hoy,
+    zona_horaria: ZONA_ARGENTINA,
     desde,
     ventas,
     compras,
