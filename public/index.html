@@ -11,6 +11,17 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
 <link rel="stylesheet" href="/catalogo.css" />
+<script>
+  // Tema claro/oscuro: se elige ANTES de dibujar la pagina, asi no hay un parpadeo del tema
+  // equivocado. Lo que haya elegido la persona (guardado en este navegador) y si no, el de su
+  // sistema.
+  (function () {
+    var tema = null;
+    try { tema = localStorage.getItem("catalogo_tema"); } catch (e) {}
+    if (tema !== "claro" && tema !== "oscuro") tema = window.matchMedia("(prefers-color-scheme: dark)").matches ? "oscuro" : "claro";
+    document.documentElement.dataset.tema = tema;
+  })();
+</script>
 </head>
 <body>
 
@@ -19,10 +30,20 @@
     <a class="marca" href="#arriba" aria-label="Ir arriba">
       <img src="/img/logo-lv.png" alt="Logo" class="marca-logo" />
     </a>
+    <div class="barra-botones">
+    <button type="button" class="btn-redondo" id="cambiar-tema" aria-label="Cambiar a fondo oscuro" title="Cambiar a fondo oscuro">
+      <svg class="icono-sol" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg>
+      <svg class="icono-luna" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z"/></svg>
+    </button>
+    <a class="btn btn-contorno btn-chico" href="/panel" title="Ingresar al panel">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20.5c0-4 3.4-6.5 7.5-6.5s7.5 2.5 7.5 6.5"/></svg>
+      <span class="texto-boton">Ingresar</span>
+    </a>
     <a class="btn btn-whatsapp btn-chico oculto" id="whatsapp-barra" target="_blank" rel="noopener">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 3.5A11.8 11.8 0 0 0 12 0C5.4 0 .1 5.3.1 11.9c0 2.1.6 4.1 1.6 5.9L0 24l6.4-1.7a11.9 11.9 0 0 0 5.6 1.4h.1c6.6 0 11.9-5.3 11.9-11.9 0-3.2-1.2-6.2-3.5-8.3zM12 21.7c-1.8 0-3.5-.5-5-1.4l-.4-.2-3.8 1 1-3.7-.2-.4a9.8 9.8 0 0 1-1.5-5.2c0-5.4 4.4-9.9 9.9-9.9 2.6 0 5.1 1 7 2.9a9.8 9.8 0 0 1 2.9 7c0 5.5-4.4 9.9-9.9 9.9zm5.4-7.4c-.3-.1-1.8-.9-2-1s-.5-.1-.7.1-.8 1-.9 1.2-.3.2-.6.1a8.1 8.1 0 0 1-4-3.5c-.3-.5.3-.5.9-1.6.1-.2 0-.4 0-.5l-.9-2.2c-.2-.6-.5-.5-.7-.5h-.6a1.1 1.1 0 0 0-.8.4 3.4 3.4 0 0 0-1.1 2.5c0 1.5 1.1 2.9 1.2 3.1s2.1 3.2 5.1 4.5c1.9.8 2.6.9 3.6.7.6-.1 1.8-.7 2-1.5s.3-1.3.2-1.5c-.1-.1-.3-.2-.6-.3z"/></svg>
       Escribinos
     </a>
+    </div>
   </div>
 </header>
 

@@ -25,6 +25,19 @@
   --radio-chico: 12px;
   --sombra-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.04);
   --sombra-card-hover: 0 2px 6px rgba(0, 0, 0, 0.05), 0 18px 44px rgba(0, 0, 0, 0.1);
+  --barra-fondo: rgba(245, 245, 247, 0.78);
+  --barra-borde: rgba(0, 0, 0, 0.06);
+  --fondo-transparente: rgba(245, 245, 247, 0);
+  --placeholder: #a1a1a6;
+  --texto-invertido: #ffffff;
+  --oscuro-hover: #000000;
+  /* el "escenario" de la foto queda claro en los dos temas: las fotos de producto tienen fondo
+     blanco y se funden con este gris (mix-blend-mode), en oscuro se verian como un recuadro */
+  --escenario-1: #ffffff;
+  --escenario-2: #f2f2f5;
+  --escenario-foto: #f5f5f7;
+  --esqueleto-1: #eeeef1;
+  --esqueleto-2: #f6f6f8;
 
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --dur-rapida: 150ms;
@@ -33,6 +46,40 @@
 
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   font-feature-settings: "cv11", "ss01";
+}
+
+/* ---------- tema oscuro (boton sol/luna de arriba) ---------- */
+:root[data-tema="oscuro"] {
+  color-scheme: dark;
+  --fondo: #0b0b0d;
+  --superficie: #161618;
+  --superficie-2: #111113;
+  --texto: #f5f5f7;
+  --texto-suave: #d1d1d6;
+  --texto-tenue: #98989d;
+  --borde: #2c2c2e;
+  --borde-fuerte: #3a3a3c;
+  --acento: #2997ff;
+  --acento-hover: #4aa8ff;
+  --verde: #30d158;
+  --naranja: #ff9f0a;
+  --sombra-card: 0 1px 2px rgba(0, 0, 0, 0.5), 0 6px 20px rgba(0, 0, 0, 0.35);
+  --sombra-card-hover: 0 2px 6px rgba(0, 0, 0, 0.5), 0 20px 48px rgba(0, 0, 0, 0.6);
+  --barra-fondo: rgba(11, 11, 13, 0.72);
+  --barra-borde: rgba(255, 255, 255, 0.08);
+  --fondo-transparente: rgba(11, 11, 13, 0);
+  --placeholder: #6e6e73;
+  --texto-invertido: #0b0b0d;
+  --oscuro-hover: #ffffff;
+  --escenario-1: #f7f7f9;
+  --escenario-2: #e6e6ea;
+  --escenario-foto: #ececef;
+  --esqueleto-1: #1f1f22;
+  --esqueleto-2: #2a2a2e;
+}
+/* al cambiar de tema, los colores pasan suave (solo en ese momento, no al cargar la pagina) */
+.tema-transicion, .tema-transicion *, .tema-transicion *::before, .tema-transicion *::after {
+  transition: background-color 400ms var(--ease), border-color 400ms var(--ease), color 400ms var(--ease), box-shadow 400ms var(--ease) !important;
 }
 
 * { box-sizing: border-box; }
@@ -56,10 +103,10 @@ svg { width: 18px; height: 18px; flex: none; }
   position: sticky;
   top: 0;
   z-index: 20;
-  background: rgba(245, 245, 247, 0.78);
+  background: var(--barra-fondo);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--barra-borde);
 }
 .barra-contenido {
   max-width: 1240px;
@@ -96,8 +143,47 @@ svg { width: 18px; height: 18px; flex: none; }
 .btn-whatsapp { background: var(--whatsapp); color: #fff; }
 .btn-whatsapp:hover { background: var(--whatsapp-oscuro); box-shadow: 0 6px 18px rgba(37, 211, 102, 0.3); }
 .btn-whatsapp svg { width: 17px; height: 17px; fill: currentColor; }
-.btn-oscuro { background: var(--texto); color: #fff; }
-.btn-oscuro:hover { background: #000; }
+.btn-oscuro { background: var(--texto); color: var(--texto-invertido); }
+.btn-oscuro:hover { background: var(--oscuro-hover); }
+.btn-contorno { background: var(--superficie); color: var(--texto); border: 1px solid var(--borde); }
+.btn-contorno:hover { border-color: var(--borde-fuerte); }
+.btn-contorno svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+
+.barra-botones { display: flex; align-items: center; gap: 8px; }
+
+/* boton sol/luna: se ve el icono del tema al que se va a pasar, con un giro corto al cambiar */
+.btn-redondo {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--borde);
+  background: var(--superficie);
+  color: var(--texto);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color var(--dur-rapida) var(--ease), transform var(--dur-rapida) var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-redondo:hover { border-color: var(--borde-fuerte); }
+.btn-redondo:active { transform: scale(0.92); }
+.btn-redondo svg {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: opacity var(--dur) var(--ease), transform 500ms var(--ease);
+}
+.icono-sol { opacity: 0; transform: rotate(-90deg) scale(0.5); }
+.icono-luna { opacity: 1; transform: none; }
+:root[data-tema="oscuro"] .icono-sol { opacity: 1; transform: none; }
+:root[data-tema="oscuro"] .icono-luna { opacity: 0; transform: rotate(90deg) scale(0.5); }
 
 /* ---------- hero ---------- */
 main { max-width: 1240px; margin: 0 auto; padding: 0 24px 80px; }
@@ -136,7 +222,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 0 24px 80px; }
   z-index: 10;
   margin: 0 -24px 8px;
   padding: 12px 24px 14px;
-  background: linear-gradient(var(--fondo) 75%, rgba(245, 245, 247, 0));
+  background: linear-gradient(var(--fondo) 75%, var(--fondo-transparente));
   animation: subir 700ms var(--ease) 120ms both;
 }
 .buscador { position: relative; display: block; max-width: 560px; margin: 0 auto 14px; }
@@ -153,7 +239,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 0 24px 80px; }
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   transition: border-color var(--dur-rapida) var(--ease), box-shadow var(--dur) var(--ease);
 }
-.buscador input::placeholder { color: #a1a1a6; }
+.buscador input::placeholder { color: var(--placeholder); }
 /* la "x" para borrar la busqueda, gris y prolija en vez de la azul del navegador */
 .buscador input::-webkit-search-cancel-button {
   -webkit-appearance: none;
@@ -187,8 +273,8 @@ main { max-width: 1240px; margin: 0 auto; padding: 0 24px 80px; }
 .chip:hover { border-color: var(--borde-fuerte); color: var(--texto); }
 .chip:active { transform: scale(0.96); }
 .chip .cantidad { font-size: 0.75rem; color: var(--texto-tenue); font-variant-numeric: tabular-nums; }
-.chip.activo { background: var(--texto); border-color: var(--texto); color: #fff; }
-.chip.activo .cantidad { color: rgba(255, 255, 255, 0.65); }
+.chip.activo { background: var(--texto); border-color: var(--texto); color: var(--texto-invertido); }
+.chip.activo .cantidad { color: var(--texto-invertido); opacity: 0.65; }
 
 .orden { flex: none; display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--texto-tenue); }
 .orden select {
@@ -234,7 +320,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 0 24px 80px; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(120% 90% at 50% 0%, #ffffff 0%, #f2f2f5 70%);
+  background: radial-gradient(120% 90% at 50% 0%, var(--escenario-1) 0%, var(--escenario-2) 70%);
   overflow: hidden;
 }
 .producto-imagen svg.equipo {
@@ -246,7 +332,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 0 24px 80px; }
 .producto:hover .producto-imagen svg.equipo { transform: translateY(-4px) scale(1.04); }
 
 /* foto real: el fondo blanco de las fotos de producto se funde con el gris de la tarjeta */
-.producto-imagen.con-foto { background: #f5f5f7; }
+.producto-imagen.con-foto { background: var(--escenario-foto); }
 .foto-producto {
   width: 100%;
   height: 100%;
@@ -292,10 +378,11 @@ main { max-width: 1240px; margin: 0 auto; padding: 0 24px 80px; }
   border-radius: 999px;
   font-size: 0.72rem;
   font-weight: 650;
-  background: rgba(255, 255, 255, 0.9);
+  /* va sobre el recuadro de la foto, que es claro en los dos temas: colores fijos */
+  background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(6px);
-  border: 1px solid var(--borde);
-  color: var(--naranja);
+  border: 1px solid #e5e5ea;
+  color: #c46a00;
 }
 
 .producto-cuerpo { display: flex; flex-direction: column; gap: 6px; padding: 18px 20px 20px; flex: 1; }
@@ -337,7 +424,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 0 24px 80px; }
 .producto.esqueleto { animation: subir 560ms var(--ease) both; }
 .esqueleto-bloque {
   border-radius: 8px;
-  background: linear-gradient(90deg, #eeeef1 25%, #f6f6f8 50%, #eeeef1 75%);
+  background: linear-gradient(90deg, var(--esqueleto-1) 25%, var(--esqueleto-2) 50%, var(--esqueleto-1) 75%);
   background-size: 200% 100%;
   animation: brillo 1.3s linear infinite;
 }
@@ -410,6 +497,8 @@ main { max-width: 1240px; margin: 0 auto; padding: 0 24px 80px; }
   .btn-consultar { width: 100%; height: 38px; border-radius: 999px; }
   .insignia { top: 10px; left: 10px; font-size: 0.66rem; padding: 3px 8px; }
   .whatsapp-flotante { right: 16px; bottom: 16px; width: 52px; height: 52px; }
+  .texto-boton { display: none; }
+  .btn-contorno.btn-chico { padding: 0; width: 38px; height: 38px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
