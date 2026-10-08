@@ -41,7 +41,7 @@ export const toolDefinitions: Anthropic.Tool[] = [
   {
     name: "registrar_gasto",
     description:
-      "Registra un gasto del negocio que NO es mercaderia: alquiler, sueldos, servicios (luz, internet), envios/fletes, publicidad, impuestos, comisiones (Mercado Pago, banco), etc. Sirve para la ganancia real y el flujo de caja del panel. La compra de productos para vender NO va aca (eso es agregar_producto), y prestarle plata a alguien tampoco (eso es registrar_prestamo).",
+      "Registra un gasto del negocio que NO es mercaderia. Usala directo cuando digan que gastaron o pagaron plata en algo ('gaste 20 mil en nafta', 'pague el flete 50 dolares'): alquiler, sueldos, servicios (luz, internet), envios/fletes/nafta, publicidad, impuestos, comisiones (Mercado Pago, banco), comida, etc. Sirve para la ganancia real y el flujo de caja del panel. La compra de productos para revender NO va aca (eso es agregar_producto), y prestarle plata a alguien tampoco (eso es registrar_prestamo).",
     input_schema: {
       type: "object",
       properties: {

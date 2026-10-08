@@ -9,6 +9,32 @@ if (!url) throw new Error("Falta TURSO_DATABASE_URL en las variables de entorno.
 
 export const db = createClient({ url, authToken });
 
+// ---------- hora de Argentina ----------
+// La base (Turso) corre en hora UTC: su datetime('now','localtime') va 3 horas adelantado (a las
+// 22 hs de aca ya es el dia siguiente). Todo lo que se ve (ventas, prestamos, pedidos, logs...) se
+// guarda con la hora argentina explicita, usando estas expresiones en vez de 'localtime'.
+// Argentina esta en UTC-3 todo el año; el desfase igual se calcula con la zona horaria.
+export const ZONA_ARGENTINA = "America/Argentina/Buenos_Aires";
+
+export function desfaseArgentina(fecha = new Date()): number {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: ZONA_ARGENTINA, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+      .formatToParts(fecha)
+      .map((x) => [x.type, x.value])
+  );
+  const comoUtc = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute), Number(p.second));
+  return Math.round((comoUtc - fecha.getTime()) / 60000) * 60;
+}
+
+// Expresiones SQL: fecha y hora de ahora en Argentina ("2026-10-08 22:15:03") y la fecha sola.
+// ajuste: un modificador extra de SQLite, ej "-90 days".
+export function sqlAhora(ajuste?: string): string {
+  return `datetime('now', '${desfaseArgentina()} seconds'${ajuste ? `, '${ajuste}'` : ""})`;
+}
+export function sqlHoy(): string {
+  return `date('now', '${desfaseArgentina()} seconds')`;
+}
+
 // ---------- transacciones ----------
 // Las operaciones de varios pasos (una venta: crear producto + reponer + descontar + anotar el
 // movimiento) van dentro de enTransaccion: o se guardan todos los pasos, o ninguno. Sin esto,
@@ -312,6 +338,44 @@ UPDATE catalogo_items SET detalle = NULL WHERE detalle GLOB 'Batería [0-9]*%';
   await agregarColumnaSiFalta("productos", "estado", "TEXT");
   await agregarColumnaSiFalta("productos", "bateria", "INTEGER");
   await completarEstadoYBateriaDesdeNombres();
+  await pasarFechasAHoraArgentina();
+}
+
+// Lo que ya estaba guardado quedo en la hora de la base (UTC en Turso): una sola vez se pasa a hora
+// argentina. Cada UPDATE chequea la marca dentro de la misma tanda, asi que si arrancan dos
+// servidores a la vez no se corre dos veces. Si la base ya estaba en hora argentina (corrimiento
+// 0, ej: una base local en una compu de aca), no se toca nada.
+const FECHAS_A_CORRER: [string, string[]][] = [
+  ["personas", ["creado_en"]],
+  ["productos", ["actualizado_en"]],
+  ["movimientos_stock", ["fecha"]],
+  ["prestamos", ["fecha"]],
+  ["pagos_prestamo", ["fecha"]],
+  ["canjes", ["fecha"]],
+  ["respuestas_predefinidas", ["creado_en"]],
+  ["pedidos_pendientes", ["creado_en", "resuelto_en"]],
+  ["fotos_catalogo", ["actualizado_en"]],
+  ["catalogo_items", ["creado_en", "actualizado_en"]],
+  ["logs_bot", ["fecha"]],
+  ["gastos", ["creado_en"]],
+  ["objetivos", ["actualizado_en"]],
+];
+
+async function pasarFechasAHoraArgentina() {
+  if ((await db.execute(`SELECT 1 FROM configuracion WHERE clave = 'fechas_hora_argentina'`)).rows.length) return;
+  const r = await db.execute(`SELECT CAST(strftime('%s', datetime('now','localtime')) AS INTEGER) - CAST(strftime('%s','now') AS INTEGER) as desfase`);
+  const corrimiento = desfaseArgentina() - Math.round(Number(r.rows[0]?.desfase ?? 0) / 60) * 60;
+  const sinMarca = `NOT EXISTS (SELECT 1 FROM configuracion WHERE clave = 'fechas_hora_argentina')`;
+  const cambios: { sql: string; args: any[] }[] = [];
+  if (corrimiento !== 0) {
+    for (const [tabla, columnas] of FECHAS_A_CORRER) {
+      for (const columna of columnas) {
+        cambios.push({ sql: `UPDATE ${tabla} SET ${columna} = datetime(${columna}, '${corrimiento} seconds') WHERE ${columna} IS NOT NULL AND ${sinMarca}`, args: [] });
+      }
+    }
+  }
+  cambios.push({ sql: `INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('fechas_hora_argentina', ${sqlAhora()})`, args: [] });
+  await db.batch(cambios, "write");
 }
 
 async function completarEstadoYBateriaDesdeNombres() {
@@ -327,6 +391,6 @@ async function completarEstadoYBateriaDesdeNombres() {
     });
   }
   // La marca va en la misma tanda: si algo falla, no queda marcado y se reintenta en el proximo arranque.
-  cambios.push({ sql: `INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('stock_estado_bateria', datetime('now','localtime'))`, args: [] });
+  cambios.push({ sql: `INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('stock_estado_bateria', ${sqlAhora()})`, args: [] });
   await db.batch(cambios, "write");
 }

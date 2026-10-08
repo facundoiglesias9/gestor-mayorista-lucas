@@ -205,7 +205,7 @@ app.get("/api/logs", envolver((req) => repo.listarLogs(req.query.limite ? Number
 app.get("/api/backup", async (_req, res) => {
   try {
     const datos = await repo.exportarTodo();
-    const fecha = new Date().toISOString().slice(0, 10);
+    const fecha = repo.hoyEnArgentina();
     res.setHeader("Content-Disposition", `attachment; filename="backup-gestor-${fecha}.json"`);
     res.json(datos);
   } catch (e: any) {
