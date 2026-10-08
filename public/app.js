@@ -129,7 +129,9 @@ function mostrarApp() {
   overlay.classList.add("saliendo");
   setTimeout(() => overlay.classList.add("oculto"), sinAnimaciones() ? 0 : 450);
   document.getElementById("app-shell").classList.remove("oculto");
-  cargarResumen();
+  const seccion = location.hash.slice(1);
+  if (TITULOS_TAB[seccion] && seccion !== "resumen") irATab(seccion);
+  else cargarResumen();
   cargarListaPersonas();
   cargarListaProductos();
   actualizarBadgePedidos();
@@ -447,42 +449,104 @@ const TITULOS_TAB = {
   catalogo: "Catálogo",
 };
 
+// En que grupo del menu esta cada seccion (se muestra chiquito arriba del titulo).
+const GRUPO_TAB = {
+  resumen: "General",
+  stock: "Operación",
+  ventas: "Operación",
+  pedidos: "Operación",
+  catalogo: "Operación",
+  prestamos: "Finanzas",
+  prendas: "Finanzas",
+  empleados: "Equipo y sistema",
+  bot: "Equipo y sistema",
+  logs: "Equipo y sistema",
+};
+
 function irATab(tab) {
-  document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("activo", b.dataset.tab === tab));
+  if (!TITULOS_TAB[tab]) tab = "resumen";
+  // Marca la seccion en los dos menus (la barra lateral y la de abajo del celular). Si la
+  // seccion no esta en la barra de abajo, se marca "Mas".
+  let enBarraInferior = false;
+  document.querySelectorAll("[data-tab]").forEach((b) => {
+    const activo = b.dataset.tab === tab;
+    b.classList.toggle("activo", activo);
+    if (activo) b.setAttribute("aria-current", "page");
+    else b.removeAttribute("aria-current");
+    if (activo && b.classList.contains("tab-inferior")) enBarraInferior = true;
+  });
+  document.getElementById("btn-mas").classList.toggle("activo", !enBarraInferior);
   document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("oculto", p.id !== `tab-${tab}`));
   const titulo = document.getElementById("titulo-seccion");
-  titulo.textContent = TITULOS_TAB[tab] ?? "";
+  titulo.textContent = TITULOS_TAB[tab];
+  document.getElementById("grupo-seccion").textContent = GRUPO_TAB[tab] ?? "";
   titulo.classList.remove("cambiando");
   void titulo.offsetWidth;
   titulo.classList.add("cambiando");
+  document.title = `${TITULOS_TAB[tab]} · Gestor Mayorista`;
+  // La seccion queda en la direccion (/panel#stock): al recargar se vuelve a la misma.
+  history.replaceState(null, "", tab === "resumen" ? location.pathname : `#${tab}`);
   window.scrollTo({ top: 0 });
   cargarTab(tab);
   cerrarMenu();
 }
 
-document.querySelectorAll(".tab").forEach((btn) => btn.addEventListener("click", () => irATab(btn.dataset.tab)));
+document.querySelectorAll("[data-tab]").forEach((btn) => btn.addEventListener("click", () => irATab(btn.dataset.tab)));
 
-// ---------- menu hamburguesa desplegable ----------
+// ---------- menu ----------
+// Compu: barra lateral fija, que se puede contraer a solo iconos (queda guardado en este
+// navegador). Celular: "Mas" abre la barra lateral como una hoja desde abajo.
+const barraLateral = document.getElementById("barra-lateral");
+
+function ponerMenuContraido(contraido) {
+  barraLateral.classList.toggle("contraida", contraido);
+  document.getElementById("app-shell").classList.toggle("menu-contraido", contraido);
+  const boton = document.getElementById("btn-colapsar");
+  boton.setAttribute("aria-expanded", String(!contraido));
+  boton.setAttribute("aria-label", contraido ? "Expandir menú" : "Contraer menú");
+  boton.querySelector(".tab-texto").textContent = contraido ? "Expandir menú" : "Contraer menú";
+}
+
+try {
+  ponerMenuContraido(localStorage.getItem("panel_menu_contraido") === "1");
+} catch {
+  /* sin acceso al almacenamiento: queda expandido */
+}
+
+document.getElementById("btn-colapsar").addEventListener("click", () => {
+  const contraido = !barraLateral.classList.contains("contraida");
+  ponerMenuContraido(contraido);
+  try {
+    localStorage.setItem("panel_menu_contraido", contraido ? "1" : "0");
+  } catch {
+    /* no pasa nada: la proxima vez arranca expandido */
+  }
+});
+
 function abrirMenu() {
-  document.getElementById("tabs").classList.add("abierto");
+  barraLateral.classList.add("abierta");
   document.getElementById("menu-backdrop").classList.add("visible");
-  document.getElementById("btn-menu").classList.add("abierto");
-  document.getElementById("btn-menu").setAttribute("aria-expanded", "true");
+  document.getElementById("btn-mas").setAttribute("aria-expanded", "true");
 }
 
 function cerrarMenu() {
-  document.getElementById("tabs").classList.remove("abierto");
+  barraLateral.classList.remove("abierta");
   document.getElementById("menu-backdrop").classList.remove("visible");
-  document.getElementById("btn-menu").classList.remove("abierto");
-  document.getElementById("btn-menu").setAttribute("aria-expanded", "false");
+  document.getElementById("btn-mas").setAttribute("aria-expanded", "false");
 }
 
-document.getElementById("btn-menu").addEventListener("click", () => {
-  document.getElementById("tabs").classList.contains("abierto") ? cerrarMenu() : abrirMenu();
+document.getElementById("btn-mas").addEventListener("click", () => {
+  barraLateral.classList.contains("abierta") ? cerrarMenu() : abrirMenu();
 });
 document.getElementById("menu-backdrop").addEventListener("click", cerrarMenu);
 document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") cerrarMenu();
+});
+
+document.getElementById("btn-salir").addEventListener("click", async () => {
+  if (!(await confirmar({ titulo: "¿Cerrar sesión?", mensaje: "Vas a tener que volver a poner la clave para entrar.", textoBoton: "Cerrar sesión" }))) return;
+  sessionStorage.removeItem("panel_clave");
+  location.replace(location.pathname);
 });
 
 function cargarTab(tab) {
@@ -876,13 +940,10 @@ function pillEstadoPedido(estado) {
 async function actualizarBadgePedidos() {
   try {
     const pendientes = await api("GET", "/api/pedidos?pendientes=1");
-    const badge = document.getElementById("badge-pedidos");
-    if (pendientes.length) {
-      badge.textContent = pendientes.length;
-      badge.classList.remove("oculto");
-    } else {
-      badge.classList.add("oculto");
-    }
+    document.querySelectorAll(".badge-pedidos").forEach((badge) => {
+      if (badge.classList.contains("badge-contador")) badge.textContent = pendientes.length;
+      badge.classList.toggle("oculto", !pendientes.length);
+    });
   } catch {
     /* si falla, no pasa nada grave: se vuelve a intentar la proxima vez que se abra el panel */
   }
