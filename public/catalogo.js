@@ -557,8 +557,9 @@ function cerrarFicha() {
 
 function sincronizarFicha() {
   const id = idEnDireccion();
-  if (id != null) abrirFicha(id);
-  else ocultarFicha();
+  if (id != null) return abrirFicha(id);
+  fichaDesdeLaLista = false; // se cerro con "atras": la proxima vez arranca de cero
+  ocultarFicha();
 }
 
 window.addEventListener("hashchange", sincronizarFicha);
