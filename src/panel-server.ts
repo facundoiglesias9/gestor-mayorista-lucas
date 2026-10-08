@@ -254,12 +254,15 @@ app.post("/api/fotos-catalogo", envolver((req) => repo.guardarFotoCatalogo(req.b
 app.delete("/api/fotos-catalogo/:id", envolver((req) => repo.eliminarFotoCatalogo(Number(req.params.id))));
 
 // ---------- frontend estatico ----------
-// /catalogo sin el ".html" (en Vercel lo resuelve el rewrite de vercel.json).
-app.get("/catalogo", (_req, res) => res.sendFile(path.join(__dirname, "..", "public", "catalogo.html")));
+// La pagina principal ("/", public/index.html) es el catalogo para clientes; el panel interno
+// esta en /panel. /catalogo era la direccion vieja del catalogo: redirige a la principal para
+// que no se rompan los links que ya se hayan pasado. (En Vercel lo mismo lo hace vercel.json.)
+app.get("/panel", (_req, res) => res.sendFile(path.join(__dirname, "..", "public", "panel.html")));
+app.get("/catalogo", (_req, res) => res.redirect(302, "/"));
 app.use(express.static(path.join(__dirname, "..", "public")));
 
 export function iniciarPanel() {
   app.listen(PANEL_PORT, "0.0.0.0", () => {
-    console.log(`Panel web corriendo en http://localhost:${PANEL_PORT} (y en tu red local en ese mismo puerto).`);
+    console.log(`Catalogo en http://localhost:${PANEL_PORT} y panel en http://localhost:${PANEL_PORT}/panel (y en tu red local en ese mismo puerto).`);
   });
 }

@@ -1,8 +1,9 @@
 import "dotenv/config";
 
-// Levanta SOLO la web (panel + catalogo) en tu compu, sin el bot de Telegram: sirve para ver y
-// probar cambios de diseno en http://localhost:4000 sin tocar el bot de produccion. (npm start
-// tambien arranca el bot por polling, y eso le saca el webhook al bot que corre en Vercel.)
+// Levanta SOLO la web (catalogo en http://localhost:4000 y panel en http://localhost:4000/panel)
+// en tu compu, sin el bot de Telegram: sirve para ver y probar cambios de diseno sin tocar el
+// bot de produccion. (npm start tambien arranca el bot por polling, y eso le saca el webhook al
+// bot que corre en Vercel.)
 //
 // Uso: npm run panel
 
@@ -18,4 +19,3 @@ for (const [nombre, valor] of Object.entries({
 
 const { iniciarPanel } = await import("./panel-server.js");
 iniciarPanel();
-console.log("Catalogo: http://localhost:" + (process.env.PANEL_PORT ?? 4000) + "/catalogo");
