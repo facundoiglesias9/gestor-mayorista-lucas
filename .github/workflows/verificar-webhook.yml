@@ -5,9 +5,14 @@ name: Verificar webhook del bot
 # De paso borra registros internos viejos (updates ya procesados, logs de mas de 90 dias).
 # Necesita el secret CRON_SECRET configurado en este repo (Settings -> Secrets and variables ->
 # Actions), con el mismo valor que la variable de entorno CRON_SECRET en Vercel.
+#
+# OJO: GitHub no garantiza el horario. Con "*/30" (en punto y y media, las horas de mas carga)
+# descartaba casi todas las corridas: en la practica corria cada 4 a 7 horas. Por eso va en
+# minutos sueltos (17 y 47), y el llamado principal conviene hacerlo desde cron-job.org (gratis
+# y puntual, ver README, "Chequeo automatico"). Esto queda de respaldo.
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "17,47 * * * *"
   workflow_dispatch: {}
 
 jobs:

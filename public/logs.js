@@ -195,9 +195,12 @@ function dibujarSalud() {
     const minutos = Math.round((Date.now() - new Date(chequeo.fecha).getTime()) / 60000);
     const viejo = minutos > 75;
     const texto = minutos < 1 ? "recién" : minutos < 60 ? `hace ${minutos} min` : `hace ${Math.round(minutos / 60)} h`;
-    estadoChequeo = `<span class="salud-chip ${viejo || chequeo.estado === "error" ? "malo" : "bueno"}" title="Cada 30 minutos se revisa que Telegram le siga mandando los mensajes al bot">${
-      viejo ? "El chequeo automático no corre desde" : chequeo.estado === "reparado" ? "Chequeo automático (reparó el webhook)" : chequeo.estado === "error" ? "El último chequeo automático falló" : "Chequeo automático OK"
-    } · ${texto}</span>`;
+    // Atrasado = no lo esta llamando nadie cada 30 min (ver README, "Chequeo automatico").
+    estadoChequeo = `<span class="salud-chip ${viejo || chequeo.estado === "error" ? "malo" : "bueno"}" title="${
+      viejo ? "Tendría que correr cada 30 minutos: revisá el chequeo en cron-job.org" : "Cada 30 minutos se revisa que Telegram le siga mandando los mensajes al bot"
+    }">${
+      viejo ? `Chequeo automático atrasado: el último fue ${texto}` : `${chequeo.estado === "reparado" ? "Chequeo automático (reparó el webhook)" : chequeo.estado === "error" ? "El último chequeo automático falló" : "Chequeo automático OK"} · ${texto}`
+    }</span>`;
   } else {
     estadoChequeo = `<span class="salud-chip neutro" title="Cada 30 minutos se revisa que Telegram le siga mandando los mensajes al bot">Chequeo automático: todavía sin datos</span>`;
   }

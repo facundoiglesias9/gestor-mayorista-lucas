@@ -101,6 +101,20 @@ Listo — a partir de ahí Telegram le habla directo a Vercel, y el panel tambi�
 
 > Si alguna vez cambiás `TELEGRAM_WEBHOOK_SECRET`, tenés que volver a correr este comando con el valor nuevo en tu `.env`: Telegram manda esa clave en cada mensaje y, si no coincide con la de Vercel, el mensaje se rechaza.
 
+### 3. Chequeo automático
+
+Cada 30 minutos algo tiene que llamar a `/api/cron/verificar-webhook`: se fija que Telegram le siga mandando los mensajes al bot (si no, lo repone solo y te avisa) y borra registros viejos. En Logs se ve cuándo corrió por última vez.
+
+Hay un respaldo en GitHub Actions (`.github/workflows/verificar-webhook.yml`), pero GitHub no respeta el horario: en la práctica corría cada 4 a 7 horas. El llamado principal se hace desde [cron-job.org](https://cron-job.org), que es gratis y puntual:
+
+1. Creá una cuenta en cron-job.org y tocá **Create cronjob**.
+2. **URL**: `https://gestor-mayorista-lucas.vercel.app/api/cron/verificar-webhook`
+3. **Execution schedule**: cada 30 minutos.
+4. En **Advanced → Headers** agregá uno: key `Authorization`, value `Bearer ` + el valor de `CRON_SECRET` (el mismo que está en Vercel, con un espacio después de `Bearer`).
+5. Guardalo y tocá **Test run**: tiene que dar 200, y en Logs el chequeo pasa a "Chequeo automático OK · recién".
+
+> Si en Vercel `CRON_SECRET` está marcada como *Sensitive* no se puede ver el valor. En ese caso inventá uno nuevo, cargalo en Vercel (y volvé a desplegar), en el secret `CRON_SECRET` del repo en GitHub y en cron-job.org.
+
 ### Volver a correr local (modo polling)
 
 Si en algún momento querés volver a probarlo en tu PC con `npm start`, primero tenés que avisarle a Telegram que deje de mandarle los mensajes a Vercel:
