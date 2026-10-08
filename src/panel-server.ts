@@ -248,6 +248,13 @@ app.get("/api/catalogo/fotos/:id", async (req, res) => {
   }
 });
 
+// ---------- publicaciones del catalogo (panel, con clave) ----------
+app.get("/api/catalogo-items", envolver(() => repo.listarItemsCatalogo()));
+app.post("/api/catalogo-items", envolver((req) => repo.crearItemCatalogo(req.body)));
+app.put("/api/catalogo-items/:id", envolver((req) => repo.actualizarItemCatalogo(Number(req.params.id), req.body ?? {})));
+app.delete("/api/catalogo-items/:id", envolver((req) => repo.eliminarItemCatalogo(Number(req.params.id))));
+app.post("/api/catalogo-items/:id/mover", envolver((req) => repo.moverItemCatalogo(Number(req.params.id), req.body?.direccion === "arriba" ? "arriba" : "abajo")));
+
 // ---------- fotos del catalogo (panel, con clave) ----------
 app.get("/api/fotos-catalogo", envolver(() => repo.estadoFotosCatalogo()));
 app.post("/api/fotos-catalogo", envolver((req) => repo.guardarFotoCatalogo(req.body)));

@@ -21,9 +21,8 @@ function formatoPrecio(n, moneda) {
   return `${SIMBOLO_MONEDA[moneda] ?? ""} ${num}`.trim();
 }
 
-// ---------- datos que se sacan del nombre del producto ----------
-// Los productos no tienen foto ni campos de color/capacidad: se deducen del nombre
-// ("iPhone 13 128GB Azul 98%") para mostrarlos prolijos y para pintar el dibujo del equipo.
+// ---------- colores para el dibujo del equipo ----------
+// Si una publicacion no tiene foto, se muestra un dibujo pintado del color que diga el nombre.
 const COLORES = [
   // [palabras que lo identifican, nombre a mostrar, color]
   [["titanio natural", "natural titanium"], "Titanio natural", "#c2bcb2"],
@@ -60,25 +59,9 @@ function detectarColor(nombre) {
   return null;
 }
 
-const ESTADOS = [
-  [/\bsellad[oa]s?\b/, "Nuevo sellado"],
-  [/\bsemi(\s?nuevo)?\b/, "Seminuevo"],
-  [/\busad[oa]s?\b/, "Usado"],
-  [/\bnuev[oa]s?\b/, "Nuevo"],
-];
-
-function detallesDelNombre(nombre) {
-  const detalles = [];
-  // Capacidad: "128GB", "1TB", o el numero solo si es una capacidad tipica ("Iphone 17 pro max 256").
-  const capacidad = /(\d+)\s?(gb|tb)\b/i.exec(nombre) ?? (/iphone|ipad|galaxy|xiaomi|redmi|motorola/i.test(nombre) && /\b(64|128|256|512)\b/.exec(nombre));
-  if (capacidad) detalles.push({ texto: `${capacidad[1]} ${(capacidad[2] ?? "gb").toUpperCase()}` });
-  const estado = ESTADOS.find(([regex]) => regex.test(normalizar(nombre)));
-  if (estado) detalles.push({ texto: estado[1] });
-  const color = detectarColor(nombre);
-  if (color) detalles.push({ texto: color.etiqueta, color: color.hex });
-  const bateria = /\b(\d{2,3})\s?%/.exec(nombre);
-  if (bateria && Number(bateria[1]) <= 100) detalles.push({ texto: `Batería ${bateria[1]}%` });
-  return detalles;
+// Estado y detalle de la publicacion ("Nuevo sellado", "Batería 79%"), como chips.
+function detallesDeItem(p) {
+  return [p.estado, p.detalle].filter(Boolean).map((texto) => ({ texto }));
 }
 
 // Tipo de equipo, para elegir que dibujo mostrar.
@@ -93,13 +76,6 @@ function tipoDeEquipo(p) {
   if (/vaper|vape|elfbar|lost mary|ignite|\bpod\b/.test(texto)) return "vaper";
   if (/iphone|celular|samsung|motorola|xiaomi|redmi|galaxy/.test(texto)) return "telefono";
   return "caja";
-}
-
-// Para "Destacados": primero los iPhone, del modelo mas nuevo al mas viejo; despues el resto.
-function puntajeDestacado(p) {
-  const iphone = /iphone\s*(\d+)/i.exec(p.nombre);
-  if (iphone) return 1000 + Number(iphone[1]) * 10 + (/pro max/i.test(p.nombre) ? 3 : /pro/i.test(p.nombre) ? 2 : /plus/i.test(p.nombre) ? 1 : 0);
-  return tipoDeEquipo(p) === "telefono" ? 500 : 0;
 }
 
 // ---------- dibujos de los equipos (SVG) ----------
@@ -183,18 +159,42 @@ function linkWhatsapp(texto) {
   return `https://wa.me/${estado.tienda.whatsapp}?text=${encodeURIComponent(texto)}`;
 }
 
+// ---------- memorias ----------
+// Memoria elegida en cada tarjeta (id -> indice). Arranca en la primera que haya en stock.
+const memoriaElegida = new Map();
+
+function indiceMemoria(p) {
+  if (!memoriaElegida.has(p.id)) memoriaElegida.set(p.id, Math.max(p.memorias.findIndex((m) => m.disponible), 0));
+  return memoriaElegida.get(p.id);
+}
+
+// Precio que se muestra: el de la memoria elegida, o el de la publicacion si no tiene memorias.
+function precioActual(p) {
+  return p.memorias.length ? p.memorias[indiceMemoria(p)].precio : p.precio;
+}
+
+// Para ordenar por precio: el mas barato de lo que haya (en dolares, si hay cotizacion).
+function precioParaOrdenar(p) {
+  const precios = p.memorias.length ? p.memorias.filter((m) => m.disponible || !p.disponible).map((m) => m.precio) : [p.precio];
+  const validos = precios.filter((x) => x != null);
+  if (!validos.length) return Infinity;
+  const min = Math.min(...validos);
+  return p.moneda === "ARS" && estado.dolar ? min / estado.dolar : min;
+}
+
 function productosFiltrados() {
   const terminos = normalizar(estado.busqueda).split(/\s+/).filter(Boolean);
   let lista = estado.productos.filter((p) => {
     if (estado.categoria !== "Todos" && p.categoria !== estado.categoria) return false;
-    const texto = normalizar(`${p.nombre} ${p.categoria} ${detallesDelNombre(p.nombre).map((d) => d.texto).join(" ")}`);
+    const texto = normalizar([p.nombre, p.categoria, p.estado, p.detalle, ...p.memorias.map((m) => m.capacidad)].filter(Boolean).join(" "));
     return terminos.every((t) => texto.includes(t));
   });
-  const precioOrden = (p) => (p.precio == null ? Infinity : p.moneda === "ARS" && estado.dolar ? p.precio / estado.dolar : p.precio);
+  const precioOrden = precioParaOrdenar;
   if (estado.orden === "precio-asc") lista = [...lista].sort((a, b) => precioOrden(a) - precioOrden(b));
   if (estado.orden === "precio-desc") lista = [...lista].sort((a, b) => (precioOrden(b) === Infinity ? -1 : precioOrden(b)) - (precioOrden(a) === Infinity ? -1 : precioOrden(a)));
   if (estado.orden === "nombre") lista = [...lista].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
-  if (estado.orden === "destacados") lista = [...lista].sort((a, b) => puntajeDestacado(b) - puntajeDestacado(a) || a.nombre.localeCompare(b.nombre, "es"));
+  // "Destacados" es el orden que se armo en el panel, con lo que esta en stock primero.
+  if (estado.orden === "destacados") lista = [...lista].sort((a, b) => Number(b.disponible) - Number(a.disponible) || estado.productos.indexOf(a) - estado.productos.indexOf(b));
   return lista;
 }
 
@@ -219,7 +219,53 @@ function fotoElegida(p) {
 
 function mensajeWhatsapp(p) {
   const foto = p.fotos.length > 1 ? fotoElegida(p) : null;
-  return `Hola! Me interesa ${p.nombre}${foto ? ` en ${foto.color}` : ""}${p.precio != null ? ` (${formatoPrecio(p.precio, p.moneda)})` : ""} que vi en el catálogo. ¿Está disponible?`;
+  const memoria = p.memorias.length ? p.memorias[indiceMemoria(p)] : null;
+  const descripcion = `${p.nombre}${p.estado ? ` (${p.estado})` : ""}${memoria ? ` de ${memoria.capacidad}` : ""}${foto ? ` en ${foto.color}` : ""}`;
+  if (!p.disponible) return `Hola! Vi ${descripcion} en el catálogo, que figura sin stock. ¿Te va a volver a entrar?`;
+  const precio = precioActual(p);
+  return `Hola! Me interesa ${descripcion}${precio != null ? ` (${formatoPrecio(precio, p.moneda)})` : ""} que vi en el catálogo. ¿Está disponible?`;
+}
+
+function htmlPrecio(p) {
+  const precio = precioActual(p);
+  return precio != null
+    ? `<span class="precio-valor">${formatoPrecio(precio, p.moneda)}</span>${
+        p.moneda === "USD" && estado.dolar ? `<span class="precio-equivalente">≈ ${formatoPrecio(precio * estado.dolar, "ARS")}</span>` : ""
+      }`
+    : `<span class="precio-consultar">Consultar precio</span>`;
+}
+
+// Botones de memoria ("128 GB · 256 GB · 512 GB"). Las que no hay quedan tachadas y no se
+// pueden elegir (salvo que la publicacion entera este sin stock: ahi se ven todas igual).
+function selectorMemorias(p) {
+  if (!p.memorias.length) return "";
+  const actual = indiceMemoria(p);
+  return `<div class="memorias" role="radiogroup" aria-label="Memoria">
+    ${p.memorias
+      .map((m, i) => {
+        const agotada = !m.disponible && p.disponible;
+        return `<button type="button" class="memoria${i === actual ? " activo" : ""}${agotada ? " agotada" : ""}" role="radio" aria-checked="${i === actual}" ${agotada ? 'disabled title="Sin stock"' : ""} data-producto="${p.id}" data-indice="${i}">${escapeHtml(m.capacidad)}</button>`;
+      })
+      .join("")}
+  </div>`;
+}
+
+function cambiarMemoria(idProducto, indice) {
+  const p = estado.productos.find((x) => x.id === idProducto);
+  if (!p || memoriaElegida.get(idProducto) === indice) return;
+  memoriaElegida.set(idProducto, indice);
+  const tarjeta = document.querySelector(`.producto[data-id="${idProducto}"]`);
+  tarjeta.querySelectorAll(".memoria").forEach((b, i) => {
+    b.classList.toggle("activo", i === indice);
+    b.setAttribute("aria-checked", String(i === indice));
+  });
+  const precio = tarjeta.querySelector(".precio");
+  precio.innerHTML = htmlPrecio(p);
+  precio.classList.remove("cambio");
+  void precio.offsetWidth;
+  precio.classList.add("cambio");
+  const boton = tarjeta.querySelector(".btn-consultar");
+  if (boton) boton.href = linkWhatsapp(mensajeWhatsapp(p));
 }
 
 function selectorColores(p) {
@@ -266,24 +312,18 @@ function cambiarColor(idProducto, indice) {
 
 // ---------- dibujo de la pagina ----------
 function tarjetaProducto(p, i) {
-  const detalles = detallesDelNombre(p.nombre);
+  const detalles = detallesDeItem(p);
   const foto = p.fotos.length ? fotoElegida(p) : null;
-  const precio =
-    p.precio != null
-      ? `<span class="precio-valor">${formatoPrecio(p.precio, p.moneda)}</span>${
-          p.moneda === "USD" && estado.dolar ? `<span class="precio-equivalente">≈ ${formatoPrecio(p.precio * estado.dolar, "ARS")}</span>` : ""
-        }`
-      : `<span class="precio-consultar">Consultar precio</span>`;
   const mensaje = mensajeWhatsapp(p);
   return `
-    <article class="producto" data-id="${p.id}" style="--i:${Math.min(i, 12)}">
+    <article class="producto${p.disponible ? "" : " agotado"}" data-id="${p.id}" style="--i:${Math.min(i, 12)}">
       <div class="producto-imagen${foto ? " con-foto" : ""}">
         ${
           foto
             ? `<img class="foto-producto" src="${foto.url}" alt="${escapeHtml(`${p.nombre} ${foto.color}`)}" loading="lazy" decoding="async" />`
             : dibujoEquipo(p, p.id)
         }
-        ${p.pocas_unidades ? `<span class="insignia">Últimas unidades</span>` : ""}
+        ${p.disponible ? "" : `<span class="insignia insignia-agotado">Sin stock</span>`}
       </div>
       <div class="producto-cuerpo">
         <span class="producto-categoria">${escapeHtml(p.categoria)}</span>
@@ -295,10 +335,11 @@ function tarjetaProducto(p, i) {
                 .join("")}</div>`
             : ""
         }
+        ${selectorMemorias(p)}
         ${selectorColores(p)}
-        <span class="disponibilidad">Disponible</span>
+        <span class="disponibilidad${p.disponible ? "" : " agotado"}">${p.disponible ? "Disponible" : "Sin stock por ahora"}</span>
         <div class="producto-pie">
-          <div class="precio">${precio}</div>
+          <div class="precio">${htmlPrecio(p)}</div>
           ${
             estado.tienda.whatsapp
               ? `<a class="btn btn-whatsapp btn-consultar" href="${linkWhatsapp(mensaje)}" target="_blank" rel="noopener" title="Consultar por WhatsApp" aria-label="Consultar ${escapeHtml(p.nombre)} por WhatsApp">${ICONO_WHATSAPP}</a>`
@@ -398,8 +439,10 @@ document.getElementById("categorias").addEventListener("click", (ev) => {
 });
 
 document.getElementById("grilla").addEventListener("click", (ev) => {
-  const boton = ev.target.closest(".color");
-  if (boton) cambiarColor(Number(boton.dataset.producto), Number(boton.dataset.indice));
+  const color = ev.target.closest(".color");
+  if (color) return cambiarColor(Number(color.dataset.producto), Number(color.dataset.indice));
+  const memoria = ev.target.closest(".memoria");
+  if (memoria && !memoria.disabled) cambiarMemoria(Number(memoria.dataset.producto), Number(memoria.dataset.indice));
 });
 
 let temporizadorBusqueda;
@@ -427,7 +470,8 @@ async function iniciar() {
     estado.tienda = datos.tienda;
     estado.dolar = datos.dolar_blue_venta;
 
-    document.getElementById("hero-etiqueta").textContent = `${datos.productos.length} productos disponibles hoy`;
+    const disponibles = datos.productos.filter((p) => p.disponible).length;
+    document.getElementById("hero-etiqueta").textContent = `${disponibles} ${disponibles === 1 ? "producto disponible" : "productos disponibles"} hoy`;
     if (datos.tienda.whatsapp) {
       const link = linkWhatsapp("Hola! Vi el catálogo y quería hacer una consulta.");
       for (const id of ["whatsapp-barra", "whatsapp-flotante"]) {

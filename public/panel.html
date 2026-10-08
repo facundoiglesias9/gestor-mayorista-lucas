@@ -452,25 +452,95 @@
       <section id="tab-catalogo" class="panel oculto">
         <div class="barra-acciones">
           <div>
-            <h3 class="titulo-bloque">Fotos del catálogo</h3>
-            <p class="subtitulo" id="sub-fotos"></p>
+            <h3 class="titulo-bloque">Catálogo</h3>
+            <p class="subtitulo" id="sub-catalogo"></p>
           </div>
           <div class="grupo-botones">
             <a class="btn-secundario" href="/" target="_blank" rel="noopener">
               <svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
               Ver catálogo
             </a>
-            <button type="button" class="btn-primario" onclick="abrirDialogoFoto()">
+            <button type="button" class="btn-primario" onclick="abrirDialogoItem()">
               <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-              Agregar foto
+              Nueva publicación
             </button>
           </div>
         </div>
-        <p class="ayuda">Una foto por modelo y color. En el catálogo, cada producto muestra las fotos de su modelo con los puntitos de color para cambiar entre ellas (por ej. las fotos de "iPhone 17 Pro Max" le aparecen a "Iphone 17 pro max 256 sellado"). Los productos sin foto se muestran con un dibujo.</p>
+        <p class="ayuda">Lo que ven los clientes en la página principal. Va aparte del stock: acá decidís qué se publica, con qué memorias y precios, y si lo tenés o no. <strong>Visible</strong> apagado la saca del catálogo sin borrarla. <strong>Lo tengo</strong> apagado la muestra como "sin stock". El orden de esta lista es el orden del catálogo.</p>
+
+        <div class="filtros-catalogo">
+          <div class="chips-filtro" id="filtros-catalogo" role="tablist">
+            <button type="button" class="chip-filtro activo" data-filtro="todas">Todas <span></span></button>
+            <button type="button" class="chip-filtro" data-filtro="visibles">Visibles <span></span></button>
+            <button type="button" class="chip-filtro" data-filtro="ocultas">Ocultas <span></span></button>
+            <button type="button" class="chip-filtro" data-filtro="sin-stock">Sin stock <span></span></button>
+          </div>
+          <label class="buscador-panel">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input id="buscar-catalogo" type="search" placeholder="Buscar publicación…" autocomplete="off" />
+          </label>
+        </div>
+        <div class="tabla-wrap">
+          <table id="tabla-catalogo">
+            <thead><tr><th>Publicación</th><th>Memorias y precios</th><th>Lo tengo</th><th>Visible</th><th class="col-acciones"></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="barra-acciones">
+          <div>
+            <h3 class="titulo-bloque">Fotos por modelo y color</h3>
+            <p class="subtitulo" id="sub-fotos"></p>
+          </div>
+          <button type="button" class="btn-secundario" onclick="abrirDialogoFoto()">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+            Agregar foto
+          </button>
+        </div>
+        <p class="ayuda">Una foto por modelo y color. Cada publicación muestra las fotos de su modelo, con puntitos de color para cambiar entre ellas (las fotos de "iPhone 17 Pro Max" le aparecen a la publicación "iPhone 17 Pro Max"). Las publicaciones sin foto se muestran con un dibujo.</p>
 
         <div id="sin-foto" class="sin-foto oculto"></div>
         <div id="lista-fotos" class="lista-fotos"></div>
       </section>
+
+      <dialog id="dialogo-item" class="dialogo-ancho">
+        <form id="form-item">
+          <input type="hidden" name="id" />
+          <div class="dialogo-header">
+            <h3 class="dialogo-titulo" id="titulo-dialogo-item">Nueva publicación</h3>
+            <p class="ayuda">Así la ven los clientes en el catálogo. Las fotos salen del modelo (sección de fotos, abajo de la lista).</p>
+          </div>
+          <label>Nombre<input name="nombre" placeholder="Ej: iPhone 17 Pro Max" autocomplete="off" required list="lista-modelos" /></label>
+          <div class="fila-campos">
+            <label>Categoría<input name="categoria" placeholder="Ej: Celulares" autocomplete="off" list="lista-categorias-catalogo" /></label>
+            <label>Estado<input name="estado" placeholder="Ej: Nuevo sellado" autocomplete="off" list="lista-estados" /></label>
+          </div>
+          <div class="fila-campos">
+            <label>Detalle (opcional)<input name="detalle" placeholder="Ej: Batería 79%" autocomplete="off" /></label>
+            <label>Moneda<select name="moneda"><option value="USD">Dólares (U$D)</option><option value="ARS">Pesos ($)</option></select></label>
+          </div>
+          <div class="bloque-memorias">
+            <div class="bloque-memorias-header">
+              <span>Memorias que se pueden elegir</span>
+              <div class="atajos-memoria" id="atajos-memoria"></div>
+            </div>
+            <div id="filas-memoria" class="filas-memoria"></div>
+            <button type="button" class="btn-link" onclick="agregarFilaMemoria()"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Otra memoria</button>
+          </div>
+          <label id="campo-precio-unico">Precio<input name="precio" type="number" step="0.01" placeholder="Si no tiene memorias para elegir" /></label>
+          <div class="fila-checks">
+            <label class="fila-check"><input type="checkbox" name="disponible" checked /> Lo tengo</label>
+            <label class="fila-check"><input type="checkbox" name="visible" checked /> Mostrar en el catálogo</label>
+          </div>
+          <div class="dialogo-botones">
+            <button type="button" class="btn-secundario" onclick="cerrarDialogo('dialogo-item')">Cancelar</button>
+            <button type="submit" class="btn-primario" id="boton-guardar-item">Crear publicación</button>
+          </div>
+        </form>
+      </dialog>
+      <datalist id="lista-estados"><option value="Nuevo sellado"><option value="Nuevo"><option value="Seminuevo"><option value="Usado"><option value="Reacondicionado"></datalist>
+      <datalist id="lista-categorias-catalogo"></datalist>
+      <datalist id="lista-capacidades"><option value="64 GB"><option value="128 GB"><option value="256 GB"><option value="512 GB"><option value="1 TB"><option value="2 TB"></datalist>
 
       <dialog id="dialogo-foto">
         <form id="form-foto">

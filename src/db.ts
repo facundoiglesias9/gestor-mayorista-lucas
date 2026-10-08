@@ -227,6 +227,33 @@ CREATE TABLE IF NOT EXISTS fotos_catalogo (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS fotos_catalogo_modelo_color ON fotos_catalogo (modelo_clave, color_clave);
 
+-- Publicaciones del catalogo publico: lo que ven los clientes. Va aparte del stock a proposito
+-- (el stock es la cuenta interna; el catalogo es la vidriera, que se arma desde el panel).
+-- memorias es un JSON: [{ capacidad: "256 GB", precio: 1320, disponible: true }, ...]; si esta
+-- vacio, el precio es el de la columna precio. visible = 0 la saca de la vista de los clientes
+-- sin borrarla. disponible = 0 es "no lo tengo": se muestra como sin stock.
+CREATE TABLE IF NOT EXISTS catalogo_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nombre TEXT NOT NULL,
+  categoria TEXT NOT NULL DEFAULT 'Celulares',
+  estado TEXT,
+  detalle TEXT,
+  precio REAL,
+  moneda TEXT NOT NULL DEFAULT 'USD',
+  memorias TEXT NOT NULL DEFAULT '[]',
+  disponible INTEGER NOT NULL DEFAULT 1,
+  visible INTEGER NOT NULL DEFAULT 1,
+  orden INTEGER NOT NULL DEFAULT 0,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+-- Ajustes sueltos del sistema (clave/valor). Por ahora: si ya se armo el catalogo inicial.
+CREATE TABLE IF NOT EXISTS configuracion (
+  clave TEXT PRIMARY KEY,
+  valor TEXT
+);
+
 -- Registro de actividad del bot (para verlo desde el panel sin depender de logs de Vercel).
 CREATE TABLE IF NOT EXISTS logs_bot (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

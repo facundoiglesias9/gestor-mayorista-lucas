@@ -565,25 +565,261 @@ export async function consultarStockPublico(args: { nombre_producto?: string }) 
   return { productos: (await listarProductos()).map(aPublico) };
 }
 
-// Catalogo publico (pagina /catalogo, la ve cualquiera sin clave): solo productos con stock y
-// solo lo que un cliente puede ver. Nunca el costo, ni notas internas, ni la cantidad exacta
-// (eso es informacion del negocio): solo si quedan pocas unidades.
-const POCAS_UNIDADES = 3;
+// ---------- catalogo publico (publicaciones que ven los clientes) ----------
+// El catalogo va aparte del stock: son "publicaciones" que se arman desde el panel (nombre,
+// estado, memorias con su precio, si lo tengo o no, si se muestra o no). La primera vez se arma
+// solo a partir de lo que haya en stock (ver asegurarCatalogoInicial), para no arrancar vacio.
 
+type MemoriaCatalogo = { capacidad: string; precio: number | null; disponible: boolean };
+
+const MAX_MEMORIAS = 10;
+
+// Limpia las memorias que llegan del panel: capacidad obligatoria, precio numero o nada, sin
+// repetidas.
+function limpiarMemorias(entrada: unknown): MemoriaCatalogo[] {
+  if (!Array.isArray(entrada)) return [];
+  const vistas = new Set<string>();
+  const memorias: MemoriaCatalogo[] = [];
+  for (const m of entrada) {
+    const capacidad = String(m?.capacidad ?? "").trim();
+    if (!capacidad || vistas.has(normalizarTexto(capacidad))) continue;
+    vistas.add(normalizarTexto(capacidad));
+    const precio = m?.precio === "" || m?.precio == null ? null : Number(m.precio);
+    memorias.push({ capacidad, precio: precio != null && Number.isFinite(precio) && precio >= 0 ? precio : null, disponible: m?.disponible !== false });
+    if (memorias.length >= MAX_MEMORIAS) break;
+  }
+  return memorias;
+}
+
+function leerMemorias(json: unknown): MemoriaCatalogo[] {
+  try {
+    return limpiarMemorias(JSON.parse(String(json ?? "[]")));
+  } catch {
+    return [];
+  }
+}
+
+function filaAItem(f: any) {
+  const memorias = leerMemorias(f.memorias);
+  return {
+    id: Number(f.id),
+    nombre: String(f.nombre),
+    categoria: String(f.categoria ?? "Otros"),
+    estado: f.estado ?? null,
+    detalle: f.detalle ?? null,
+    precio: f.precio ?? null,
+    moneda: String(f.moneda ?? "USD"),
+    memorias,
+    disponible: !!f.disponible,
+    visible: !!f.visible,
+    orden: Number(f.orden ?? 0),
+  };
+}
+
+// Lo que se puede leer del nombre de un producto del stock, para armar el catalogo inicial.
+function analizarNombreProducto(nombre: string) {
+  const t = normalizarTexto(nombre);
+  const clave = claveModelo(nombre);
+  const esCelular = /iphone|ipad|galaxy|samsung|xiaomi|redmi|motorola/.test(t);
+  const conUnidad = /(\d+)\s?(gb|tb)\b/.exec(t);
+  const suelta = esCelular ? /\b(64|128|256|512)\b/.exec(t) : null;
+  const capacidad = conUnidad ? `${conUnidad[1]} ${conUnidad[2].toUpperCase()}` : suelta ? `${suelta[1]} GB` : null;
+  const estado = /\bsellad[oa]s?\b/.test(t)
+    ? "Nuevo sellado"
+    : /\bsemi/.test(t)
+      ? "Seminuevo"
+      : /\busad[oa]s?\b/.test(t)
+        ? "Usado"
+        : /\bnuev[oa]s?\b/.test(t)
+          ? "Nuevo"
+          : null;
+  const bateria = /\b(\d{2,3})\s?%/.exec(nombre);
+  const detalle = bateria && Number(bateria[1]) <= 100 ? `Batería ${bateria[1]}%` : null;
+  return { clave, nombre: clave.startsWith("iphone") ? nombreModeloBonito(clave) : String(nombre).trim(), capacidad, estado, detalle };
+}
+
+// Para el orden inicial: primero los iPhone, del mas nuevo al mas viejo; despues el resto.
+function puntajeDestacado(clave: string): number {
+  const iphone = /^iphone (\d+)/.exec(clave);
+  if (!iphone) return 0;
+  return 1000 + Number(iphone[1]) * 10 + (/pro max/.test(clave) ? 3 : /pro/.test(clave) ? 2 : /plus|air/.test(clave) ? 1 : 0);
+}
+
+// Una sola vez (la primera vez que se usa el catalogo): se arma con lo que hay en stock, para no
+// arrancar vacio. Los productos que son el mismo modelo y estado pero distinta memoria quedan en
+// UNA publicacion con varias memorias ("Iphone 17 pro max 256 sellado" + "... 512 sellado" ->
+// "iPhone 17 Pro Max", Nuevo sellado, 256 GB y 512 GB). Despues se maneja solo desde el panel.
+async function asegurarCatalogoInicial() {
+  if (await get(`SELECT 1 FROM configuracion WHERE clave = 'catalogo_inicial'`)) return;
+  await enTransaccion(async () => {
+    const marca = await run(`INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('catalogo_inicial', datetime('now','localtime'))`);
+    if (marca.changes === 0) return; // otro pedido lo armo justo al mismo tiempo
+    if (Number((await get(`SELECT COUNT(*) as n FROM catalogo_items`)).n) > 0) return;
+    const productos = await all(`SELECT nombre, categoria, precio_venta, moneda FROM productos WHERE cantidad > 0 ORDER BY nombre`);
+    const grupos = new Map<string, any>();
+    for (const p of productos) {
+      const a = analizarNombreProducto(p.nombre);
+      const llave = `${a.clave}|${a.estado ?? ""}|${a.detalle ?? ""}`;
+      const g = grupos.get(llave) ?? { ...a, categoria: p.categoria ?? "Otros", moneda: p.moneda ?? "USD", precio: null, memorias: [] as MemoriaCatalogo[] };
+      if (a.capacidad && !g.memorias.some((m: MemoriaCatalogo) => m.capacidad === a.capacidad)) {
+        g.memorias.push({ capacidad: a.capacidad, precio: p.precio_venta ?? null, disponible: true });
+      } else if (!a.capacidad && g.precio == null) {
+        g.precio = p.precio_venta ?? null;
+      }
+      grupos.set(llave, g);
+    }
+    const ordenados = [...grupos.values()].sort((x, y) => puntajeDestacado(y.clave) - puntajeDestacado(x.clave) || x.nombre.localeCompare(y.nombre, "es"));
+    for (const [i, g] of ordenados.entries()) {
+      g.memorias.sort((x: MemoriaCatalogo, y: MemoriaCatalogo) => parseInt(x.capacidad) * (/tb/i.test(x.capacidad) ? 1024 : 1) - parseInt(y.capacidad) * (/tb/i.test(y.capacidad) ? 1024 : 1));
+      await run(
+        `INSERT INTO catalogo_items (nombre, categoria, estado, detalle, precio, moneda, memorias, orden) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [g.nombre, g.categoria, g.estado, g.detalle, g.precio, g.moneda, JSON.stringify(g.memorias), i + 1]
+      );
+    }
+  });
+}
+
+// Todas las publicaciones (para el panel y el bot), con sus fotos.
+export async function listarItemsCatalogo() {
+  await asegurarCatalogoInicial();
+  const [filas, fotos] = await Promise.all([all(`SELECT * FROM catalogo_items ORDER BY orden, id`), listarFotosCatalogo()]);
+  return filas.map((f) => {
+    const item = filaAItem(f);
+    return { ...item, fotos: fotosDeProducto(item.nombre, fotos).map((x) => ({ color: x.color, hex: x.color_hex, url: x.url })) };
+  });
+}
+
+// Lo que ve el cliente: solo las publicaciones visibles. Si no tengo ninguna de sus memorias, la
+// publicacion entera cuenta como "sin stock".
 export async function listarCatalogo() {
-  const [productos, fotos] = await Promise.all([
-    all(`SELECT id, nombre, categoria, cantidad, precio_venta, moneda FROM productos WHERE cantidad > 0 ORDER BY categoria, nombre`),
-    listarFotosCatalogo(),
-  ]);
-  return productos.map((p) => ({
-    id: p.id,
-    nombre: p.nombre,
-    categoria: p.categoria ?? "Otros",
-    precio: p.precio_venta,
-    moneda: p.moneda,
-    pocas_unidades: p.cantidad <= POCAS_UNIDADES,
-    fotos: fotosDeProducto(p.nombre, fotos).map((f) => ({ color: f.color, hex: f.color_hex, url: f.url })),
-  }));
+  const items = await listarItemsCatalogo();
+  return items
+    .filter((i) => i.visible)
+    .map(({ visible: _visible, orden: _orden, ...i }) => ({
+      ...i,
+      disponible: i.disponible && (i.memorias.length === 0 || i.memorias.some((m) => m.disponible)),
+    }));
+}
+
+function validarItemCatalogo(datos: any) {
+  const nombre = String(datos.nombre ?? "").trim();
+  if (!nombre) throw new Error("Falta el nombre de la publicación.");
+  const precio = datos.precio === "" || datos.precio == null ? null : Number(datos.precio);
+  if (precio != null && !(precio >= 0)) throw new Error("El precio tiene que ser un número.");
+  return {
+    nombre,
+    categoria: String(datos.categoria ?? "").trim() || "Otros",
+    estado: String(datos.estado ?? "").trim() || null,
+    detalle: String(datos.detalle ?? "").trim() || null,
+    precio,
+    moneda: datos.moneda === "ARS" ? "ARS" : "USD",
+    memorias: limpiarMemorias(datos.memorias),
+    disponible: datos.disponible !== false,
+    visible: datos.visible !== false,
+  };
+}
+
+export async function crearItemCatalogo(datos: any) {
+  await asegurarCatalogoInicial();
+  const v = validarItemCatalogo(datos);
+  const ultimo = await get(`SELECT COALESCE(MAX(orden), 0) as orden FROM catalogo_items`);
+  const info = await run(
+    `INSERT INTO catalogo_items (nombre, categoria, estado, detalle, precio, moneda, memorias, disponible, visible, orden) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [v.nombre, v.categoria, v.estado, v.detalle, v.precio, v.moneda, JSON.stringify(v.memorias), v.disponible ? 1 : 0, v.visible ? 1 : 0, Number(ultimo.orden) + 1]
+  );
+  return { ok: true, id: info.lastInsertRowid, mensaje: `Publicación "${v.nombre}" creada.` };
+}
+
+// Acepta cambios parciales: el panel manda solo { visible } o { disponible } desde los
+// interruptores, o la publicacion entera desde el formulario.
+export async function actualizarItemCatalogo(id: number, campos: any) {
+  const actual = await get(`SELECT * FROM catalogo_items WHERE id = ?`, [id]);
+  if (!actual) throw new Error(`No existe la publicación #${id}.`);
+  const a = filaAItem(actual);
+  const v = validarItemCatalogo({ ...a, ...campos, memorias: campos.memorias ?? a.memorias });
+  await run(
+    `UPDATE catalogo_items SET nombre = ?, categoria = ?, estado = ?, detalle = ?, precio = ?, moneda = ?, memorias = ?, disponible = ?, visible = ?,
+       actualizado_en = datetime('now','localtime') WHERE id = ?`,
+    [v.nombre, v.categoria, v.estado, v.detalle, v.precio, v.moneda, JSON.stringify(v.memorias), v.disponible ? 1 : 0, v.visible ? 1 : 0, id]
+  );
+  return { ok: true, mensaje: `Publicación "${v.nombre}" actualizada.` };
+}
+
+export async function eliminarItemCatalogo(id: number) {
+  await run(`DELETE FROM catalogo_items WHERE id = ?`, [id]);
+  return { ok: true };
+}
+
+// Sube o baja una publicacion un lugar en el orden del catalogo (intercambia con la vecina).
+export async function moverItemCatalogo(id: number, direccion: "arriba" | "abajo") {
+  return enTransaccion(async () => {
+    const actual = await get(`SELECT id, orden FROM catalogo_items WHERE id = ?`, [id]);
+    if (!actual) throw new Error(`No existe la publicación #${id}.`);
+    const vecina =
+      direccion === "arriba"
+        ? await get(`SELECT id, orden FROM catalogo_items WHERE orden < ? OR (orden = ? AND id < ?) ORDER BY orden DESC, id DESC LIMIT 1`, [actual.orden, actual.orden, id])
+        : await get(`SELECT id, orden FROM catalogo_items WHERE orden > ? OR (orden = ? AND id > ?) ORDER BY orden ASC, id ASC LIMIT 1`, [actual.orden, actual.orden, id]);
+    if (!vecina) return { ok: true };
+    // Si tenian el mismo numero de orden, se separan para que el intercambio tenga efecto.
+    const ordenActual = Number(actual.orden), ordenVecina = Number(vecina.orden);
+    const [nuevoActual, nuevoVecina] = ordenActual === ordenVecina ? (direccion === "arriba" ? [ordenVecina - 1, ordenActual] : [ordenVecina + 1, ordenActual]) : [ordenVecina, ordenActual];
+    await run(`UPDATE catalogo_items SET orden = ? WHERE id = ?`, [nuevoActual, id]);
+    await run(`UPDATE catalogo_items SET orden = ? WHERE id = ?`, [nuevoVecina, vecina.id]);
+    return { ok: true };
+  });
+}
+
+// ---------- catalogo desde el bot de Telegram ----------
+// El bot solo puede mostrar u ocultar publicaciones (nunca borrarlas): ocultar = sacarla de la
+// vista de los clientes, pero sigue en el panel y se puede volver a mostrar cuando quieras.
+
+export async function consultarCatalogoParaBot() {
+  const items = await listarItemsCatalogo();
+  return {
+    publicaciones: items.map((i) => ({
+      id: i.id,
+      nombre: i.nombre,
+      estado: i.estado,
+      detalle: i.detalle,
+      visible_para_clientes: i.visible,
+      lo_tengo: i.disponible,
+      memorias: i.memorias.map((m) => `${m.capacidad}${m.precio != null ? ` (${m.precio} ${i.moneda})` : ""}${m.disponible ? "" : " - sin stock"}`),
+      precio: i.memorias.length ? undefined : i.precio,
+      moneda: i.moneda,
+    })),
+  };
+}
+
+export async function cambiarVisibilidadCatalogo(args: { publicacion?: string; id?: number; visible: boolean }) {
+  const items = await listarItemsCatalogo();
+  let elegido = args.id != null ? items.find((i) => i.id === Number(args.id)) : undefined;
+  if (!elegido) {
+    const palabras = normalizarTexto(String(args.publicacion ?? "")).split(" ").filter(Boolean);
+    if (!palabras.length) throw new Error("Decime qué publicación del catálogo (el nombre o el id).");
+    const texto = (i: (typeof items)[number]) => ` ${normalizarTexto([i.nombre, i.estado, i.detalle, ...i.memorias.map((m) => m.capacidad)].filter(Boolean).join(" "))} `;
+    const candidatas = items.filter((i) => palabras.every((p) => texto(i).includes(` ${p}`)));
+    const exacta = candidatas.filter((i) => normalizarTexto(i.nombre) === palabras.join(" "));
+    const unica = candidatas.length === 1 ? candidatas : exacta.length === 1 ? exacta : [];
+    if (!candidatas.length) throw new Error(`No encontré ninguna publicación del catálogo que coincida con "${args.publicacion}".`);
+    if (!unica.length) {
+      return {
+        ok: false,
+        mensaje: `Hay ${candidatas.length} publicaciones que coinciden con "${args.publicacion}". Preguntá cuál (o usá el id).`,
+        candidatas: candidatas.map((i) => ({ id: i.id, nombre: i.nombre, estado: i.estado, detalle: i.detalle, visible: i.visible })),
+      };
+    }
+    elegido = unica[0];
+  }
+  if (!elegido) throw new Error(`No existe la publicación #${args.id}.`);
+  const visible = args.visible !== false;
+  await run(`UPDATE catalogo_items SET visible = ?, actualizado_en = datetime('now','localtime') WHERE id = ?`, [visible ? 1 : 0, elegido.id]);
+  const nombre = [elegido.nombre, elegido.estado, elegido.detalle].filter(Boolean).join(" · ");
+  return {
+    ok: true,
+    mensaje: visible
+      ? `"${nombre}" vuelve a aparecer en el catálogo de los clientes.`
+      : `"${nombre}" ya no aparece en el catálogo de los clientes. No se borró: sigue en el panel y se puede volver a mostrar.`,
+  };
 }
 
 // ---------- fotos del catalogo ----------
@@ -629,15 +865,15 @@ export async function listarFotosCatalogo(): Promise<FotoCatalogo[]> {
   return filas.map((f) => ({ ...f, url: `/api/catalogo/fotos/${f.id}?v=${encodeURIComponent(f.actualizado_en)}` }));
 }
 
-// Para la seccion del panel: las fotos cargadas y que modelos en stock todavia no tienen foto.
+// Para la seccion del panel: las fotos cargadas y que publicaciones visibles todavia no tienen.
 export async function estadoFotosCatalogo() {
-  const [fotos, productos] = await Promise.all([listarFotosCatalogo(), all(`SELECT nombre FROM productos WHERE cantidad > 0 ORDER BY nombre`)]);
+  const [fotos, items] = await Promise.all([listarFotosCatalogo(), listarItemsCatalogo()]);
   const sinFoto = new Map<string, { modelo: string; productos: string[] }>();
-  for (const p of productos) {
-    if (fotosDeProducto(p.nombre, fotos).length) continue;
-    const clave = claveModelo(p.nombre);
-    const grupo = sinFoto.get(clave) ?? { modelo: clave.startsWith("iphone") ? nombreModeloBonito(clave) : String(p.nombre), productos: [] as string[] };
-    grupo.productos.push(p.nombre);
+  for (const i of items) {
+    if (!i.visible || i.fotos.length) continue;
+    const clave = claveModelo(i.nombre);
+    const grupo = sinFoto.get(clave) ?? { modelo: clave.startsWith("iphone") ? nombreModeloBonito(clave) : i.nombre, productos: [] as string[] };
+    grupo.productos.push([i.nombre, i.estado, i.detalle].filter(Boolean).join(" · "));
     sinFoto.set(clave, grupo);
   }
   return { fotos, modelos_sin_foto: [...sinFoto.values()] };

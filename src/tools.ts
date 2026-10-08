@@ -202,6 +202,26 @@ export const toolDefinitions: Anthropic.Tool[] = [
       },
     },
   },
+  {
+    name: "consultar_catalogo",
+    description:
+      "Lista las publicaciones del catalogo publico (la pagina que ven los clientes): nombre, estado, memorias con precio, si se muestra a los clientes y si esta marcada como 'lo tengo'. Usar antes de ocultar o mostrar algo si no queda claro cual es, o cuando preguntan que hay publicado en el catalogo. OJO: el catalogo es aparte del stock.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "cambiar_visibilidad_catalogo",
+    description:
+      "Saca una publicacion de la vista de los clientes en el catalogo (visible=false) o la vuelve a mostrar (visible=true). NO la borra: sigue guardada en el panel y se puede volver a mostrar cuando quieran. Usar cuando piden 'sacá/ocultá/no muestres X del catalogo' o 'volvé a mostrar X'. Si hay varias publicaciones que coinciden, devuelve la lista para que preguntes cual.",
+    input_schema: {
+      type: "object",
+      properties: {
+        publicacion: { type: "string", description: "Nombre (o parte) de la publicacion, ej 'iPhone 15 Pro' o '17 pro max'" },
+        id: { type: "number", description: "Id de la publicacion, si ya lo sabes (de consultar_catalogo)" },
+        visible: { type: "boolean", description: "false = sacarla de la vista de los clientes; true = volver a mostrarla" },
+      },
+      required: ["visible"],
+    },
+  },
 ];
 
 // ---------- herramientas del bot de CLIENTES (WhatsApp) ----------
@@ -248,6 +268,8 @@ const dispatch: Record<string, (args: any) => any | Promise<any>> = {
   consultar_persona: repo.consultarPersona,
   consultar_estado_general: () => repo.consultarEstadoGeneral(),
   consultar_ventas: repo.consultarVentas,
+  consultar_catalogo: () => repo.consultarCatalogoParaBot(),
+  cambiar_visibilidad_catalogo: repo.cambiarVisibilidadCatalogo,
   consultar_stock_publico: repo.consultarStockPublico,
 };
 
