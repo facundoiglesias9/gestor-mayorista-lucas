@@ -49,33 +49,53 @@
 
 <main id="arriba">
   <section class="hero">
+    <div class="hero-fondo" aria-hidden="true"></div>
     <p class="hero-etiqueta" id="hero-etiqueta">Stock disponible</p>
     <h1>Elegí tu próximo equipo.</h1>
     <p class="hero-texto">Precios actualizados al día. Consultanos por WhatsApp y te respondemos al toque.</p>
+    <ul class="hero-datos" id="hero-datos" aria-label="Datos del catálogo"></ul>
   </section>
 
-  <section class="herramientas" aria-label="Filtros">
+  <section class="herramientas" aria-label="Buscar y filtrar">
     <label class="buscador">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-      <input id="buscar" type="search" placeholder="Buscar modelo, capacidad, color…" autocomplete="off" />
+      <input id="buscar" type="search" placeholder="Buscar modelo, capacidad, color…" autocomplete="off" aria-label="Buscar en el catálogo" />
     </label>
-    <div class="filtros-fila">
-      <div class="categorias" id="categorias" role="tablist" aria-label="Categorías"></div>
-      <label class="orden">
-        <span>Ordenar</span>
-        <select id="orden">
-          <option value="destacados">Destacados</option>
-          <option value="precio-asc">Menor precio</option>
-          <option value="precio-desc">Mayor precio</option>
-          <option value="nombre">Nombre (A–Z)</option>
-        </select>
-      </label>
-    </div>
+    <div class="categorias" id="categorias" role="tablist" aria-label="Categorías"></div>
   </section>
 
-  <p class="resultado-info" id="resultado-info" aria-live="polite"></p>
+  <div class="lista-cabecera">
+    <p class="resultado-info" id="resultado-info" aria-live="polite"></p>
+    <label class="orden">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/></svg>
+      <span class="orden-texto">Ordenar</span>
+      <select id="orden" aria-label="Ordenar productos">
+        <option value="destacados">Destacados</option>
+        <option value="precio-asc">Menor precio</option>
+        <option value="precio-desc">Mayor precio</option>
+        <option value="nombre">Nombre (A–Z)</option>
+      </select>
+    </label>
+  </div>
   <section class="grilla" id="grilla" aria-label="Productos"></section>
+
+  <section class="contacto oculto" id="contacto">
+    <div>
+      <h2>¿No encontrás lo que buscás?</h2>
+      <p>Escribinos por WhatsApp y te ayudamos a elegir.</p>
+    </div>
+    <a class="btn btn-whatsapp" id="whatsapp-contacto" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 3.5A11.8 11.8 0 0 0 12 0C5.4 0 .1 5.3.1 11.9c0 2.1.6 4.1 1.6 5.9L0 24l6.4-1.7a11.9 11.9 0 0 0 5.6 1.4h.1c6.6 0 11.9-5.3 11.9-11.9 0-3.2-1.2-6.2-3.5-8.3zM12 21.7c-1.8 0-3.5-.5-5-1.4l-.4-.2-3.8 1 1-3.7-.2-.4a9.8 9.8 0 0 1-1.5-5.2c0-5.4 4.4-9.9 9.9-9.9 2.6 0 5.1 1 7 2.9a9.8 9.8 0 0 1 2.9 7c0 5.5-4.4 9.9-9.9 9.9zm5.4-7.4c-.3-.1-1.8-.9-2-1s-.5-.1-.7.1-.8 1-.9 1.2-.3.2-.6.1a8.1 8.1 0 0 1-4-3.5c-.3-.5.3-.5.9-1.6.1-.2 0-.4 0-.5l-.9-2.2c-.2-.6-.5-.5-.7-.5h-.6a1.1 1.1 0 0 0-.8.4 3.4 3.4 0 0 0-1.1 2.5c0 1.5 1.1 2.9 1.2 3.1s2.1 3.2 5.1 4.5c1.9.8 2.6.9 3.6.7.6-.1 1.8-.7 2-1.5s.3-1.3.2-1.5c-.1-.1-.3-.2-.6-.3z"/></svg>
+      Escribinos
+    </a>
+  </section>
 </main>
+
+<!-- Ficha de un producto: se abre al tocar una tarjeta (y con /#p-ID, para pasar el link). Ahi
+     se elige memoria, color y bateria, y se consulta por WhatsApp. -->
+<dialog id="ficha" class="ficha" aria-labelledby="ficha-nombre">
+  <div class="ficha-contenido" id="ficha-contenido"></div>
+</dialog>
 
 <footer class="pie">
   <div class="pie-contenido">

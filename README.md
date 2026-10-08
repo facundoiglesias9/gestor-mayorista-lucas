@@ -153,7 +153,7 @@ El panel y el chat de Telegram comparten exactamente la misma base de datos (Tur
 
 ## Catálogo para clientes
 
-La dirección principal (ej. `https://gestor-mayorista-lucas.vercel.app`) es un catálogo público, para pasarle a los clientes: buscador, filtros, memorias y colores para elegir, y un botón para consultar por WhatsApp. No muestra costos, notas internas ni el stock.
+La dirección principal (ej. `https://gestor-mayorista-lucas.vercel.app`) es un catálogo público, para pasarle a los clientes: buscador, filtros por categoría y tarjetas con el precio "desde". Al tocar un producto se abre su ficha, donde el cliente elige memoria, color y batería y consulta por WhatsApp con el mensaje ya armado. Cada ficha tiene su propio link (ej. `.../#p-3`) para pasarlo directo. No muestra costos, notas internas ni el stock.
 
 - El catálogo va **aparte del stock**: son "publicaciones" que se manejan desde el panel, en la sección **Catálogo** (nombre, estado, memorias con su precio, si lo tenés o no, si se muestra o no, y el orden). La primera vez se arma solo con lo que haya en stock.
 - **Estado**: Sellado, Usado - como nuevo o Usado. En los usados, el cliente elige entre los equipos de ese modelo que tengas en stock según la batería: se toman los campos Estado y Batería de cada equipo en Stock (una publicación "Usado - como nuevo" muestra solo los como nuevo), con su precio de venta, y cuando uno se vende desaparece solo.
