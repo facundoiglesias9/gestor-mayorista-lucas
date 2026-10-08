@@ -4,6 +4,8 @@ import {
   yaProcesadoUpdate,
   buscarRespuestaPredefinida,
   registrarLogSeguro,
+  registrarEvento,
+  detalleDeError,
   reiniciarConversacion,
   intentarBloquear,
   liberarBloqueo,
@@ -86,6 +88,7 @@ bot.command("reiniciar", async (ctx) => {
   } catch (e: any) {
     console.error(e);
     await registrarLogSeguro({ usuario_id: usuarioId, usuario_nombre: nombre, tipo: "error", entrada: "/reiniciar", salida: String(e.message ?? e) });
+    await registrarEvento({ nivel: "error", origen: "bot", evento: `No se pudo reiniciar la conversación: ${String(e?.message ?? e).slice(0, 160)}`, detalle: e, usuario: nombre });
     await ctx.reply(mensajeErrorLegible(e));
   }
 });
@@ -123,7 +126,19 @@ async function atenderConManejoDeErrores(ctx: Context, entradaLog: string, atend
       entrada: entradaLog,
       salida: String(e.message ?? e),
     });
-    await ctx.reply(mensajeErrorLegible(e));
+    // Los de la IA ya quedaron anotados (con mas detalle) en procesarMensaje.
+    if (!e?.status) {
+      await registrarEvento({
+        nivel: "error",
+        origen: "bot",
+        evento: `Error al responder un mensaje: ${String(e?.message ?? e).slice(0, 160)}`,
+        detalle: `${detalleDeError(e)}\n\nMensaje: ${entradaLog.slice(0, 300)}`,
+        usuario: nombreDe(ctx),
+      });
+    }
+    await ctx.reply(mensajeErrorLegible(e)).catch(async (e2) => {
+      await registrarEvento({ nivel: "error", origen: "telegram", evento: "No se pudo mandar el aviso de error por Telegram", detalle: e2, usuario: nombreDe(ctx) });
+    });
   }
 }
 
@@ -152,9 +167,27 @@ async function descargarFotoBase64(fileId: string): Promise<string> {
   return Buffer.from(await respuestaHttp.arrayBuffer()).toString("base64");
 }
 
+// Alguien que no esta autorizado le escribe al bot: se ignora, y queda anotado (una vez cada 30
+// minutos por persona) por si es alguien que tendria que tener acceso.
+const ultimoAvisoNoAutorizado = new Map<string, number>();
+async function anotarNoAutorizado(ctx: Context, que: string) {
+  const id = String(ctx.from?.id ?? "?");
+  if (Date.now() - (ultimoAvisoNoAutorizado.get(id) ?? 0) < 30 * 60 * 1000) return;
+  if (ultimoAvisoNoAutorizado.size > 500) ultimoAvisoNoAutorizado.clear();
+  ultimoAvisoNoAutorizado.set(id, Date.now());
+  await registrarEvento({
+    nivel: "aviso",
+    origen: "seguridad",
+    evento: `${que} de alguien sin acceso al bot: ${nombreDe(ctx)} (ID ${id})`,
+    detalle: `Si es alguien de confianza, agregá su ID ${id} a OTROS_TELEGRAM_IDS en Vercel.`,
+    usuario: nombreDe(ctx),
+  });
+}
+
 bot.on("message:text", async (ctx) => {
   if (!estaAutorizado(ctx.from?.id)) {
     console.log(`Mensaje ignorado de un ID no autorizado: ${ctx.from?.id}`);
+    await anotarNoAutorizado(ctx, "Mensaje");
     return;
   }
   const usuarioId = String(ctx.from.id);
@@ -174,6 +207,7 @@ bot.on("message:text", async (ctx) => {
 bot.on("message:photo", async (ctx) => {
   if (!estaAutorizado(ctx.from?.id)) {
     console.log(`Foto ignorada de un ID no autorizado: ${ctx.from?.id}`);
+    await anotarNoAutorizado(ctx, "Foto");
     return;
   }
   const caption = ctx.message.caption ?? "";
@@ -191,6 +225,7 @@ bot.on("message:photo", async (ctx) => {
   });
 });
 
-bot.catch((err) => {
+bot.catch(async (err) => {
   console.error("Error del bot:", err);
+  await registrarEvento({ nivel: "error", origen: "bot", evento: `Error no controlado del bot: ${String((err as any)?.error?.message ?? err.message).slice(0, 160)}`, detalle: (err as any)?.error ?? err });
 });

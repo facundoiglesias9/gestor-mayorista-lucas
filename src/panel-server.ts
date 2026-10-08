@@ -23,6 +23,42 @@ app.use(express.json({ limit: "4mb" }));
 // y no la del proxy de Vercel: la usa el freno de intentos fallidos de abajo.
 app.set("trust proxy", true);
 
+// ---------- registro de lo que anda mal ----------
+// Cada pedido a /api que tarda mas de 3 s queda anotado en Logs (Sistema) como aviso. El webhook
+// de Telegram y el cron no: el bot mide sus propios tiempos.
+const UMBRAL_LENTO_MS = 3000;
+app.use("/api", (req, res, next) => {
+  const inicio = Date.now();
+  res.on("finish", () => {
+    const ms = Date.now() - inicio;
+    if (ms < UMBRAL_LENTO_MS || req.path === "/telegram-webhook" || req.path.startsWith("/cron/")) return;
+    void repo.registrarEvento({
+      nivel: "aviso",
+      origen: "panel",
+      evento: `Respuesta lenta: ${req.method} ${rutaDe(req)} tardó ${(ms / 1000).toLocaleString("es-AR", { maximumFractionDigits: 1 })} s`,
+      duracion_ms: ms,
+      ruta: `${req.method} ${rutaDe(req)}`,
+    });
+  });
+  next();
+});
+
+// La ruta completa sin los parametros (?dias=7...), sea cual sea el app.use donde se mire.
+function rutaDe(req: express.Request) {
+  return (req.originalUrl || req.url).split("?")[0];
+}
+
+// Avisos que se pueden repetir mucho (ej: un intento de clave, el dolar caido): como mucho uno
+// cada tantos minutos por cada clave, para no llenar los Logs con lo mismo.
+const ultimoAviso = new Map<string, number>();
+function puedeAvisar(clave: string, cadaMs: number) {
+  const ahora = Date.now();
+  if (ahora - (ultimoAviso.get(clave) ?? 0) < cadaMs) return false;
+  if (ultimoAviso.size > 2000) ultimoAviso.clear();
+  ultimoAviso.set(clave, ahora);
+  return true;
+}
+
 // ---------- autenticacion ----------
 // El HTML/CSS/JS estatico se sirve libre (no tiene datos, es solo la pantalla). La propia
 // pagina pide la clave con un formulario propio y la manda como header Authorization en
@@ -74,13 +110,27 @@ app.use("/api", (req, res, next) => {
   if (req.path === "/catalogo" || req.path.startsWith("/catalogo/")) return next();
   const ip = req.ip ?? "desconocida";
   if ((intentosVigentes(ip)?.cantidad ?? 0) >= MAX_INTENTOS_FALLIDOS) {
+    if (puedeAvisar(`bloqueo:${ip}`, VENTANA_INTENTOS_MS)) {
+      void repo.registrarEvento({ nivel: "error", origen: "seguridad", evento: `IP bloqueada 15 minutos por ${MAX_INTENTOS_FALLIDOS} claves incorrectas`, detalle: `IP: ${ip}\nNavegador: ${req.headers["user-agent"] ?? "-"}`, ruta: `${req.method} ${rutaDe(req)}` });
+    }
     return res.status(429).json({ ok: false, error: "Demasiados intentos con clave incorrecta. Esperá 15 minutos y probá de nuevo." });
   }
   const clave = claveDelHeader(req.headers.authorization);
   if (clave !== null && claveCoincide(clave, PANEL_PASSWORD)) return next();
   anotarIntentoFallido(ip);
+  // Solo si mandaron una clave (y estaba mal): los pedidos sin clave son casi siempre robots
+  // que prueban direcciones y no aportan nada.
+  if (clave !== null && puedeAvisar(`clave:${ip}`, 10 * 60 * 1000)) {
+    void repo.registrarEvento({ nivel: "aviso", origen: "seguridad", evento: "Clave incorrecta al entrar al panel", detalle: `IP: ${ip}\nNavegador: ${req.headers["user-agent"] ?? "-"}`, ruta: `${req.method} ${rutaDe(req)}` });
+  }
   res.status(401).json({ ok: false, error: "Clave incorrecta o faltante." });
 });
+
+// Errores que no son "dato mal cargado" sino algo roto (la base no responde, un bug): van a Logs
+// como error y con su detalle tecnico. Los de validacion ("ya existe ese producto") como aviso.
+function esFallaInterna(e: any) {
+  return e instanceof TypeError || e instanceof ReferenceError || e instanceof SyntaxError || /libsql|sqlite|fetch failed|ECONN|ETIMEDOUT/i.test(`${e?.name} ${e?.code} ${e?.message}`);
+}
 
 function envolver(handler: (req: express.Request) => any) {
   return async (req: express.Request, res: express.Response) => {
@@ -88,7 +138,15 @@ function envolver(handler: (req: express.Request) => any) {
       const resultado = await handler(req);
       res.json(resultado ?? { ok: true });
     } catch (e: any) {
-      res.status(400).json({ ok: false, error: e.message ?? String(e) });
+      const interna = esFallaInterna(e);
+      await repo.registrarEvento({
+        nivel: interna ? "error" : "aviso",
+        origen: "panel",
+        evento: `${interna ? "Falló" : "Rechazado"}: ${req.method} ${rutaDe(req)} — ${String(e?.message ?? e).slice(0, 200)}`,
+        detalle: interna ? e : req.body && Object.keys(req.body).length ? `Datos enviados: ${JSON.stringify(req.body).slice(0, 1500)}` : null,
+        ruta: `${req.method} ${rutaDe(req)}`,
+      });
+      res.status(interna ? 500 : 400).json({ ok: false, error: e.message ?? String(e) });
     }
   };
 }
@@ -147,14 +205,21 @@ let dolarCache: { data: any; ts: number } | null = null;
 
 async function obtenerDolar() {
   if (dolarCache && Date.now() - dolarCache.ts < 60_000) return dolarCache.data;
-  const [blueResp, criptoResp] = await Promise.all([
-    fetch("https://dolarapi.com/v1/dolares/blue"),
-    fetch("https://dolarapi.com/v1/dolares/cripto"),
-  ]);
-  if (!blueResp.ok || !criptoResp.ok) throw new Error("No se pudo obtener la cotización del dólar.");
-  const datos = { blue: await blueResp.json(), cripto: await criptoResp.json() };
-  dolarCache = { data: datos, ts: Date.now() };
-  return datos;
+  try {
+    const [blueResp, criptoResp] = await Promise.all([
+      fetch("https://dolarapi.com/v1/dolares/blue"),
+      fetch("https://dolarapi.com/v1/dolares/cripto"),
+    ]);
+    if (!blueResp.ok || !criptoResp.ok) throw new Error(`dolarapi.com respondió ${blueResp.status}/${criptoResp.status}`);
+    const datos = { blue: await blueResp.json(), cripto: await criptoResp.json() };
+    dolarCache = { data: datos, ts: Date.now() };
+    return datos;
+  } catch (e: any) {
+    if (puedeAvisar("dolar", 30 * 60 * 1000)) {
+      await repo.registrarEvento({ nivel: "aviso", origen: "dolar", evento: "No se pudo obtener la cotización del dólar", detalle: e });
+    }
+    throw new Error("No se pudo obtener la cotización del dólar.");
+  }
 }
 
 app.get("/api/dolar", envolver(() => obtenerDolar()));
@@ -187,6 +252,7 @@ app.get("/api/catalogo", async (_req, res) => {
       productos,
     });
   } catch (e: any) {
+    await repo.registrarEvento({ nivel: "error", origen: "catalogo", evento: "El catálogo público no pudo cargar", detalle: e, ruta: "GET /api/catalogo" });
     res.status(500).json({ ok: false, error: "No se pudo cargar el catálogo." });
   }
 });
@@ -198,7 +264,56 @@ app.put("/api/respuestas/:id", envolver((req) => repo.actualizarRespuestaPredefi
 app.delete("/api/respuestas/:id", envolver((req) => repo.eliminarRespuestaPredefinidaPorId(Number(req.params.id))));
 
 // ---------- logs ----------
-app.get("/api/logs", envolver((req) => repo.listarLogs(req.query.limite ? Number(req.query.limite) : undefined)));
+const numeroQuery = (v: unknown) => (v == null || v === "" ? undefined : Number(v));
+// Conversaciones del bot
+app.get(
+  "/api/logs",
+  envolver((req) =>
+    repo.listarLogs({
+      limite: numeroQuery(req.query.limite),
+      tipo: req.query.tipo as string,
+      q: req.query.q as string,
+      antes_de_id: numeroQuery(req.query.antes_de_id),
+      dias: numeroQuery(req.query.dias),
+    })
+  )
+);
+// Eventos del sistema (errores, avisos, info) y el resumen de la cabecera
+app.get(
+  "/api/logs/sistema",
+  envolver((req) =>
+    repo.listarEventos({
+      nivel: req.query.nivel as string,
+      origen: req.query.origen as string,
+      q: req.query.q as string,
+      dias: numeroQuery(req.query.dias),
+      antes_de_id: numeroQuery(req.query.antes_de_id),
+      limite: numeroQuery(req.query.limite),
+    })
+  )
+);
+app.get("/api/logs/resumen", envolver((req) => repo.resumenLogs(numeroQuery(req.query.dias))));
+// Errores de la pagina del panel (los manda el navegador): como mucho 20 por hora por conexion.
+app.post(
+  "/api/logs/web",
+  envolver(async (req) => {
+    const ip = req.ip ?? "desconocida";
+    const cuenta = (contadorErroresWeb.get(ip) ?? []).filter((t) => Date.now() - t < 60 * 60 * 1000);
+    if (cuenta.length >= 20) return { ok: true, ignorado: true };
+    cuenta.push(Date.now());
+    contadorErroresWeb.set(ip, cuenta);
+    const b = req.body ?? {};
+    await repo.registrarEvento({
+      nivel: "error",
+      origen: "web",
+      evento: `Error en la página del panel: ${String(b.mensaje ?? "sin mensaje").slice(0, 200)}`,
+      detalle: [`Página: ${String(b.url ?? "-").slice(0, 200)}`, `Navegador: ${req.headers["user-agent"] ?? "-"}`, String(b.detalle ?? "").slice(0, 3000)].join("\n"),
+      ruta: String(b.seccion ?? "").slice(0, 60) || null,
+    });
+    return { ok: true };
+  })
+);
+const contadorErroresWeb = new Map<string, number[]>();
 
 // ---------- backup (descarga de todos los datos del negocio en un JSON) ----------
 // Sirve tambien estando en Vercel, donde no se pueden guardar archivos de backup automaticos.
@@ -209,6 +324,7 @@ app.get("/api/backup", async (_req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="backup-gestor-${fecha}.json"`);
     res.json(datos);
   } catch (e: any) {
+    await repo.registrarEvento({ nivel: "error", origen: "panel", evento: "No se pudo descargar el backup", detalle: e, ruta: "GET /api/backup" });
     res.status(500).json({ ok: false, error: e.message ?? String(e) });
   }
 });
@@ -236,6 +352,7 @@ app.get(
       webhook = datos.result ?? null;
     } catch (e: any) {
       webhookError = e.message ?? String(e);
+      await repo.registrarEvento({ nivel: "aviso", origen: "telegram", evento: "No se pudo consultar el estado del webhook de Telegram", detalle: e });
     }
 
     return {
@@ -257,7 +374,8 @@ app.get("/api/catalogo/fotos/:id", async (req, res) => {
     if (!foto) return res.status(404).end();
     res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
     res.type(foto.mime).send(foto.datos);
-  } catch {
+  } catch (e: any) {
+    await repo.registrarEvento({ nivel: "error", origen: "catalogo", evento: `No se pudo servir la foto #${req.params.id} del catálogo`, detalle: e, ruta: "GET /api/catalogo/fotos" });
     res.status(500).end();
   }
 });

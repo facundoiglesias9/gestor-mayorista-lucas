@@ -149,6 +149,10 @@ En los dos casos te va a pedir una clave — es el valor de `PANEL_PASSWORD` (en
 - **Préstamos**: registrar préstamos nuevos y anotar pagos con un botón.
 - **Plan Canje**: registrar un trade-in (celular recibido, precio, y la diferencia en plata o producto a favor tuyo o del cliente) y marcarlo saldado cuando se resuelve.
 - **Empleados**: agregar y ver la lista de precio amigo.
+- **Logs**: qué está pasando en todo el sistema, para ver qué falla sin entrar a Vercel.
+  - **Sistema**: errores y avisos del bot, la IA, las herramientas (ej: "no existe ese producto"), el panel (pedidos rechazados o lentos), Telegram, el chequeo automático, la cotización del dólar, los intentos de clave incorrecta, la gente sin acceso que le escribe al bot y los errores de la página en el navegador. Cada evento tiene su detalle técnico para copiar. Arriba: si anda todo bien, cuántos errores y avisos hubo, el último chequeo automático, y en qué parte pasa más.
+  - **Conversaciones del bot**: qué le escribieron, qué contestó, qué herramientas usó y cuánto tardó.
+  - Filtros por período (24 h, 7 o 30 días), nivel, origen y búsqueda; "En vivo" actualiza solo cada 20 segundos. Lo informativo se guarda 2 semanas y los avisos y errores, 2 meses.
 
 El panel y el chat de Telegram comparten exactamente la misma base de datos (Turso) — lo que cargás en uno lo ves reflejado en el otro al instante, corra donde corra cada uno.
 

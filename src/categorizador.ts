@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { registrarEvento } from "./repo.js";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -40,6 +41,7 @@ export async function inferirCategoria(nombreProducto: string): Promise<string> 
     return texto || "Otros";
   } catch (e) {
     console.error("No se pudo inferir categoria automaticamente:", e);
+    await registrarEvento({ nivel: "aviso", origen: "ia", evento: `No se pudo adivinar la categoría de "${nombreProducto.slice(0, 80)}" (quedó en Otros)`, detalle: e });
     return "Otros";
   }
 }
