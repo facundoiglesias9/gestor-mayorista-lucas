@@ -4,11 +4,11 @@
 // comparaciones y los graficos (ver graficos.js). Usa los helpers de app.js (api, formatos...).
 
 const PERIODOS = {
-  mes: { nombre: "Este mes", meses: 1, comparacion: "vs. mismo período del mes pasado" },
-  "mes-anterior": { nombre: "Mes pasado", meses: 1, comparacion: "vs. el mes anterior" },
-  "3m": { nombre: "Últimos 3 meses", meses: 3, comparacion: "vs. los 3 meses anteriores" },
-  anio: { nombre: "Este año", meses: 12, comparacion: "vs. mismo período del año pasado" },
-  "12m": { nombre: "Últimos 12 meses", meses: 12, comparacion: "vs. los 12 meses anteriores" },
+  mes: { nombre: "Este mes", meses: 1 },
+  "mes-anterior": { nombre: "Mes pasado", meses: 1 },
+  "3m": { nombre: "Últimos 3 meses", meses: 3 },
+  anio: { nombre: "Este año", meses: 12 },
+  "12m": { nombre: "Últimos 12 meses", meses: 12 },
 };
 const MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const MESES_LARGOS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -70,6 +70,35 @@ function rangoPeriodo(periodo, hoy) {
   if (periodo === "12m") [desde, hasta] = [inicioDeMes(hoy, -11), hoy];
   const k = PERIODOS[periodo].meses;
   return { desde, hasta, antDesde: sumarMeses(desde, -k), antHasta: sumarMeses(hasta, -k) };
+}
+
+// Un rango de fechas dicho en criollo: "octubre 2026", "1 al 8 de octubre 2026",
+// "1 ago – 8 oct 2026", "2025", "1 nov 2025 – 8 oct 2026".
+const MESES_ABREV = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+function textoRango(desde, hasta) {
+  const a = aFecha(desde);
+  const b = aFecha(hasta);
+  const mesCompleto = a.getDate() === 1 && hasta === finDeMes(hasta);
+  if (a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()) {
+    if (mesCompleto) return `${MESES_LARGOS[a.getMonth()]} ${a.getFullYear()}`;
+    if (a.getDate() === b.getDate()) return `${b.getDate()} de ${MESES_LARGOS[b.getMonth()]} ${b.getFullYear()}`;
+    return `${a.getDate()} al ${b.getDate()} de ${MESES_LARGOS[b.getMonth()]} ${b.getFullYear()}`;
+  }
+  if (a.getMonth() === 0 && a.getDate() === 1 && b.getMonth() === 11 && b.getDate() === 31 && a.getFullYear() === b.getFullYear()) return String(a.getFullYear());
+  const lado = (f, conAnio) => `${f.getDate()} ${MESES_ABREV[f.getMonth()]}${conAnio ? ` ${f.getFullYear()}` : ""}`;
+  const mismoAnio = a.getFullYear() === b.getFullYear();
+  if (mesCompleto) return `${MESES_ABREV[a.getMonth()]}${mismoAnio ? "" : ` ${a.getFullYear()}`} – ${MESES_ABREV[b.getMonth()]} ${b.getFullYear()}`;
+  return `${lado(a, !mismoAnio)} – ${lado(b, true)}`;
+}
+
+// El periodo elegido, con sus fechas reales (lo que se muestra en titulos y comparaciones).
+function etiquetaPeriodo() {
+  const r = rangoPeriodo(dash.periodo, dash.datos.hoy);
+  return textoRango(r.desde, r.hasta);
+}
+function textoComparacion() {
+  const r = rangoPeriodo(dash.periodo, dash.datos.hoy);
+  return `vs. ${textoRango(r.antDesde, r.antHasta)}`;
 }
 
 // Los ultimos n meses (hasta el actual): [{ clave "2026-10", desde, hasta, corto "Oct", largo }]
@@ -329,7 +358,7 @@ function dashboardEjecutivo() {
   const porMes = meses.map((m) => resumir(m.desde, m.hasta));
   const objetivos = objetivosDelPeriodo(rango.desde, rango.hasta);
   const enPeriodo = new Set(meses.map((m, i) => (m.hasta >= rango.desde && m.desde <= rango.hasta ? i : -1)).filter((i) => i >= 0));
-  const comparacion = PERIODOS[dash.periodo].comparacion;
+  const comparacion = textoComparacion();
 
   const cumplimiento = objetivos.hay.facturacion && objetivos.total.facturacion ? actual.facturado / objetivos.total.facturacion : null;
   const esperado = objetivos.hay.facturacion && objetivos.total.facturacion ? objetivos.esperado.facturacion / objetivos.total.facturacion : null;
@@ -383,7 +412,7 @@ function dashboardEjecutivo() {
       })}
       <section class="dash-tarjeta">
         <header class="dash-tarjeta-cabeza">
-          <div><h3>Objetivos</h3><p>${escapeHtml(PERIODOS[dash.periodo].nombre)} · la marquita es donde deberías estar hoy</p></div>
+          <div><h3>Objetivos</h3><p>${escapeHtml(etiquetaPeriodo())} · la marquita es donde deberías estar hoy</p></div>
           <div class="dash-tarjeta-acciones"><button type="button" class="btn-chico btn-con-icono" data-accion="objetivos">${ICONO_LAPIZ}Editar</button></div>
         </header>
         <div class="medidores">
@@ -395,7 +424,7 @@ function dashboardEjecutivo() {
       </section>
     </div>
     <div class="dash-grilla dash-grilla-2">
-      ${tarjetaGrafico({ id: "ej-margen-cat", titulo: "Margen por categoría", subtitulo: `${escapeHtml(PERIODOS[dash.periodo].nombre)} · ganancia y % de margen` })}
+      ${tarjetaGrafico({ id: "ej-margen-cat", titulo: "Margen por categoría", subtitulo: `${escapeHtml(etiquetaPeriodo())} · ganancia y % de margen` })}
       ${tarjetaGrafico({ id: "ej-margen-mes", titulo: "Evolución del margen bruto", subtitulo: "Últimos 12 meses" })}
     </div>`;
 
@@ -515,7 +544,7 @@ function dashboardVentas() {
   const anterior = resumir(rango.antDesde, rango.antHasta);
   const meses = ultimosMeses(12, hoy);
   const porMes = meses.map((m) => resumir(m.desde, m.hasta));
-  const comparacion = PERIODOS[dash.periodo].comparacion;
+  const comparacion = textoComparacion();
 
   const kpis = [
     tarjetaKpiDash({
@@ -575,13 +604,13 @@ function dashboardVentas() {
       ${tarjetaGrafico({
         id: "ve-ranking",
         titulo: "Productos más vendidos",
-        subtitulo: `${escapeHtml(PERIODOS[dash.periodo].nombre)} · top 10`,
+        subtitulo: `${escapeHtml(etiquetaPeriodo())} · top 10`,
         acciones: `<div class="segmentado segmentado-chico" role="tablist" aria-label="Ordenar ranking">
           <button type="button" role="tab" data-ranking="unidades" class="${dash.rankingPor === "unidades" ? "activo" : ""}" aria-selected="${dash.rankingPor === "unidades"}">Unidades</button>
           <button type="button" role="tab" data-ranking="facturado" class="${dash.rankingPor === "facturado" ? "activo" : ""}" aria-selected="${dash.rankingPor === "facturado"}">Facturación</button>
         </div>`,
       })}
-      ${tarjetaGrafico({ id: "ve-categorias", titulo: "Ventas por categoría", subtitulo: `${escapeHtml(PERIODOS[dash.periodo].nombre)} · facturación` })}
+      ${tarjetaGrafico({ id: "ve-categorias", titulo: "Ventas por categoría", subtitulo: `${escapeHtml(etiquetaPeriodo())} · facturación` })}
     </div>`;
 
   const dibujar = () => {
@@ -726,7 +755,7 @@ function dashboardFinanciero() {
   const meses = ultimosMeses(12, hoy);
   const porMes = meses.map((m) => resumir(m.desde, m.hasta));
   const enPeriodo = new Set(meses.map((m, i) => (m.hasta >= rango.desde && m.desde <= rango.hasta ? i : -1)).filter((i) => i >= 0));
-  const comparacion = PERIODOS[dash.periodo].comparacion;
+  const comparacion = textoComparacion();
 
   const kpis = [
     tarjetaKpiDash({
@@ -775,10 +804,10 @@ function dashboardFinanciero() {
       ${tarjetaGrafico({
         id: "fi-cascada",
         titulo: "De las ventas a la ganancia real",
-        subtitulo: `${escapeHtml(PERIODOS[dash.periodo].nombre)}`,
+        subtitulo: `${escapeHtml(etiquetaPeriodo())}`,
         leyenda: itemLeyenda("Ventas", "serie-1") + itemLeyenda("Costos y gastos", "estado-malo") + itemLeyenda("Resultado", "serie-2"),
       })}
-      ${tarjetaGrafico({ id: "fi-gastos-cat", titulo: "Gastos por categoría", subtitulo: `${escapeHtml(PERIODOS[dash.periodo].nombre)} · operativos` })}
+      ${tarjetaGrafico({ id: "fi-gastos-cat", titulo: "Gastos por categoría", subtitulo: `${escapeHtml(etiquetaPeriodo())} · operativos` })}
     </div>
     ${tarjetaGrafico({
       id: "fi-flujo",
@@ -798,7 +827,7 @@ function dashboardFinanciero() {
     </section>
     <section class="dash-tarjeta ancho-completo">
       <header class="dash-tarjeta-cabeza">
-        <div><h3>Gastos del período</h3><p>${plural(gastosPeriodo.length, "gasto")} · ${escapeHtml(PERIODOS[dash.periodo].nombre)}</p></div>
+        <div><h3>Gastos del período</h3><p>${plural(gastosPeriodo.length, "gasto")} · ${escapeHtml(etiquetaPeriodo())}</p></div>
         <div class="dash-tarjeta-acciones"><button type="button" class="btn-primario btn-compacto" data-accion="gasto">${ICONO_MAS}Registrar gasto</button></div>
       </header>
       <div class="tabla-wrap"><table id="tabla-gastos"><thead><tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th class="num">Monto</th><th class="col-acciones"></th></tr></thead><tbody></tbody></table></div>
@@ -931,7 +960,7 @@ function dibujarDashboard() {
     b.classList.toggle("activo", activo);
     b.setAttribute("aria-pressed", String(activo));
   });
-  document.getElementById("dash-periodo").value = dash.periodo;
+  dibujarSelectorPeriodo();
   const vista = dash.esquema === "ventas" ? dashboardVentas() : dash.esquema === "financiero" ? dashboardFinanciero() : dashboardEjecutivo();
   const contenido = document.getElementById("dash-contenido");
   contenido.innerHTML = vista.html;
@@ -963,10 +992,88 @@ document.getElementById("dash-esquemas").addEventListener("click", (ev) => {
   guardarPreferenciasDashboard();
   dibujarDashboard();
 });
-document.getElementById("dash-periodo").addEventListener("change", (ev) => {
-  dash.periodo = ev.target.value;
+// ---------- selector de periodo (propio: el desplegable del navegador sale blanco en Windows) ----------
+const selectorPeriodo = document.getElementById("dash-periodo");
+const listaPeriodos = document.getElementById("dash-periodo-lista");
+
+function dibujarSelectorPeriodo() {
+  const hoy = dash.datos.hoy;
+  document.getElementById("dash-periodo-nombre").textContent = PERIODOS[dash.periodo].nombre;
+  document.getElementById("dash-periodo-rango").textContent = etiquetaPeriodo();
+  listaPeriodos.innerHTML = Object.entries(PERIODOS)
+    .map(([clave, p]) => {
+      const r = rangoPeriodo(clave, hoy);
+      const elegido = clave === dash.periodo;
+      return `<li role="option" id="periodo-${clave}" data-periodo="${clave}" aria-selected="${elegido}" class="${elegido ? "elegido" : ""}">
+        <span class="periodo-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+        <span class="periodo-textos"><strong>${escapeHtml(p.nombre)}</strong><small>${escapeHtml(textoRango(r.desde, r.hasta))}</small></span>
+      </li>`;
+    })
+    .join("");
+  document.getElementById("dash-hoy").textContent = `Datos al ${textoRango(hoy, hoy)} (hora de Argentina)`;
+}
+
+function abrirSelectorPeriodo() {
+  listaPeriodos.hidden = false;
+  selectorPeriodo.setAttribute("aria-expanded", "true");
+  const elegido = listaPeriodos.querySelector('[aria-selected="true"]');
+  listaPeriodos.setAttribute("aria-activedescendant", elegido?.id ?? "");
+  marcarActivoPeriodo(elegido);
+  listaPeriodos.focus();
+}
+
+function cerrarSelectorPeriodo(devolverFoco = true) {
+  if (listaPeriodos.hidden) return;
+  listaPeriodos.hidden = true;
+  selectorPeriodo.setAttribute("aria-expanded", "false");
+  if (devolverFoco) selectorPeriodo.focus();
+}
+
+function marcarActivoPeriodo(li) {
+  listaPeriodos.querySelectorAll("li").forEach((x) => x.classList.toggle("activo", x === li));
+  if (li) listaPeriodos.setAttribute("aria-activedescendant", li.id);
+}
+
+function elegirPeriodo(clave) {
+  cerrarSelectorPeriodo();
+  if (!PERIODOS[clave] || clave === dash.periodo) return;
+  dash.periodo = clave;
   guardarPreferenciasDashboard();
   dibujarDashboard();
+}
+
+selectorPeriodo.addEventListener("click", () => (listaPeriodos.hidden ? abrirSelectorPeriodo() : cerrarSelectorPeriodo()));
+selectorPeriodo.addEventListener("keydown", (ev) => {
+  if (["ArrowDown", "ArrowUp", "Enter", " "].includes(ev.key)) {
+    ev.preventDefault();
+    abrirSelectorPeriodo();
+  }
+});
+listaPeriodos.addEventListener("click", (ev) => {
+  const li = ev.target.closest("li[data-periodo]");
+  if (li) elegirPeriodo(li.dataset.periodo);
+});
+listaPeriodos.addEventListener("pointermove", (ev) => {
+  const li = ev.target.closest("li[data-periodo]");
+  if (li) marcarActivoPeriodo(li);
+});
+listaPeriodos.addEventListener("keydown", (ev) => {
+  const items = [...listaPeriodos.querySelectorAll("li")];
+  const actual = items.findIndex((x) => x.classList.contains("activo"));
+  if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+    ev.preventDefault();
+    const siguiente = items[(actual + (ev.key === "ArrowDown" ? 1 : -1) + items.length) % items.length];
+    marcarActivoPeriodo(siguiente);
+  } else if (ev.key === "Enter" || ev.key === " ") {
+    ev.preventDefault();
+    if (items[actual]) elegirPeriodo(items[actual].dataset.periodo);
+  } else if (ev.key === "Escape" || ev.key === "Tab") {
+    ev.preventDefault();
+    cerrarSelectorPeriodo();
+  }
+});
+document.addEventListener("pointerdown", (ev) => {
+  if (!ev.target.closest("#dash-periodo-caja")) cerrarSelectorPeriodo(false);
 });
 document.getElementById("dash-moneda").addEventListener("click", (ev) => {
   const b = ev.target.closest("[data-moneda]");

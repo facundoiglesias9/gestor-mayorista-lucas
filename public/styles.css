@@ -1466,6 +1466,65 @@ a.btn-secundario { text-decoration: none; }
 }
 .dash-esquemas button.activo svg { color: var(--serie-1); filter: drop-shadow(0 0 6px color-mix(in srgb, var(--serie-1) 60%, transparent)); }
 .segmentado-chico button { padding: 5px 11px; font-size: 0.8rem; }
+/* selector de periodo: boton + lista propia (con las fechas reales de cada opcion) */
+.dash-periodo { position: relative; }
+.dash-periodo-boton {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 230px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--borde);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--texto);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-rapida) var(--ease), background var(--dur-rapida) var(--ease);
+}
+.dash-periodo-boton:hover, .dash-periodo-boton[aria-expanded="true"] { border-color: var(--borde-fuerte); background: rgba(255, 255, 255, 0.05); }
+.dash-periodo-boton:focus-visible { outline: none; box-shadow: var(--anillo-foco); }
+.dash-periodo-boton > svg { width: 16px; height: 16px; color: var(--serie-1); flex: none; }
+.dash-periodo-textos { display: flex; flex-direction: column; line-height: 1.2; flex: 1; min-width: 0; }
+.dash-periodo-textos strong { font-size: 0.84rem; font-weight: 650; }
+.dash-periodo-textos span { font-size: 0.72rem; color: var(--texto-tenue); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dash-periodo-boton .dash-periodo-flecha { color: var(--texto-tenue); transition: transform var(--dur) var(--ease); }
+.dash-periodo-boton[aria-expanded="true"] .dash-periodo-flecha { transform: rotate(180deg); }
+.dash-periodo-lista {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  min-width: 100%;
+  width: max-content;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border-radius: 12px;
+  background: #1f232a;
+  border: 1px solid var(--borde-fuerte);
+  box-shadow: var(--sombra-3);
+  outline: none;
+  animation: subir-aparecer 200ms var(--ease) both;
+}
+.dash-periodo-lista li { display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 8px; border-radius: 8px; cursor: pointer; }
+.dash-periodo-lista li.activo { background: rgba(255, 255, 255, 0.05); }
+.periodo-check { width: 16px; height: 16px; flex: none; color: var(--serie-1); opacity: 0; }
+.periodo-check svg { width: 16px; height: 16px; stroke-width: 2.6; }
+.dash-periodo-lista li.elegido .periodo-check { opacity: 1; }
+.periodo-textos { display: flex; flex-direction: column; line-height: 1.25; }
+.periodo-textos strong { font-size: 0.86rem; font-weight: 600; }
+.dash-periodo-lista li.elegido .periodo-textos strong { font-weight: 750; }
+.periodo-textos small { font-size: 0.74rem; color: var(--texto-tenue); }
+#dash-hoy { color: var(--texto-suave); font-weight: 600; }
+#dash-hoy:not(:empty)::after { content: " · "; color: var(--texto-tenue); font-weight: 400; }
+
+/* los desplegables nativos (formularios): en Windows la lista sale con fondo blanco si no se le
+   dice el color de cada opcion */
+select { color-scheme: dark; }
+select option { background-color: #1f232a; color: #e9ebef; }
+
 .dash-select { position: relative; display: inline-flex; align-items: center; }
 .dash-select svg { position: absolute; left: 11px; width: 15px; height: 15px; color: var(--texto-tenue); pointer-events: none; }
 .dash-select select {
@@ -1700,6 +1759,9 @@ a.btn-secundario { text-decoration: none; }
   .dash-esquemas { width: 100%; }
   .dash-esquemas button { flex: 1; justify-content: center; padding: 8px 6px; }
   .dash-filtros { justify-content: space-between; }
+  .dash-periodo { flex: 1; }
+  .dash-periodo-boton { min-width: 0; width: 100%; }
+  .dash-periodo-lista { left: 0; right: auto; }
   .dash-kpis { gap: 10px; }
   .dash-kpi { padding: 13px 14px 12px; }
   .dash-kpi-valor { font-size: 1.25rem; }

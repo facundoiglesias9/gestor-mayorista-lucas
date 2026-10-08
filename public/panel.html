@@ -156,23 +156,21 @@
             </button>
           </div>
           <div class="dash-filtros">
-            <label class="dash-select">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
-              <select id="dash-periodo" aria-label="Período">
-                <option value="mes">Este mes</option>
-                <option value="mes-anterior">Mes pasado</option>
-                <option value="3m">Últimos 3 meses</option>
-                <option value="anio">Este año</option>
-                <option value="12m">Últimos 12 meses</option>
-              </select>
-            </label>
+            <div class="dash-periodo" id="dash-periodo-caja">
+              <button type="button" class="dash-periodo-boton" id="dash-periodo" aria-haspopup="listbox" aria-expanded="false" aria-controls="dash-periodo-lista" aria-label="Período">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+                <span class="dash-periodo-textos"><strong id="dash-periodo-nombre">Este mes</strong><span id="dash-periodo-rango"></span></span>
+                <svg class="dash-periodo-flecha" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+              <ul class="dash-periodo-lista" id="dash-periodo-lista" role="listbox" tabindex="-1" aria-label="Período" hidden></ul>
+            </div>
             <div class="segmentado segmentado-chico" id="dash-moneda" role="group" aria-label="Moneda">
               <button type="button" data-moneda="USD" class="activo" aria-pressed="true">U$D</button>
               <button type="button" data-moneda="ARS" aria-pressed="false">$</button>
             </div>
           </div>
         </div>
-        <p class="dash-nota" id="dash-nota"></p>
+        <p class="dash-nota"><span id="dash-hoy"></span><span id="dash-nota"></span></p>
         <div id="dash-contenido" class="dash-contenido"></div>
       </section>
 
