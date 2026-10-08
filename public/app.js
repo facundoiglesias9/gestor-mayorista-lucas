@@ -35,11 +35,17 @@ function formatoMoneda(n, moneda) {
   return `${formatoNumero(n)}${moneda ? " " + moneda : ""}`;
 }
 
-// Formato "a la argentina": simbolo adelante, ej "U$D 8.494,5" o "$ 606.049".
+// Formato "a la argentina": simbolo adelante, ej "U$D 8.494,50" o "$ 606.049". Los pesos van
+// sin decimales (los centavos no se usan); los dolares con 2 decimales si los tiene, nunca uno
+// solo ("U$D 1.673,98" o "U$D 500", no "U$D 1.673,9").
 function formatoConSimbolo(n, moneda) {
   if (n == null) return "-";
   const simbolo = SIMBOLO_MONEDA[moneda];
-  return simbolo ? `${simbolo} ${formatoNumero(n)}` : formatoNumero(n);
+  if (!simbolo) return formatoNumero(n);
+  const valor = Number(n);
+  const redondeado = (moneda === "ARS" ? Math.round(valor) : Math.round(valor * 100) / 100) || 0;
+  const decimales = Number.isInteger(redondeado) ? 0 : 2;
+  return `${simbolo} ${redondeado.toLocaleString("es-AR", { minimumFractionDigits: decimales, maximumFractionDigits: decimales })}`;
 }
 
 // "U$D 500 · $ 210.000" a partir de { USD: 500, ARS: 210000 } (saltea las monedas en 0).
@@ -739,9 +745,9 @@ async function cargarVentas() {
       <div class="panel-moneda">
         <div class="panel-moneda-header">${NOMBRE_MONEDA[m] ?? m} <span class="etiqueta-moneda">${m}</span></div>
         <div class="panel-moneda-stats">
-          <div><div class="label">Facturado</div><div class="valor">${contador(`ventas-${m}-facturado`, s.facturado, m)}</div></div>
-          <div><div class="label">Unidades</div><div class="valor">${contador(`ventas-${m}-unidades`, s.unidades)}</div></div>
-          <div><div class="label">Ganancia est.</div><div class="valor">${formatoGanancia(`ventas-${m}-ganancia`, s.ganancia_estimada, m)}</div></div>
+          <div class="stat stat-principal"><div class="label">Facturado</div><div class="valor">${contador(`ventas-${m}-facturado`, s.facturado, m)}</div></div>
+          <div class="stat"><div class="label">Ganancia est.</div><div class="valor">${formatoGanancia(`ventas-${m}-ganancia`, s.ganancia_estimada, m)}</div></div>
+          <div class="stat"><div class="label">Unidades</div><div class="valor">${contador(`ventas-${m}-unidades`, s.unidades)}</div></div>
         </div>
       </div>`;
           })
@@ -756,12 +762,12 @@ async function cargarVentas() {
       <div class="panel-moneda panel-combinado">
         <div class="panel-moneda-header">Total combinado <span class="etiqueta-moneda">≈USD / ≈ARS</span></div>
         <div class="panel-moneda-stats">
-          <div>
+          <div class="stat stat-principal">
             <div class="label">Facturado equiv.</div>
             <div class="valor">${contador("ventas-comb-facturado", facturadoTotalUSD, "USD")}</div>
             <div class="valor-secundario">≈ ${formatoConSimbolo(Math.round(facturadoTotalUSD * promedio), "ARS")}</div>
           </div>
-          <div>
+          <div class="stat">
             <div class="label">Ganancia equiv.</div>
             <div class="valor">${formatoGanancia("ventas-comb-ganancia", gananciaTotalUSD, "USD")}</div>
             <div class="valor-secundario">≈ ${formatoConSimbolo(Math.round(gananciaTotalUSD * promedio), "ARS")}</div>

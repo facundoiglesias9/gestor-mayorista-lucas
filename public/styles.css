@@ -680,9 +680,6 @@ dialog label.fila-check input { width: 17px; height: 17px; accent-color: var(--a
   font-size: 0.8rem;
   color: var(--texto-tenue);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* tarjetas de estado (pagina Bot): mas compactas */
@@ -966,6 +963,7 @@ tr:nth-child(even) td:nth-child(odd) .esqueleto { width: 58%; }
   margin: 0 0 22px;
 }
 .panel-moneda {
+  container-type: inline-size;
   background: var(--bg-card);
   border: 1px solid var(--borde);
   border-radius: var(--radio);
@@ -990,10 +988,22 @@ tr:nth-child(even) td:nth-child(odd) .esqueleto { width: 58%; }
   border-radius: 999px;
   letter-spacing: 0.03em;
 }
-.panel-moneda-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 18px; }
-.panel-combinado .panel-moneda-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.panel-moneda-stats .label { color: var(--texto-tenue); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 5px; }
-.panel-moneda-stats .valor { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+/* Los montos NUNCA se recortan. El facturado va solo arriba y grande; abajo, ganancia y unidades.
+   La letra se achica un poco segun el ancho del panel (cqi = % del ancho del panel) y, si aun asi
+   algo no entra, baja a la linea siguiente en vez de cortarse. */
+.panel-moneda-stats { display: flex; flex-wrap: wrap; gap: 16px 28px; }
+.panel-moneda-stats .stat { flex: 1 0 auto; min-width: 0; }
+.panel-moneda-stats .stat-principal { flex-basis: 100%; padding-bottom: 16px; border-bottom: 1px solid var(--borde); }
+.panel-moneda-stats .label { color: var(--texto-tenue); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 5px; white-space: nowrap; }
+.panel-moneda-stats .valor {
+  font-size: 1.35rem;
+  font-size: clamp(1.05rem, 5.4cqi, 1.45rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.panel-moneda-stats .stat-principal .valor { font-size: 1.75rem; font-size: clamp(1.35rem, 8cqi, 2.1rem); letter-spacing: -0.03em; }
 .valor-secundario { font-size: 0.78rem; color: var(--texto-tenue); margin-top: 2px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .panel-moneda-nota { margin-top: 12px; font-size: 0.72rem; color: var(--texto-tenue); }
 
@@ -1161,7 +1171,6 @@ tr:nth-child(even) td:nth-child(odd) .esqueleto { width: 58%; }
 @media (max-width: 640px) {
   .marca-texto { display: none; }
   .fila-campos { grid-template-columns: 1fr; }
-  .panel-moneda-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .paneles-moneda { grid-template-columns: 1fr; }
   .dolar-actualizado { margin-left: 0; }
 
