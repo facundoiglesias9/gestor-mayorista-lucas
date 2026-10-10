@@ -382,6 +382,7 @@ app.get("/api/catalogo/fotos/:id", async (req, res) => {
 
 // ---------- publicaciones del catalogo (panel, con clave) ----------
 app.get("/api/catalogo-items", envolver(() => repo.listarItemsCatalogo()));
+app.get("/api/catalogo-items/detectar", envolver((req) => repo.detectarMarcaYModelo(String(req.query.nombre ?? ""))));
 app.post("/api/catalogo-items", envolver((req) => repo.crearItemCatalogo(req.body)));
 app.put("/api/catalogo-items/:id", envolver((req) => repo.actualizarItemCatalogo(Number(req.params.id), req.body ?? {})));
 app.delete("/api/catalogo-items/:id", envolver((req) => repo.eliminarItemCatalogo(Number(req.params.id))));

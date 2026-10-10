@@ -357,6 +357,10 @@ UPDATE catalogo_items SET detalle = NULL WHERE detalle GLOB 'Batería [0-9]*%';
   await pasarFechasAHoraArgentina();
   // Cuanto tardo el bot en contestar cada mensaje (para ver en Logs si se pone lento).
   await agregarColumnaSiFalta("logs_bot", "duracion_ms", "INTEGER");
+  // Marca y modelo de cada publicacion, para los filtros del catalogo. Vacios = se leen solos del
+  // nombre (ver marcaYModelo en equipos.ts); se cargan a mano solo si salen mal.
+  await agregarColumnaSiFalta("catalogo_items", "marca", "TEXT");
+  await agregarColumnaSiFalta("catalogo_items", "modelo", "TEXT");
 }
 
 // Lo que ya estaba guardado quedo en la hora de la base (UTC en Turso): una sola vez se pasa a hora

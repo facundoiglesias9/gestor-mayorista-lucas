@@ -1384,6 +1384,9 @@ function dibujarCatalogoPanel() {
   document.getElementById("lista-categorias-catalogo").innerHTML = [...new Set(["Celulares", ...itemsCatalogo.map((i) => i.categoria)])]
     .map((c) => `<option value="${escapeAttr(c)}">`)
     .join("");
+  document.getElementById("lista-marcas-catalogo").innerHTML = [...new Set(["Apple", "Samsung", "Motorola", "Xiaomi", ...itemsCatalogo.map((i) => i.marca ?? i.marca_auto).filter(Boolean)])]
+    .map((m) => `<option value="${escapeAttr(m)}">`)
+    .join("");
   renderTabla(
     "tabla-catalogo",
     lista,
@@ -1417,6 +1420,14 @@ function interruptor(item, campo, etiqueta) {
   return `<label class="switch" title="${etiqueta}"><input type="checkbox" data-cambiar="${campo}" data-id="${item.id}" ${item[campo] ? "checked" : ""} aria-label="${etiqueta}" /><span></span></label>`;
 }
 
+// Como sale en los filtros del catalogo: "Samsung › Galaxy S24 Ultra" (lo cargado a mano y, si no,
+// lo que se lee del nombre).
+function marcaYModeloItem(item) {
+  const marca = item.marca ?? item.marca_auto;
+  const modelo = item.modelo ?? item.modelo_auto;
+  return marca ? `${marca}${modelo ? ` › ${modelo}` : ""}` : null;
+}
+
 function filaItemCatalogo(item) {
   const foto = item.fotos[0];
   return `
@@ -1426,7 +1437,7 @@ function filaItemCatalogo(item) {
           <div class="item-miniatura">${foto ? `<img src="${foto.url}" alt="" loading="lazy" />` : ICONO_FOTO}</div>
           <div class="item-texto">
             <strong>${escapeHtml(item.nombre)}</strong>
-            <span class="item-sub">${[item.categoria, item.estado, item.detalle].filter(Boolean).map(escapeHtml).join(" · ")}</span>
+            <span class="item-sub">${[item.categoria, marcaYModeloItem(item), item.estado, item.detalle].filter(Boolean).map(escapeHtml).join(" · ")}</span>
             ${
               item.fotos.length
                 ? `<span class="item-colores">${item.fotos.map((f) => `<span class="punto-color" title="${escapeAttr(f.color)}" style="background:${f.color_hex ?? f.hex ?? "#c7c7cc"}"></span>`).join("")}</span>`
@@ -1586,6 +1597,9 @@ function abrirDialogoItem(item = null) {
   }
   selectEstado.value = item?.estado ?? "";
   form.elements.detalle.value = item?.detalle ?? "";
+  form.elements.marca.value = item?.marca ?? "";
+  form.elements.modelo.value = item?.modelo ?? "";
+  mostrarMarcaAutomatica(item ? { marca: item.marca_auto, modelo: item.modelo_auto } : null);
   form.elements.moneda.value = item?.moneda ?? "USD";
   form.elements.precio.value = item?.precio ?? "";
   form.elements.disponible.checked = item ? item.disponible : true;
@@ -1597,6 +1611,36 @@ function abrirDialogoItem(item = null) {
   document.getElementById("boton-guardar-item").textContent = item ? "Guardar cambios" : "Crear publicación";
   form.elements.nombre.focus();
 }
+
+// Marca y modelo: vacios = los que el sistema lee solo del nombre. Se muestran de fondo en los
+// campos (y se actualizan mientras se escribe el nombre) para ver si hace falta corregirlos.
+function mostrarMarcaAutomatica(detectado) {
+  const form = document.getElementById("form-item");
+  if (!detectado) {
+    form.elements.marca.placeholder = "Automática, según el nombre";
+    form.elements.modelo.placeholder = "Automático, según el nombre";
+    return;
+  }
+  form.elements.marca.placeholder = detectado.marca ? `Automática: ${detectado.marca}` : "No se detectó (podés escribirla)";
+  form.elements.modelo.placeholder = detectado.modelo ? `Automático: ${detectado.modelo}` : "No se detectó";
+}
+
+let temporizadorMarca;
+let consultaMarca = 0;
+document.querySelector('#form-item [name="nombre"]').addEventListener("input", (ev) => {
+  clearTimeout(temporizadorMarca);
+  const nombre = ev.target.value.trim();
+  const esta = ++consultaMarca;
+  temporizadorMarca = setTimeout(async () => {
+    if (!nombre) return mostrarMarcaAutomatica(null);
+    try {
+      const r = await api("GET", `/api/catalogo-items/detectar?nombre=${encodeURIComponent(nombre)}`);
+      if (esta === consultaMarca) mostrarMarcaAutomatica(r);
+    } catch {
+      /* si no responde, quedan las de antes: no es importante */
+    }
+  }, 300);
+});
 
 document.getElementById("form-item").addEventListener("submit", (ev) => {
   ev.preventDefault();
@@ -1614,6 +1658,8 @@ document.getElementById("form-item").addEventListener("submit", (ev) => {
     categoria: form.elements.categoria.value,
     estado: form.elements.estado.value,
     detalle: form.elements.detalle.value,
+    marca: form.elements.marca.value,
+    modelo: form.elements.modelo.value,
     moneda: form.elements.moneda.value,
     precio: memorias.length || form.elements.precio.value === "" ? null : Number(form.elements.precio.value),
     memorias,

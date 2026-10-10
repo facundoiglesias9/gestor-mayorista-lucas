@@ -659,6 +659,9 @@ function filaAItem(f: any) {
     categoria: String(f.categoria ?? "Otros"),
     estado: f.estado ?? null,
     detalle: f.detalle ?? null,
+    // los cargados a mano (vacio = automatico, segun el nombre)
+    marca: f.marca ?? null,
+    modelo: f.modelo ?? null,
     precio: f.precio ?? null,
     moneda: String(f.moneda ?? "USD"),
     memorias,
@@ -766,8 +769,12 @@ export async function listarItemsCatalogo() {
   const [filas, fotos, unidades] = await Promise.all([all(`SELECT * FROM catalogo_items ORDER BY orden, id`), listarFotosCatalogo(), unidadesConBateria()]);
   return filas.map((f) => {
     const item = filaAItem(f);
+    const automatico = marcaYModelo(item.nombre);
     return {
       ...item,
+      // lo que se lee solo del nombre: el panel lo muestra como sugerencia
+      marca_auto: automatico?.marca ?? null,
+      modelo_auto: automatico?.modelo ?? null,
       fotos: fotosDeProducto(item.nombre, fotos).map((x) => ({ color: x.color, hex: x.color_hex, url: x.url })),
       unidades: unidadesDeItem(item, unidades),
     };
@@ -775,20 +782,24 @@ export async function listarItemsCatalogo() {
 }
 
 // Lo que ve el cliente: solo las publicaciones visibles. Si no tengo ninguna de sus memorias, la
-// publicacion entera cuenta como "sin stock". Los equipos llevan marca y modelo para los filtros.
+// publicacion entera cuenta como "sin stock". Marca y modelo (para los filtros): los cargados a
+// mano en el panel y, si no, los que se leen del nombre.
 export async function listarCatalogo() {
   const items = await listarItemsCatalogo();
   return items
     .filter((i) => i.visible)
-    .map(({ visible: _visible, orden: _orden, ...i }) => {
-      const equipo = marcaYModelo(i.nombre);
-      return {
-        ...i,
-        marca: equipo?.marca ?? null,
-        modelo: equipo?.modelo ?? null,
-        disponible: i.disponible && (i.memorias.length === 0 || i.memorias.some((m) => m.disponible)),
-      };
-    });
+    .map(({ visible: _visible, orden: _orden, marca_auto, modelo_auto, ...i }) => ({
+      ...i,
+      marca: i.marca ?? marca_auto,
+      modelo: i.modelo ?? modelo_auto,
+      disponible: i.disponible && (i.memorias.length === 0 || i.memorias.some((m) => m.disponible)),
+    }));
+}
+
+// Lo que se leeria solo de un nombre (el panel lo muestra mientras se escribe la publicacion).
+export function detectarMarcaYModelo(nombre: string) {
+  const r = marcaYModelo(String(nombre ?? ""));
+  return { marca: r?.marca ?? null, modelo: r?.modelo ?? null };
 }
 
 function validarItemCatalogo(datos: any) {
@@ -801,6 +812,8 @@ function validarItemCatalogo(datos: any) {
     categoria: String(datos.categoria ?? "").trim() || "Otros",
     estado: String(datos.estado ?? "").trim() || null,
     detalle: String(datos.detalle ?? "").trim() || null,
+    marca: String(datos.marca ?? "").trim().slice(0, 60) || null,
+    modelo: String(datos.modelo ?? "").trim().slice(0, 80) || null,
     precio,
     moneda: datos.moneda === "ARS" ? "ARS" : "USD",
     memorias: limpiarMemorias(datos.memorias),
@@ -814,8 +827,8 @@ export async function crearItemCatalogo(datos: any) {
   const v = validarItemCatalogo(datos);
   const ultimo = await get(`SELECT COALESCE(MAX(orden), 0) as orden FROM catalogo_items`);
   const info = await run(
-    `INSERT INTO catalogo_items (nombre, categoria, estado, detalle, precio, moneda, memorias, disponible, visible, orden, creado_en, actualizado_en) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${sqlAhora()}, ${sqlAhora()})`,
-    [v.nombre, v.categoria, v.estado, v.detalle, v.precio, v.moneda, JSON.stringify(v.memorias), v.disponible ? 1 : 0, v.visible ? 1 : 0, Number(ultimo.orden) + 1]
+    `INSERT INTO catalogo_items (nombre, categoria, estado, detalle, marca, modelo, precio, moneda, memorias, disponible, visible, orden, creado_en, actualizado_en) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${sqlAhora()}, ${sqlAhora()})`,
+    [v.nombre, v.categoria, v.estado, v.detalle, v.marca, v.modelo, v.precio, v.moneda, JSON.stringify(v.memorias), v.disponible ? 1 : 0, v.visible ? 1 : 0, Number(ultimo.orden) + 1]
   );
   return { ok: true, id: info.lastInsertRowid, mensaje: `Publicación "${v.nombre}" creada.` };
 }
@@ -828,9 +841,9 @@ export async function actualizarItemCatalogo(id: number, campos: any) {
   const a = filaAItem(actual);
   const v = validarItemCatalogo({ ...a, ...campos, memorias: campos.memorias ?? a.memorias });
   await run(
-    `UPDATE catalogo_items SET nombre = ?, categoria = ?, estado = ?, detalle = ?, precio = ?, moneda = ?, memorias = ?, disponible = ?, visible = ?,
+    `UPDATE catalogo_items SET nombre = ?, categoria = ?, estado = ?, detalle = ?, marca = ?, modelo = ?, precio = ?, moneda = ?, memorias = ?, disponible = ?, visible = ?,
        actualizado_en = ${sqlAhora()} WHERE id = ?`,
-    [v.nombre, v.categoria, v.estado, v.detalle, v.precio, v.moneda, JSON.stringify(v.memorias), v.disponible ? 1 : 0, v.visible ? 1 : 0, id]
+    [v.nombre, v.categoria, v.estado, v.detalle, v.marca, v.modelo, v.precio, v.moneda, JSON.stringify(v.memorias), v.disponible ? 1 : 0, v.visible ? 1 : 0, id]
   );
   return { ok: true, mensaje: `Publicación "${v.nombre}" actualizada.` };
 }

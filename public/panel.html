@@ -552,6 +552,11 @@
             <label>Estado<select name="estado"><option value="">Sin especificar</option><option value="Sellado">Sellado</option><option value="Usado - como nuevo">Usado - como nuevo</option><option value="Usado">Usado</option></select></label>
           </div>
           <div class="fila-campos">
+            <label>Marca<input name="marca" autocomplete="off" list="lista-marcas-catalogo" /></label>
+            <label>Modelo<input name="modelo" autocomplete="off" /></label>
+          </div>
+          <p class="ayuda ayuda-campo" id="ayuda-marca-modelo">Para los filtros del catálogo. Se completan solos según el nombre: escribí acá solo si salen mal.</p>
+          <div class="fila-campos">
             <label>Detalle (opcional)<input name="detalle" placeholder="Ej: Con caja y cargador" autocomplete="off" /></label>
             <label>Moneda<select name="moneda"><option value="USD">Dólares (U$D)</option><option value="ARS">Pesos ($)</option></select></label>
           </div>
@@ -575,6 +580,7 @@
         </form>
       </dialog>
       <datalist id="lista-categorias-catalogo"></datalist>
+      <datalist id="lista-marcas-catalogo"></datalist>
       <datalist id="lista-capacidades"><option value="64 GB"><option value="128 GB"><option value="256 GB"><option value="512 GB"><option value="1 TB"><option value="2 TB"></datalist>
 
       <dialog id="dialogo-foto">
