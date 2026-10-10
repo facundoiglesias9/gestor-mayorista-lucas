@@ -215,9 +215,11 @@ async function fijarNota(nota) {
 // ---------- eventos ----------
 document.getElementById("btn-nueva-nota").addEventListener("click", (ev) => nuevaNota(ev.currentTarget));
 
-// Atajo: "N" en la seccion Notas crea una nota (si no se esta escribiendo en otro lado).
+// Atajo: "N" en la seccion Notas crea una nota (si no se esta escribiendo en otro lado). Ojo: el
+// autocompletado de Chrome (ej. la clave guardada del panel) dispara "keydown" sin tecla (key
+// undefined), por eso se compara sin llamar a nada sobre ev.key.
 document.addEventListener("keydown", (ev) => {
-  if (ev.key.toLowerCase() !== "n" || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  if ((ev.key !== "n" && ev.key !== "N") || ev.ctrlKey || ev.metaKey || ev.altKey) return;
   if (document.getElementById("tab-notas").classList.contains("oculto") || document.querySelector("dialog[open]")) return;
   if (ev.target.closest?.("input, textarea, select, [contenteditable]")) return;
   ev.preventDefault();
