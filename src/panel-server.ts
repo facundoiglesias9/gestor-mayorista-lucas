@@ -173,6 +173,9 @@ app.get("/api/prestamos/:id/pagos", envolver((req) => repo.listarPagosDePrestamo
 app.get("/api/canjes", envolver(() => repo.listarCanjes()));
 app.post("/api/canjes", envolver((req) => repo.agregarCanje(req.body)));
 app.put("/api/canjes/:id", envolver((req) => repo.actualizarCanjePorId(Number(req.params.id), req.body)));
+app.get("/api/canjes/:id/pagos", envolver((req) => repo.listarPagosDeCanje(Number(req.params.id))));
+app.post("/api/canjes/:id/pagos", envolver((req) => repo.registrarPagoCanjePorId(Number(req.params.id), req.body ?? {})));
+app.delete("/api/canjes/:id/pagos/:pagoId", envolver((req) => repo.anularPagoCanje(Number(req.params.id), Number(req.params.pagoId))));
 
 // ---------- pedidos pendientes (clientes por WhatsApp) ----------
 app.get("/api/pedidos", envolver((req) => repo.listarPedidosPendientes(req.query.pendientes === "1")));
@@ -256,6 +259,12 @@ app.get("/api/catalogo", async (_req, res) => {
     res.status(500).json({ ok: false, error: "No se pudo cargar el catálogo." });
   }
 });
+
+// ---------- notas (post-it) ----------
+app.get("/api/notas", envolver(() => repo.listarNotas()));
+app.post("/api/notas", envolver((req) => repo.crearNota(req.body ?? {})));
+app.put("/api/notas/:id", envolver((req) => repo.actualizarNota(Number(req.params.id), req.body ?? {})));
+app.delete("/api/notas/:id", envolver((req) => repo.borrarNota(Number(req.params.id))));
 
 // ---------- respuestas predefinidas ----------
 app.get("/api/respuestas", envolver(() => repo.listarRespuestasPredefinidas()));
@@ -382,6 +391,7 @@ app.get("/api/catalogo/fotos/:id", async (req, res) => {
 
 // ---------- publicaciones del catalogo (panel, con clave) ----------
 app.get("/api/catalogo-items", envolver(() => repo.listarItemsCatalogo()));
+app.get("/api/catalogo-items/detectar", envolver((req) => repo.detectarMarcaYModelo(String(req.query.nombre ?? ""))));
 app.post("/api/catalogo-items", envolver((req) => repo.crearItemCatalogo(req.body)));
 app.put("/api/catalogo-items/:id", envolver((req) => repo.actualizarItemCatalogo(Number(req.params.id), req.body ?? {})));
 app.delete("/api/catalogo-items/:id", envolver((req) => repo.eliminarItemCatalogo(Number(req.params.id))));

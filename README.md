@@ -72,6 +72,8 @@ Dejalo corriendo (la terminal abierta) mientras lo querés usar así, local. Si 
 - "Le presté 500 dólares a María Gómez"
 - "María me pagó 200"
 - "Me trajeron un Samsung S21 en canje, lo tomo a 300 dólares"
+- "Gonzalo me dio 300 de los 600 del canje" (pago en partes: te dice cuánto falta)
+- "Agregame una nota: llamar al proveedor el lunes"
 - "Pagué 300 mil de alquiler" o "Gasté 20 lucas en nafta" (gasto del negocio: se anota solo y va a la ganancia real y al flujo de caja)
 - "¿Cuánto stock tengo de iPhone 12?"
 - "¿Cómo estamos en general?"
@@ -161,7 +163,8 @@ En los dos casos te va a pedir una clave — es el valor de `PANEL_PASSWORD` (en
 - **Stock**: cargar productos (con botón "Agregar stock") y editar cualquier campo con el lápiz de cada fila. Los celulares tienen **Estado** (Sellado, Usado - como nuevo o Usado) y, si no son sellados, **Batería (%)**: el % se agrega solo al nombre (ej. "iPhone 15 Pro 128GB 85%"), así cada usado con su batería queda como un producto aparte.
 - **Ventas**: cargar una venta nueva, filtrar por fecha/producto/cliente, con totales facturados y ganancia estimada.
 - **Préstamos**: registrar préstamos nuevos y anotar pagos con un botón.
-- **Plan Canje**: registrar un trade-in (celular recibido, precio, y la diferencia en plata o producto a favor tuyo o del cliente) y marcarlo saldado cuando se resuelve.
+- **Plan Canje**: registrar un trade-in (celular recibido, precio, y la diferencia en plata o producto a favor tuyo o del cliente). Si la diferencia en plata se paga en partes (ej. U$D 600 en dos meses), con "Cobrar" (o "Pagar", si sos vos el que debe) se carga cada parte con su fecha: la tabla muestra cuánto falta con una barra de lo pagado, y el canje queda saldado solo cuando se completa. Los pagos mal cargados se borran desde el mismo lugar.
+- **Notas**: notas sueltas tipo post-it (recordatorios, pendientes, datos). Se guardan solas mientras escribís; se pueden pintar de colores, fijar arriba, buscar y borrar. También se agregan por Telegram ("agregame una nota: …").
 - **Empleados**: agregar y ver la lista de precio amigo.
 - **Logs**: qué está pasando en todo el sistema, para ver qué falla sin entrar a Vercel.
   - **Sistema**: errores y avisos del bot, la IA, las herramientas (ej: "no existe ese producto"), el panel (pedidos rechazados o lentos), Telegram, el chequeo automático, la cotización del dólar, los intentos de clave incorrecta, la gente sin acceso que le escribe al bot y los errores de la página en el navegador. Cada evento tiene su detalle técnico para copiar. Arriba: si anda todo bien, cuántos errores y avisos hubo, el último chequeo automático, y en qué parte pasa más.
@@ -176,7 +179,7 @@ El panel y el chat de Telegram comparten exactamente la misma base de datos (Tur
 
 ## Catálogo para clientes
 
-La dirección principal (ej. `https://gestor-mayorista-lucas.vercel.app`) es un catálogo público, para pasarle a los clientes: buscador, filtros por categoría y tarjetas con el precio "desde". Al tocar un producto se abre su ficha, donde el cliente elige memoria, color y batería y consulta por WhatsApp con el mensaje ya armado. Cada ficha tiene su propio link (ej. `.../#p-3`) para pasarlo directo. No muestra costos, notas internas ni el stock.
+La dirección principal (ej. `https://gestor-mayorista-lucas.vercel.app`) es un catálogo público, para pasarle a los clientes: buscador, pestañas por categoría, filtros desplegables y tarjetas con el precio "desde". En los celulares se filtra por marca y, elegida la marca, por modelo (con el precio "desde" de cada uno); la marca y el modelo se leen solos del nombre de la publicación (ej. "Samsung Galaxy S24 Ultra" → Samsung, Galaxy S24 Ultra). Si salen mal, o para darle marca a algo que no es un celular (ej. vapers: Ignite → V150), se cargan a mano en los campos Marca y Modelo de la publicación, en el panel; mientras están vacíos muestran lo que el sistema detectó solo. También se filtra por estado (Sellado / Usado) y se ordena por precio o nombre. Al tocar un producto se abre su ficha, donde el cliente elige memoria, color y batería y consulta por WhatsApp con el mensaje ya armado. Cada ficha tiene su propio link (ej. `.../#p-3`) para pasarlo directo. No muestra costos, notas internas ni el stock.
 
 - El catálogo va **aparte del stock**: son "publicaciones" que se manejan desde el panel, en la sección **Catálogo** (nombre, estado, memorias con su precio, si lo tenés o no, si se muestra o no, y el orden). La primera vez se arma solo con lo que haya en stock.
 - **Estado**: Sellado, Usado - como nuevo o Usado. En los usados, el cliente elige entre los equipos de ese modelo que tengas en stock según la batería: se toman los campos Estado y Batería de cada equipo en Stock (una publicación "Usado - como nuevo" muestra solo los como nuevo), con su precio de venta, y cuando uno se vende desaparece solo.

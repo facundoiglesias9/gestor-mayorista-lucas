@@ -202,7 +202,8 @@ export const toolDefinitions: Anthropic.Tool[] = [
   },
   {
     name: "actualizar_canje",
-    description: "Cambia el estado de un canje ya registrado a 'saldado' (cuando ya se entrego/cobro la diferencia pendiente) o de vuelta a 'pendiente'.",
+    description:
+      "Cambia el estado de un canje ya registrado a 'saldado' (cuando ya se entrego/cobro TODA la diferencia pendiente de una, o se perdona lo que falta) o de vuelta a 'pendiente'. Si pagan solo una parte de la plata, NO usar esta: usar registrar_pago_canje.",
     input_schema: {
       type: "object",
       properties: {
@@ -213,6 +214,40 @@ export const toolDefinitions: Anthropic.Tool[] = [
       },
       required: ["descripcion", "estado"],
     },
+  },
+  {
+    name: "registrar_pago_canje",
+    description:
+      "Registra un pago EN PARTES de la diferencia en plata de un canje (ej: el canje dejo U$D 600 a favor tuyo y hoy la persona te dio U$D 300). Sirve para los dos lados: si la persona te debe, es lo que te pago; si vos le debias, lo que le pagaste. Queda 'saldado' solo cuando ya no falta nada. Si la persona tiene un solo canje con plata pendiente se usa ese; si tiene varios, aclarar cual con descripcion.",
+    input_schema: {
+      type: "object",
+      properties: {
+        persona: { type: "string" },
+        monto: { type: "number" },
+        moneda: { type: "string", enum: ["USD", "ARS"], description: "Moneda del pago, si se dijo. Tiene que ser la misma del saldo del canje." },
+        descripcion: { type: "string", description: "Texto para identificar el canje (el celular que se recibio), si la persona tiene varios pendientes" },
+        nota: { type: "string" },
+      },
+      required: ["persona", "monto"],
+    },
+  },
+  {
+    name: "agregar_nota",
+    description:
+      "Agrega una nota (un 'post-it') en la seccion Notas del panel. Usar SOLO cuando piden explicitamente anotar algo en las notas / un post-it / un recordatorio suelto (ej: 'agregame una nota: llamar a Gonzalo el lunes'). NUNCA para registrar ventas, compras, gastos, prestamos ni canjes, aunque digan 'anota que vendi...': eso va con su herramienta.",
+    input_schema: {
+      type: "object",
+      properties: {
+        texto: { type: "string" },
+        color: { type: "string", enum: ["amarillo", "rosa", "verde", "celeste", "violeta", "naranja"], description: "Solo si piden un color" },
+      },
+      required: ["texto"],
+    },
+  },
+  {
+    name: "consultar_notas",
+    description: "Devuelve las notas (post-it) cargadas en el panel. Usar cuando preguntan que tienen anotado en las notas.",
+    input_schema: { type: "object", properties: {} },
   },
   {
     name: "consultar_stock",
@@ -315,6 +350,9 @@ const dispatch: Record<string, (args: any) => any | Promise<any>> = {
   registrar_pago_prestamo: repo.registrarPagoPrestamo,
   agregar_canje: repo.agregarCanje,
   actualizar_canje: repo.actualizarCanje,
+  registrar_pago_canje: repo.registrarPagoCanje,
+  agregar_nota: repo.agregarNotaDesdeBot,
+  consultar_notas: () => repo.consultarNotas(),
   registrar_gasto: repo.registrarGasto,
   consultar_gastos: repo.consultarGastos,
   anular_gasto: repo.anularGasto,

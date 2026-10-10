@@ -44,6 +44,7 @@
   --c-empleados: var(--acento-2);
   --c-bot: #59c7ec;
   --c-logs: #a3acbb;
+  --c-notas: #f5d76e;
 
   /* forma */
   --radio-chico: 8px;
@@ -344,6 +345,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 [data-tab="bot"], [data-seccion="bot"] { --tab-color: var(--c-bot); }
 [data-tab="logs"], [data-seccion="logs"] { --tab-color: var(--c-logs); }
 [data-tab="catalogo"], [data-seccion="catalogo"] { --tab-color: var(--rosa); }
+[data-tab="notas"], [data-seccion="notas"] { --tab-color: var(--c-notas); }
 
 /* ---------- barra lateral contraida: solo iconos, con el nombre al pasar el mouse ---------- */
 .barra-lateral.contraida .lateral-cabecera { padding: 18px 0 14px; display: flex; justify-content: center; }
@@ -2148,4 +2150,163 @@ select option { background-color: #1f232a; color: #e9ebef; }
   .login-fondo span, .punto-estado::after, .badge-contador { animation: none !important; }
   /* el spinner sigue girando (si no, no se nota que esta trabajando), pero mas lento */
   button.cargando::after { animation-duration: 1.4s !important; animation-iteration-count: infinite !important; }
+}
+
+/* ---------- plan canje: pagos en partes ---------- */
+.progreso-canje { align-items: flex-end; text-align: right; }
+.progreso-canje .progreso-barra { width: 100%; min-width: 120px; }
+.saldo-completo { color: var(--verde); font-weight: 600; }
+#dialogo-pagos-canje[open] { display: flex; flex-direction: column; gap: 18px; }
+#dialogo-pagos-canje .dialogo-botones { margin-top: 0; }
+.resumen-pago {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  background: rgba(255, 255, 255, 0.02);
+}
+.resumen-pago-fila { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 4px; }
+.resumen-pago-dato { display: flex; flex-direction: column; gap: 2px; }
+.resumen-pago-dato span { font-size: 0.74rem; color: var(--texto-tenue); font-weight: 550; text-transform: uppercase; letter-spacing: 0.05em; }
+.resumen-pago-dato strong { font-size: 1.12rem; font-variant-numeric: tabular-nums; }
+.resumen-pago-dato:first-child strong { font-size: 1.4rem; }
+.progreso-grande { height: 8px; }
+#form-pago-canje .btn-primario { align-self: flex-end; }
+.historial-pagos { display: flex; flex-direction: column; gap: 8px; }
+.historial-titulo { font-size: 0.78rem; color: var(--texto-suave); font-weight: 600; }
+.lista-pagos { list-style: none; margin: 0; padding: 0; border: 1px solid var(--borde); border-radius: var(--radio); overflow: hidden; }
+.pago-fila {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px 10px 16px;
+  border-top: 1px solid var(--borde);
+  animation: subir-aparecer var(--dur) var(--ease) both;
+}
+.pago-fila:first-child { border-top: none; }
+.pago-monto { font-variant-numeric: tabular-nums; }
+.pago-nota { color: var(--texto-tenue); font-size: 0.84rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pago-vacio { padding: 14px 16px; color: var(--texto-tenue); font-size: 0.86rem; }
+@media (max-width: 640px) {
+  .progreso-canje { align-items: stretch; text-align: left; }
+  .resumen-pago-fila { grid-template-columns: 1fr 1fr; }
+  .resumen-pago-dato:first-child { grid-column: 1 / -1; }
+  .pago-fila { grid-template-columns: auto 1fr auto; }
+  .pago-nota { grid-column: 1 / -1; grid-row: 2; white-space: normal; }
+}
+
+/* ---------- notas (post-it) ---------- */
+.notas-herramientas { display: flex; align-items: center; gap: 10px; }
+.notas-herramientas .buscador-panel { width: 260px; }
+.notas-grilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 22px 20px; align-items: start; padding: 6px 2px 20px; }
+.nota {
+  --papel: #fde68a;
+  --papel-borde: #f5d555;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 210px;
+  padding: 12px 14px 12px;
+  border-radius: 4px 4px 14px 4px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--papel) 88%, #fff) 0%, var(--papel) 60%);
+  color: #23201a;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.12), 0 10px 22px -8px rgba(0, 0, 0, 0.55);
+  transform: rotate(var(--giro, 0deg));
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+  /* "backwards": al terminar la animacion vuelve a mandar el transform de :hover (enderezarse) */
+  animation: nota-aparece 420ms var(--ease) backwards;
+}
+/* la "cinta" de arriba, como si estuviera pegada */
+.nota::before {
+  content: "";
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  width: 70px;
+  height: 18px;
+  margin-left: -35px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  transform: rotate(calc(var(--giro, 0deg) * -2));
+}
+.nota:hover, .nota:focus-within { transform: rotate(0deg) translateY(-3px); box-shadow: 0 2px 2px rgba(0, 0, 0, 0.14), 0 18px 30px -10px rgba(0, 0, 0, 0.6); z-index: 1; }
+.nota.fijada::before { background: color-mix(in srgb, var(--rojo) 70%, transparent); }
+.nota-amarillo { --papel: #fde68a; }
+.nota-rosa { --papel: #fbcfe0; }
+.nota-verde { --papel: #c6f0d0; }
+.nota-celeste { --papel: #c3e4fb; }
+.nota-violeta { --papel: #ddd2fb; }
+.nota-naranja { --papel: #fdd3ad; }
+.nota-barra { display: flex; align-items: center; gap: 6px; min-height: 28px; }
+.nota-fecha { font-size: 0.7rem; color: rgba(35, 32, 26, 0.55); font-variant-numeric: tabular-nums; }
+.nota-fecha .fecha, .nota-fecha .fecha small { color: inherit; }
+.nota-fecha .fecha small { margin-left: 4px; }
+.nota-estado { margin-left: auto; font-size: 0.68rem; font-weight: 600; color: rgba(35, 32, 26, 0.5); opacity: 0; transition: opacity var(--dur) var(--ease); }
+.nota-estado.visible { opacity: 1; }
+.nota-boton {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(35, 32, 26, 0.45);
+  cursor: pointer;
+  transition: background var(--dur-rapida) var(--ease), color var(--dur-rapida) var(--ease), transform var(--dur-rapida) var(--ease);
+}
+.nota-boton svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.nota-boton:hover { background: rgba(0, 0, 0, 0.07); color: #23201a; }
+.nota-boton:active { transform: scale(0.9); }
+.nota-fijar[aria-pressed="true"] { color: #c2410c; }
+.nota-texto {
+  flex: 1;
+  width: 100%;
+  min-height: 120px;
+  margin: 4px 0 8px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  resize: none;
+  overflow: hidden;
+  outline: none;
+}
+.nota-texto::placeholder { color: rgba(35, 32, 26, 0.4); }
+.nota-colores { display: flex; gap: 6px; opacity: 0; transform: translateY(4px); transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease); }
+.nota:hover .nota-colores, .nota:focus-within .nota-colores { opacity: 1; transform: none; }
+.nota-color { width: 16px; height: 16px; padding: 0; border: 1.5px solid rgba(0, 0, 0, 0.18); border-radius: 50%; cursor: pointer; transition: transform var(--dur-rapida) var(--ease); }
+.nota-color:hover { transform: scale(1.15); }
+.nota-color.activo { box-shadow: 0 0 0 2px var(--papel), 0 0 0 3.5px rgba(35, 32, 26, 0.55); }
+.nota-color-amarillo { background: #fde68a; }
+.nota-color-rosa { background: #fbcfe0; }
+.nota-color-verde { background: #c6f0d0; }
+.nota-color-celeste { background: #c3e4fb; }
+.nota-color-violeta { background: #ddd2fb; }
+.nota-color-naranja { background: #fdd3ad; }
+.nota.recien-pegada { animation: nota-pegar 480ms var(--ease) backwards; }
+.nota.despegando { animation: nota-despegar 220ms var(--ease-salida, ease-in) both; pointer-events: none; }
+.notas-vacio { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 60px 20px; text-align: center; color: var(--texto-tenue); animation: subir-aparecer var(--dur-lenta) var(--ease) both; }
+.notas-vacio svg { width: 42px; height: 42px; fill: none; stroke: var(--c-notas); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; margin-bottom: 6px; }
+.notas-vacio strong { color: var(--texto); font-size: 1rem; }
+.notas-vacio span { max-width: 420px; font-size: 0.88rem; }
+@keyframes nota-aparece { from { opacity: 0; transform: rotate(var(--giro, 0deg)) translateY(10px); } to { opacity: 1; transform: rotate(var(--giro, 0deg)); } }
+@keyframes nota-pegar { 0% { opacity: 0; transform: rotate(calc(var(--giro, 0deg) - 6deg)) scale(0.85) translateY(-14px); } 70% { opacity: 1; } 100% { opacity: 1; transform: rotate(var(--giro, 0deg)); } }
+@keyframes nota-despegar { to { opacity: 0; transform: rotate(calc(var(--giro, 0deg) + 8deg)) scale(0.88) translateY(-12px); } }
+/* en el celular (sin mouse) los colores se ven siempre */
+@media (hover: none) { .nota-colores { opacity: 1; transform: none; } }
+@media (max-width: 640px) {
+  .notas-herramientas { width: 100%; }
+  .notas-herramientas .buscador-panel { flex: 1; width: auto; min-width: 0; }
+  .notas-grilla { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px 12px; }
+  .nota { min-height: 170px; padding: 10px 11px; }
+  .nota-texto { min-height: 90px; font-size: 0.9rem; }
 }

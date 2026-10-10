@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { get, all, run, enTransaccion, sqlAhora, ZONA_ARGENTINA, db, asegurarTablas } from "./db.js";
 import { inferirCategoria } from "./categorizador.js";
-import { estadoYBateriaDelNombre, nombreConBateria, validarBateria, validarEstado } from "./equipos.js";
+import { estadoYBateriaDelNombre, marcaYModelo, nombreConBateria, validarBateria, validarEstado } from "./equipos.js";
 
 // Esta es la UNICA capa que toca la base de datos. Tanto el cerebro (Claude, via tools.ts)
 // como el panel web (via panel-server.ts) llaman a estas mismas funciones, para que el chat
@@ -539,17 +539,25 @@ export async function actualizarCanje(args: { descripcion: string; persona?: str
   return { ok: true, mensaje: `Canje "${canje.descripcion}" de ${canje.persona_nombre} actualizado a estado "${args.estado}".` };
 }
 
+// Cada canje con lo que ya se pago de su diferencia (pagos_canje) y lo que falta.
+const COLUMNAS_CANJE = `canjes.*, personas.nombre as persona_nombre,
+  COALESCE((SELECT SUM(monto) FROM pagos_canje WHERE pagos_canje.canje_id = canjes.id), 0) as pagado,
+  (SELECT COUNT(*) FROM pagos_canje WHERE pagos_canje.canje_id = canjes.id) as cantidad_pagos`;
+
+function conPendiente(c: any) {
+  if (!c) return c;
+  const total = Math.abs(Number(c.saldo_monto ?? 0));
+  const pagado = Math.round(Number(c.pagado ?? 0) * 100) / 100;
+  return { ...c, pagado, cantidad_pagos: Number(c.cantidad_pagos ?? 0), pendiente: Math.max(Math.round((total - pagado) * 100) / 100, 0) };
+}
+
 export async function listarCanjes() {
-  return all(
-    `SELECT canjes.*, personas.nombre as persona_nombre FROM canjes JOIN personas ON personas.id = canjes.persona_id ORDER BY canjes.fecha DESC`
-  );
+  const filas = await all(`SELECT ${COLUMNAS_CANJE} FROM canjes JOIN personas ON personas.id = canjes.persona_id ORDER BY canjes.fecha DESC`);
+  return filas.map(conPendiente);
 }
 
 export async function obtenerCanje(id: number) {
-  return get(
-    `SELECT canjes.*, personas.nombre as persona_nombre FROM canjes JOIN personas ON personas.id = canjes.persona_id WHERE canjes.id = ?`,
-    [id]
-  );
+  return conPendiente(await get(`SELECT ${COLUMNAS_CANJE} FROM canjes JOIN personas ON personas.id = canjes.persona_id WHERE canjes.id = ?`, [id]));
 }
 
 export async function actualizarCanjePorId(
@@ -583,7 +591,157 @@ export async function actualizarCanjePorId(
       id,
     ]
   );
+  await recalcularEstadoCanje(id);
   return obtenerCanje(id);
+}
+
+// ---------- pagos de un canje (la diferencia en partes) ----------
+// Sirve para los dos lados: si te deben, son cobros; si les debes, lo que vos les vas pagando.
+// Si el canje tiene pagos, queda "saldado" solo cuando ya no falta nada (y vuelve a "pendiente"
+// si se borra un pago). Sin pagos, el estado se maneja a mano como siempre.
+async function recalcularEstadoCanje(id: number) {
+  const c = await obtenerCanje(id);
+  if (!c || !c.cantidad_pagos || !c.saldo_monto) return;
+  const estado = c.pendiente > 0 ? "pendiente" : "saldado";
+  if (estado !== c.estado) await run(`UPDATE canjes SET estado = ? WHERE id = ?`, [estado, id]);
+}
+
+function textoMonto(monto: number, moneda: string) {
+  return `${moneda === "USD" ? "U$D" : "$"} ${(Math.round(monto * 100) / 100).toLocaleString("es-AR")}`;
+}
+
+export async function registrarPagoCanjePorId(canjeId: number, datos: { monto: number; nota?: string; fecha?: string }) {
+  const monto = Math.round(Number(datos.monto) * 100) / 100;
+  validarMontoPago(monto);
+  // Fecha opcional (si se carga un pago de otro dia); si no, ahora.
+  const fecha = String(datos.fecha ?? "").trim();
+  if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) throw new Error("La fecha del pago tiene que ser AAAA-MM-DD.");
+  if (fecha && fecha > hoyEnArgentina()) throw new Error("La fecha del pago no puede ser futura.");
+  return enTransaccion(async () => {
+    const c = await obtenerCanje(canjeId);
+    if (!c) throw new Error(`No existe el canje #${canjeId}.`);
+    if (!c.saldo_monto) throw new Error("Este canje no tiene una diferencia en plata para ir pagando.");
+    if (c.pendiente <= 0) throw new Error("Este canje ya está saldado: no falta nada.");
+    if (monto > c.pendiente + 0.005) {
+      throw new Error(`El pago (${textoMonto(monto, c.saldo_moneda)}) es más de lo que falta (${textoMonto(c.pendiente, c.saldo_moneda)}).`);
+    }
+    const valorFecha = !fecha || fecha === hoyEnArgentina() ? sqlAhora() : "?";
+    await run(
+      `INSERT INTO pagos_canje (canje_id, monto, nota, fecha) VALUES (?, ?, ?, ${valorFecha})`,
+      valorFecha === "?" ? [canjeId, monto, String(datos.nota ?? "").trim() || null, `${fecha} 12:00:00`] : [canjeId, monto, String(datos.nota ?? "").trim() || null]
+    );
+    await recalcularEstadoCanje(canjeId);
+    const actualizado = await obtenerCanje(canjeId);
+    const quien = c.saldo_monto > 0 ? `${c.persona_nombre} pagó` : `Le pagaste a ${c.persona_nombre}`;
+    return {
+      ok: true,
+      mensaje: `${quien} ${textoMonto(monto, c.saldo_moneda)} del canje "${c.descripcion}". ${
+        actualizado.pendiente > 0 ? `Falta ${textoMonto(actualizado.pendiente, c.saldo_moneda)}.` : "Quedó saldado."
+      }`,
+      canje: actualizado,
+    };
+  });
+}
+
+export async function listarPagosDeCanje(canjeId: number) {
+  return all(`SELECT * FROM pagos_canje WHERE canje_id = ? ORDER BY fecha DESC, id DESC`, [canjeId]);
+}
+
+// Para corregir un pago mal cargado.
+export async function anularPagoCanje(canjeId: number, pagoId: number) {
+  return enTransaccion(async () => {
+    const info = await run(`DELETE FROM pagos_canje WHERE id = ? AND canje_id = ?`, [pagoId, canjeId]);
+    if (!info.changes) throw new Error(`No existe ese pago en el canje #${canjeId}.`);
+    // Sin pagos, recalcularEstadoCanje no toca nada: si era el ultimo pago y estaba saldado, vuelve a pendiente.
+    const c = await obtenerCanje(canjeId);
+    if (c && !c.cantidad_pagos && c.estado === "saldado" && c.saldo_monto) await run(`UPDATE canjes SET estado = 'pendiente' WHERE id = ?`, [canjeId]);
+    else await recalcularEstadoCanje(canjeId);
+    return { ok: true, mensaje: "Pago borrado.", canje: await obtenerCanje(canjeId) };
+  });
+}
+
+// Desde el bot: "Gonzalo me pagó 300 del canje". Busca el canje con plata pendiente de esa persona
+// (si tiene mas de uno, pide aclarar cual).
+export async function registrarPagoCanje(args: { persona: string; monto: number; moneda?: "USD" | "ARS"; descripcion?: string; nota?: string }) {
+  validarMontoPago(args.monto);
+  const persona = await findPersona(args.persona);
+  if (!persona) throw new Error(`No encontre a "${args.persona}" en el sistema.`);
+  let canjes = (await listarCanjes()).filter((c: any) => c.persona_id === persona.id && c.saldo_monto && c.pendiente > 0);
+  if (args.descripcion) {
+    const buscado = normalizarTexto(args.descripcion);
+    canjes = canjes.filter((c: any) => normalizarTexto(c.descripcion).includes(buscado));
+  }
+  if (args.moneda) canjes = canjes.filter((c: any) => c.saldo_moneda === args.moneda);
+  if (!canjes.length) throw new Error(`"${persona.nombre}" no tiene canjes con plata pendiente${args.descripcion ? ` que coincidan con "${args.descripcion}"` : ""}.`);
+  if (canjes.length > 1) {
+    return {
+      ok: false,
+      mensaje: `${persona.nombre} tiene ${canjes.length} canjes con plata pendiente: aclará de cuál es el pago.`,
+      candidatos: canjes.map((c: any) => ({ id: c.id, descripcion: c.descripcion, falta: textoMonto(c.pendiente, c.saldo_moneda) })),
+    };
+  }
+  return registrarPagoCanjePorId(canjes[0].id, { monto: args.monto, nota: args.nota });
+}
+
+// ---------- notas (los post-it del panel) ----------
+export const COLORES_NOTA = ["amarillo", "rosa", "verde", "celeste", "violeta", "naranja"] as const;
+const MAX_TEXTO_NOTA = 5000;
+
+function filaANota(f: any) {
+  return { id: Number(f.id), texto: String(f.texto ?? ""), color: String(f.color), fijada: !!f.fijada, creado_en: f.creado_en, actualizado_en: f.actualizado_en };
+}
+
+// Las fijadas primero; despues, las mas nuevas.
+export async function listarNotas() {
+  return (await all(`SELECT * FROM notas ORDER BY fijada DESC, creado_en DESC, id DESC`)).map(filaANota);
+}
+
+function validarCampoNota(campos: { texto?: unknown; color?: unknown }) {
+  if (campos.texto != null && String(campos.texto).length > MAX_TEXTO_NOTA) throw new Error(`La nota es muy larga (máximo ${MAX_TEXTO_NOTA} caracteres).`);
+  if (campos.color != null && !COLORES_NOTA.includes(String(campos.color) as any)) throw new Error(`Color inválido: tiene que ser ${COLORES_NOTA.join(", ")}.`);
+}
+
+export async function crearNota(datos: { texto?: string; color?: string; fijada?: boolean } = {}) {
+  validarCampoNota(datos);
+  const info = await run(`INSERT INTO notas (texto, color, fijada, creado_en, actualizado_en) VALUES (?, ?, ?, ${sqlAhora()}, ${sqlAhora()})`, [
+    String(datos.texto ?? "").trim(),
+    datos.color ?? "amarillo",
+    datos.fijada ? 1 : 0,
+  ]);
+  return filaANota(await get(`SELECT * FROM notas WHERE id = ?`, [info.lastInsertRowid]));
+}
+
+// Cambios parciales: el panel guarda solo el texto mientras se escribe, o solo el color, etc.
+export async function actualizarNota(id: number, campos: { texto?: string; color?: string; fijada?: boolean }) {
+  validarCampoNota(campos);
+  const actual = await get(`SELECT * FROM notas WHERE id = ?`, [id]);
+  if (!actual) throw new Error(`No existe la nota #${id}.`);
+  await run(`UPDATE notas SET texto = ?, color = ?, fijada = ?, actualizado_en = ${sqlAhora()} WHERE id = ?`, [
+    campos.texto != null ? String(campos.texto) : actual.texto,
+    campos.color ?? actual.color,
+    campos.fijada != null ? (campos.fijada ? 1 : 0) : actual.fijada,
+    id,
+  ]);
+  return filaANota(await get(`SELECT * FROM notas WHERE id = ?`, [id]));
+}
+
+export async function borrarNota(id: number) {
+  const info = await run(`DELETE FROM notas WHERE id = ?`, [id]);
+  if (!info.changes) throw new Error(`No existe la nota #${id}.`);
+  return { ok: true };
+}
+
+// Desde el bot: "anotá en las notas que ..." / "qué tengo en las notas".
+export async function agregarNotaDesdeBot(args: { texto: string; color?: string }) {
+  const texto = String(args.texto ?? "").trim();
+  if (!texto) throw new Error("La nota no puede estar vacía.");
+  const nota = await crearNota({ texto, color: COLORES_NOTA.includes(args.color as any) ? args.color : "amarillo" });
+  return { ok: true, mensaje: `Nota agregada en el panel: "${texto.length > 80 ? texto.slice(0, 80) + "…" : texto}".`, nota_id: nota.id };
+}
+
+export async function consultarNotas() {
+  const notas = (await listarNotas()).filter((n) => n.texto.trim());
+  return { notas: notas.map((n) => ({ id: n.id, texto: n.texto, fijada: n.fijada, fecha: n.creado_en })) };
 }
 
 // ---------- consultas ----------
@@ -659,6 +817,9 @@ function filaAItem(f: any) {
     categoria: String(f.categoria ?? "Otros"),
     estado: f.estado ?? null,
     detalle: f.detalle ?? null,
+    // los cargados a mano (vacio = automatico, segun el nombre)
+    marca: f.marca ?? null,
+    modelo: f.modelo ?? null,
     precio: f.precio ?? null,
     moneda: String(f.moneda ?? "USD"),
     memorias,
@@ -766,8 +927,12 @@ export async function listarItemsCatalogo() {
   const [filas, fotos, unidades] = await Promise.all([all(`SELECT * FROM catalogo_items ORDER BY orden, id`), listarFotosCatalogo(), unidadesConBateria()]);
   return filas.map((f) => {
     const item = filaAItem(f);
+    const automatico = marcaYModelo(item.nombre);
     return {
       ...item,
+      // lo que se lee solo del nombre: el panel lo muestra como sugerencia
+      marca_auto: automatico?.marca ?? null,
+      modelo_auto: automatico?.modelo ?? null,
       fotos: fotosDeProducto(item.nombre, fotos).map((x) => ({ color: x.color, hex: x.color_hex, url: x.url })),
       unidades: unidadesDeItem(item, unidades),
     };
@@ -775,15 +940,24 @@ export async function listarItemsCatalogo() {
 }
 
 // Lo que ve el cliente: solo las publicaciones visibles. Si no tengo ninguna de sus memorias, la
-// publicacion entera cuenta como "sin stock".
+// publicacion entera cuenta como "sin stock". Marca y modelo (para los filtros): los cargados a
+// mano en el panel y, si no, los que se leen del nombre.
 export async function listarCatalogo() {
   const items = await listarItemsCatalogo();
   return items
     .filter((i) => i.visible)
-    .map(({ visible: _visible, orden: _orden, ...i }) => ({
+    .map(({ visible: _visible, orden: _orden, marca_auto, modelo_auto, ...i }) => ({
       ...i,
+      marca: i.marca ?? marca_auto,
+      modelo: i.modelo ?? modelo_auto,
       disponible: i.disponible && (i.memorias.length === 0 || i.memorias.some((m) => m.disponible)),
     }));
+}
+
+// Lo que se leeria solo de un nombre (el panel lo muestra mientras se escribe la publicacion).
+export function detectarMarcaYModelo(nombre: string) {
+  const r = marcaYModelo(String(nombre ?? ""));
+  return { marca: r?.marca ?? null, modelo: r?.modelo ?? null };
 }
 
 function validarItemCatalogo(datos: any) {
@@ -796,6 +970,8 @@ function validarItemCatalogo(datos: any) {
     categoria: String(datos.categoria ?? "").trim() || "Otros",
     estado: String(datos.estado ?? "").trim() || null,
     detalle: String(datos.detalle ?? "").trim() || null,
+    marca: String(datos.marca ?? "").trim().slice(0, 60) || null,
+    modelo: String(datos.modelo ?? "").trim().slice(0, 80) || null,
     precio,
     moneda: datos.moneda === "ARS" ? "ARS" : "USD",
     memorias: limpiarMemorias(datos.memorias),
@@ -809,8 +985,8 @@ export async function crearItemCatalogo(datos: any) {
   const v = validarItemCatalogo(datos);
   const ultimo = await get(`SELECT COALESCE(MAX(orden), 0) as orden FROM catalogo_items`);
   const info = await run(
-    `INSERT INTO catalogo_items (nombre, categoria, estado, detalle, precio, moneda, memorias, disponible, visible, orden, creado_en, actualizado_en) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${sqlAhora()}, ${sqlAhora()})`,
-    [v.nombre, v.categoria, v.estado, v.detalle, v.precio, v.moneda, JSON.stringify(v.memorias), v.disponible ? 1 : 0, v.visible ? 1 : 0, Number(ultimo.orden) + 1]
+    `INSERT INTO catalogo_items (nombre, categoria, estado, detalle, marca, modelo, precio, moneda, memorias, disponible, visible, orden, creado_en, actualizado_en) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${sqlAhora()}, ${sqlAhora()})`,
+    [v.nombre, v.categoria, v.estado, v.detalle, v.marca, v.modelo, v.precio, v.moneda, JSON.stringify(v.memorias), v.disponible ? 1 : 0, v.visible ? 1 : 0, Number(ultimo.orden) + 1]
   );
   return { ok: true, id: info.lastInsertRowid, mensaje: `Publicación "${v.nombre}" creada.` };
 }
@@ -823,9 +999,9 @@ export async function actualizarItemCatalogo(id: number, campos: any) {
   const a = filaAItem(actual);
   const v = validarItemCatalogo({ ...a, ...campos, memorias: campos.memorias ?? a.memorias });
   await run(
-    `UPDATE catalogo_items SET nombre = ?, categoria = ?, estado = ?, detalle = ?, precio = ?, moneda = ?, memorias = ?, disponible = ?, visible = ?,
+    `UPDATE catalogo_items SET nombre = ?, categoria = ?, estado = ?, detalle = ?, marca = ?, modelo = ?, precio = ?, moneda = ?, memorias = ?, disponible = ?, visible = ?,
        actualizado_en = ${sqlAhora()} WHERE id = ?`,
-    [v.nombre, v.categoria, v.estado, v.detalle, v.precio, v.moneda, JSON.stringify(v.memorias), v.disponible ? 1 : 0, v.visible ? 1 : 0, id]
+    [v.nombre, v.categoria, v.estado, v.detalle, v.marca, v.modelo, v.precio, v.moneda, JSON.stringify(v.memorias), v.disponible ? 1 : 0, v.visible ? 1 : 0, id]
   );
   return { ok: true, mensaje: `Publicación "${v.nombre}" actualizada.` };
 }
@@ -1079,7 +1255,7 @@ export async function consultarPersona(args: { nombre: string }) {
   const persona = await findPersona(args.nombre);
   if (!persona) return { encontrada: false, mensaje: `No encontre a "${args.nombre}" en el sistema.` };
   const prestamos = await all(`SELECT * FROM prestamos WHERE persona_id = ? ORDER BY fecha DESC`, [persona.id]);
-  const canjes = await all(`SELECT * FROM canjes WHERE persona_id = ? ORDER BY fecha DESC`, [persona.id]);
+  const canjes = (await all(`SELECT ${COLUMNAS_CANJE} FROM canjes JOIN personas ON personas.id = canjes.persona_id WHERE persona_id = ? ORDER BY canjes.fecha DESC`, [persona.id])).map(conPendiente);
   const compras = await all(
     `SELECT movimientos_stock.*, productos.nombre as producto_nombre FROM movimientos_stock JOIN productos ON productos.id = movimientos_stock.producto_id WHERE persona_id = ? AND tipo = 'salida' ORDER BY fecha DESC LIMIT 20`,
     [persona.id]
@@ -1092,9 +1268,7 @@ export async function consultarEstadoGeneral() {
   const prestamos_activos = await all(
     `SELECT prestamos.*, personas.nombre as persona_nombre FROM prestamos JOIN personas ON personas.id = prestamos.persona_id WHERE prestamos.estado != 'pagado' ORDER BY prestamos.fecha`
   );
-  const canjes_pendientes = await all(
-    `SELECT canjes.*, personas.nombre as persona_nombre FROM canjes JOIN personas ON personas.id = canjes.persona_id WHERE canjes.estado = 'pendiente' ORDER BY canjes.fecha`
-  );
+  const canjes_pendientes = (await all(`SELECT ${COLUMNAS_CANJE} FROM canjes JOIN personas ON personas.id = canjes.persona_id WHERE canjes.estado = 'pendiente' ORDER BY canjes.fecha`)).map(conPendiente);
   const empleados = await all(`SELECT nombre, descuento_pct, telefono FROM personas WHERE es_empleado = 1 ORDER BY nombre`);
   return { productos, prestamos_activos, canjes_pendientes, empleados };
 }
@@ -1692,10 +1866,12 @@ const TABLAS_BACKUP = [
   "prestamos",
   "pagos_prestamo",
   "canjes",
+  "pagos_canje",
   "pedidos_pendientes",
   "respuestas_predefinidas",
   "gastos",
   "objetivos",
+  "notas",
 ];
 
 export async function exportarTodo(): Promise<Record<string, any[]>> {

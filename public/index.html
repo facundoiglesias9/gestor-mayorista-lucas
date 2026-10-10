@@ -61,21 +61,17 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
       <input id="buscar" type="search" placeholder="Buscar modelo, capacidad, color…" autocomplete="off" aria-label="Buscar en el catálogo" />
     </label>
-    <div class="categorias" id="categorias" role="tablist" aria-label="Categorías"></div>
+    <div class="categorias-marco">
+      <div class="categorias" id="categorias" role="tablist" aria-label="Categorías"></div>
+    </div>
   </section>
 
-  <div class="lista-cabecera">
+  <!-- Filtros desplegables (marca -> modelo, estado) y orden. Se dibujan en catalogo.js segun lo
+       que haya en la categoria elegida. -->
+  <div class="filtros-barra">
+    <div class="filtros" id="filtros" role="group" aria-label="Filtros"></div>
     <p class="resultado-info" id="resultado-info" aria-live="polite"></p>
-    <label class="orden">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/></svg>
-      <span class="orden-texto">Ordenar</span>
-      <select id="orden" aria-label="Ordenar productos">
-        <option value="destacados">Destacados</option>
-        <option value="precio-asc">Menor precio</option>
-        <option value="precio-desc">Mayor precio</option>
-        <option value="nombre">Nombre (A–Z)</option>
-      </select>
-    </label>
+    <div class="orden-lugar" id="orden-lugar"></div>
   </div>
   <section class="grilla" id="grilla" aria-label="Productos"></section>
 
@@ -96,6 +92,14 @@
 <dialog id="ficha" class="ficha" aria-labelledby="ficha-nombre">
   <div class="ficha-contenido" id="ficha-contenido"></div>
 </dialog>
+
+<!-- La lista que se despliega al tocar un filtro (debajo del boton; en el celular, una hoja que sube
+     desde abajo). Va aca y no adentro de la barra de filtros: la barra pegada tiene un desenfoque de
+     fondo, y eso hace que lo que tenga adentro no se pueda ubicar sobre toda la pantalla. -->
+<div class="desplegable" id="desplegable" hidden>
+  <div class="desplegable-fondo"></div>
+  <div class="desplegable-panel" id="desplegable-panel"></div>
+</div>
 
 <footer class="pie">
   <div class="pie-contenido">
