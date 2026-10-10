@@ -149,9 +149,13 @@ const ICONO_BUSCAR_VACIO = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle 
 
 const ICONO_FLECHA = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>`;
 const ICONO_CERRAR = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+const ICONO_DESPLEGAR = `<svg class="filtro-flecha" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>`;
+const ICONO_TILDE = `<svg class="opcion-tilde" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
+const ICONO_ORDEN = `<svg class="filtro-icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/></svg>`;
 
 // ---------- estado ----------
-const estado = { productos: [], tienda: null, dolar: null, categoria: "Todos", busqueda: "", orden: "destacados" };
+// marca, modelo y condicion (Sellado / Usado...) son los filtros desplegables; null = todos.
+const estado = { productos: [], tienda: null, dolar: null, categoria: "Todos", busqueda: "", orden: "destacados", marca: null, modelo: null, condicion: null };
 
 function linkWhatsapp(texto) {
   return `https://wa.me/${estado.tienda.whatsapp}?text=${encodeURIComponent(texto)}`;
@@ -233,17 +237,29 @@ function iconoBateria(porcentaje) {
   return `<svg class="pila pila-${nivel}" viewBox="0 0 20 10" aria-hidden="true"><rect x="0.6" y="0.6" width="16.8" height="8.8" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="18.2" y="3.2" width="1.4" height="3.6" rx="0.6" fill="currentColor"/><rect x="2" y="2" width="${ancho}" height="6" rx="1.2" class="pila-carga"/></svg>`;
 }
 
-function productosFiltrados() {
+function coincideBusqueda(p) {
   const terminos = normalizar(estado.busqueda).split(/\s+/).filter(Boolean);
-  let lista = estado.productos.filter((p) => {
-    if (estado.categoria !== "Todos" && p.categoria !== estado.categoria) return false;
-    const texto = normalizar(
-      [p.nombre, p.categoria, p.estado, p.detalle, ...p.memorias.map((m) => m.capacidad), ...p.fotos.map((f) => f.color), ...(p.unidades ?? []).map((u) => `${u.bateria}%`)]
-        .filter(Boolean)
-        .join(" ")
-    );
-    return terminos.every((t) => texto.includes(t));
-  });
+  if (!terminos.length) return true;
+  const texto = normalizar(
+    [p.nombre, p.categoria, p.estado, p.marca, p.detalle, ...p.memorias.map((m) => m.capacidad), ...p.fotos.map((f) => f.color), ...(p.unidades ?? []).map((u) => `${u.bateria}%`)]
+      .filter(Boolean)
+      .join(" ")
+  );
+  return terminos.every((t) => texto.includes(t));
+}
+
+// Si el producto pasa la categoria, la busqueda y los filtros, salvo los de `ignorar`: asi cada
+// desplegable cuenta sus opciones sin que su propia eleccion las achique.
+function pasaFiltros(p, ignorar = []) {
+  if (estado.categoria !== "Todos" && p.categoria !== estado.categoria) return false;
+  if (estado.marca && !ignorar.includes("marca") && p.marca !== estado.marca) return false;
+  if (estado.modelo && !ignorar.includes("modelo") && p.modelo !== estado.modelo) return false;
+  if (estado.condicion && !ignorar.includes("condicion") && p.estado !== estado.condicion) return false;
+  return coincideBusqueda(p);
+}
+
+function productosFiltrados() {
+  let lista = estado.productos.filter((p) => pasaFiltros(p));
   if (estado.orden === "precio-asc") lista = [...lista].sort((a, b) => precioParaOrdenar(a) - precioParaOrdenar(b));
   if (estado.orden === "precio-desc") lista = [...lista].sort((a, b) => (precioParaOrdenar(b) === Infinity ? -1 : precioParaOrdenar(b)) - (precioParaOrdenar(a) === Infinity ? -1 : precioParaOrdenar(a)));
   if (estado.orden === "nombre") lista = [...lista].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
@@ -583,24 +599,327 @@ dialogoFicha.addEventListener("click", (ev) => {
   if (bateria) cambiarBateria(p, Number(bateria.dataset.unidad));
 });
 
-// ---------- dibujo de la pagina ----------
+// ---------- categorias ----------
+// Pestañas con un fondo que se desliza hasta la elegida.
+const contenedorCategorias = document.getElementById("categorias");
+
 function dibujarCategorias() {
   const cuenta = { Todos: estado.productos.length };
   for (const p of estado.productos) cuenta[p.categoria] = (cuenta[p.categoria] ?? 0) + 1;
   const categorias = ["Todos", ...Object.keys(cuenta).filter((c) => c !== "Todos").sort((a, b) => cuenta[b] - cuenta[a] || a.localeCompare(b, "es"))];
-  document.getElementById("categorias").innerHTML = categorias
-    .map(
-      (c) =>
-        `<button type="button" class="chip${c === estado.categoria ? " activo" : ""}" role="tab" aria-selected="${c === estado.categoria}" data-categoria="${escapeHtml(c)}">${escapeHtml(c)}<span class="cantidad">${cuenta[c]}</span></button>`
-    )
-    .join("");
+  contenedorCategorias.innerHTML =
+    `<span class="categorias-indicador" aria-hidden="true"></span>` +
+    categorias
+      .map(
+        (c) =>
+          `<button type="button" class="chip${c === estado.categoria ? " activo" : ""}" role="tab" aria-selected="${c === estado.categoria}" data-categoria="${escapeHtml(c)}">${escapeHtml(c)}<span class="cantidad">${cuenta[c]}</span></button>`
+      )
+      .join("");
+  moverIndicador(false);
+  revisarDesborde();
+  // Cuando termina de cargar la letra cambia el ancho de las pestañas: el fondo se reacomoda.
+  const observador = new ResizeObserver(() => {
+    moverIndicador(false);
+    revisarDesborde();
+  });
+  contenedorCategorias.querySelectorAll(".chip").forEach((chip) => observador.observe(chip));
 }
 
+function moverIndicador(animar = true) {
+  const indicador = contenedorCategorias.querySelector(".categorias-indicador");
+  const activa = contenedorCategorias.querySelector(".chip.activo");
+  if (!indicador || !activa) return;
+  if (!animar) indicador.style.transition = "none";
+  indicador.style.width = `${activa.offsetWidth}px`;
+  indicador.style.transform = `translateX(${activa.offsetLeft}px)`;
+  if (!animar) {
+    void indicador.offsetWidth;
+    indicador.style.transition = "";
+  }
+}
+
+// Si las pestañas no entran, se desvanecen en el borde del lado donde hay mas.
+function revisarDesborde() {
+  const c = contenedorCategorias;
+  c.parentElement.classList.toggle("hay-antes", c.scrollLeft > 2);
+  c.parentElement.classList.toggle("hay-despues", c.scrollLeft + c.clientWidth < c.scrollWidth - 2);
+}
+
+function marcarCategoria(categoria) {
+  estado.categoria = categoria;
+  contenedorCategorias.querySelectorAll(".chip").forEach((b) => {
+    const activa = b.dataset.categoria === categoria;
+    b.classList.toggle("activo", activa);
+    b.setAttribute("aria-selected", String(activa));
+  });
+  moverIndicador();
+}
+
+function elegirCategoria(categoria) {
+  if (categoria === estado.categoria) return;
+  marcarCategoria(categoria);
+  soltarFiltrosVacios();
+  actualizarLista();
+}
+
+// ---------- filtros desplegables: marca -> modelo, estado, y el orden ----------
+const FILTROS = {
+  marca: { titulo: "Marca", todos: "Todas las marcas", campo: "marca" },
+  modelo: { titulo: "Modelo", todos: "Todos los modelos", campo: "modelo" },
+  condicion: { titulo: "Estado", todos: "Todos los estados", campo: "estado" },
+};
+const ORDENES = [
+  { valor: "destacados", texto: "Destacados" },
+  { valor: "precio-asc", texto: "Menor precio" },
+  { valor: "precio-desc", texto: "Mayor precio" },
+  { valor: "nombre", texto: "Nombre (A–Z)" },
+];
+const ORDEN_ESTADOS = ["Sellado", "Usado - como nuevo", "Usado"];
+
+function posicionEstado(valor) {
+  const i = ORDEN_ESTADOS.indexOf(valor);
+  return i === -1 ? ORDEN_ESTADOS.length : i;
+}
+
+// Las opciones de un filtro con lo que hay (categoria, busqueda y los otros filtros), sin las
+// vacias. La marca no mira el modelo elegido: al cambiar de marca, el modelo se suelta.
+function opcionesFiltro(clave) {
+  const { campo } = FILTROS[clave];
+  const base = estado.productos.filter((p) => pasaFiltros(p, clave === "marca" ? ["marca", "modelo"] : [clave]));
+  const grupos = new Map();
+  for (const p of base) if (p[campo]) grupos.set(p[campo], [...(grupos.get(p[campo]) ?? []), p]);
+  const opciones = [...grupos].map(([valor, productos]) => ({ valor, productos }));
+  if (clave === "modelo") return opciones.sort((a, b) => a.valor.localeCompare(b.valor, "es", { numeric: true }));
+  if (clave === "condicion") return opciones.sort((a, b) => posicionEstado(a.valor) - posicionEstado(b.valor) || a.valor.localeCompare(b.valor, "es"));
+  return opciones.sort((a, b) => b.productos.length - a.productos.length || a.valor.localeCompare(b.valor, "es"));
+}
+
+// La marca, si hay equipos; el modelo, recien cuando se eligio una marca; el estado, si hay mas de
+// uno para elegir.
+function filtrosVisibles() {
+  const visibles = [];
+  if (estado.marca || opcionesFiltro("marca").length) visibles.push("marca");
+  if (estado.marca && (estado.modelo || opcionesFiltro("modelo").length)) visibles.push("modelo");
+  if (estado.condicion || opcionesFiltro("condicion").length > 1) visibles.push("condicion");
+  return visibles;
+}
+
+// Al cambiar de categoria se sueltan los filtros que ahi no tienen nada (ej: Apple, en Vapers).
+function soltarFiltrosVacios() {
+  if (estado.marca && !opcionesFiltro("marca").some((o) => o.valor === estado.marca)) estado.marca = estado.modelo = null;
+  if (estado.modelo && !opcionesFiltro("modelo").some((o) => o.valor === estado.modelo)) estado.modelo = null;
+  if (estado.condicion && !opcionesFiltro("condicion").some((o) => o.valor === estado.condicion)) estado.condicion = null;
+}
+
+function hayFiltrosElegidos() {
+  return Boolean(estado.marca || estado.modelo || estado.condicion);
+}
+
+// Saca un boton de la barra con una animacion corta.
+function quitarConAnimacion(el) {
+  el.classList.add("saliendo");
+  setTimeout(() => el.remove(), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 160);
+}
+
+// Cambia el contenido solo si cambio: asi el boton no se rehace (y no corta sus animaciones) cada
+// vez que se redibuja la barra.
+function ponerHtml(el, html) {
+  if (el._html === html) return;
+  el._html = html;
+  el.innerHTML = html;
+}
+
+function llenarFiltro(grupo, clave) {
+  const valor = estado[clave];
+  const { titulo } = FILTROS[clave];
+  grupo.classList.toggle("activo", Boolean(valor));
+  ponerHtml(
+    grupo,
+    `<button type="button" class="filtro" data-filtro="${clave}" aria-haspopup="listbox" aria-expanded="false"><span class="filtro-etiqueta">${titulo}</span>${
+      valor ? `<span class="filtro-valor">${escapeHtml(valor)}</span>` : ""
+    }${ICONO_DESPLEGAR}</button>${
+      valor ? `<button type="button" class="filtro-quitar" data-quitar="${clave}" aria-label="Quitar ${titulo.toLowerCase()}: ${escapeHtml(valor)}" title="Quitar">${ICONO_CERRAR}</button>` : ""
+    }`
+  );
+}
+
+function dibujarFiltros() {
+  const contenedor = document.getElementById("filtros");
+  const visibles = filtrosVisibles();
+  const primeraVez = !contenedor.dataset.listo;
+  contenedor.dataset.listo = "1";
+  contenedor.querySelectorAll(".filtro-grupo:not(.saliendo)").forEach((g) => {
+    if (!visibles.includes(g.dataset.grupo)) quitarConAnimacion(g);
+  });
+  let anterior = null;
+  for (const clave of visibles) {
+    let grupo = contenedor.querySelector(`.filtro-grupo[data-grupo="${clave}"]:not(.saliendo)`);
+    if (!grupo) {
+      grupo = document.createElement("div");
+      grupo.className = `filtro-grupo${primeraVez ? "" : " aparece"}`;
+      grupo.dataset.grupo = clave;
+      if (anterior) anterior.after(grupo);
+      else contenedor.prepend(grupo);
+      // En el celular la fila se desliza de costado: que se vea el filtro que aparecio (el modelo).
+      if (!primeraVez) requestAnimationFrame(() => grupo.scrollIntoView?.({ block: "nearest", inline: "nearest", behavior: "smooth" }));
+    }
+    llenarFiltro(grupo, clave);
+    anterior = grupo;
+  }
+  let limpiar = contenedor.querySelector(".filtros-limpiar:not(.saliendo)");
+  if (hayFiltrosElegidos() && !limpiar) {
+    limpiar = document.createElement("button");
+    limpiar.type = "button";
+    limpiar.className = "filtros-limpiar aparece";
+    limpiar.dataset.limpiar = "";
+    limpiar.textContent = "Limpiar filtros";
+    contenedor.append(limpiar);
+  } else if (!hayFiltrosElegidos() && limpiar) {
+    quitarConAnimacion(limpiar);
+  }
+  dibujarOrden();
+}
+
+function dibujarOrden() {
+  const actual = ORDENES.find((o) => o.valor === estado.orden) ?? ORDENES[0];
+  ponerHtml(
+    document.getElementById("orden-lugar"),
+    `<div class="filtro-grupo filtro-grupo-orden"><button type="button" class="filtro" data-filtro="orden" aria-haspopup="listbox" aria-expanded="false" aria-label="Ordenar: ${actual.texto}">${ICONO_ORDEN}<span class="filtro-etiqueta">Ordenar</span><span class="filtro-valor">${actual.texto}</span>${ICONO_DESPLEGAR}</button></div>`
+  );
+}
+
+function actualizarLista() {
+  dibujarFiltros();
+  dibujarProductos();
+}
+
+// ---------- la lista que se despliega ----------
+const desplegable = document.getElementById("desplegable");
+const panelDesplegable = document.getElementById("desplegable-panel");
+let abierto = null; // { clave, boton }
+let temporizadorCierre = null;
+
+const enCelular = () => window.matchMedia("(max-width: 640px)").matches;
+
+// A la derecha de cada opcion: en los modelos, el precio mas barato; en el resto, cuantos hay.
+function extraOpcion(clave, productos) {
+  if (clave !== "modelo") return String(productos.length);
+  const desde = productos
+    .map(precioDesde)
+    .filter(Boolean)
+    .reduce((a, b) => (!a || aDolares(b.precio, b.moneda) < aDolares(a.precio, a.moneda) ? b : a), null);
+  return desde ? `desde ${formatoPrecio(desde.precio, desde.moneda)}` : "";
+}
+
+function filasDesplegable(clave) {
+  if (clave === "orden") return ORDENES.map((o) => ({ valor: o.valor, texto: o.texto, elegida: o.valor === estado.orden }));
+  return [
+    { valor: "", texto: FILTROS[clave].todos, elegida: !estado[clave], todas: true },
+    ...opcionesFiltro(clave).map((o) => ({ valor: o.valor, texto: o.valor, elegida: o.valor === estado[clave], extra: extraOpcion(clave, o.productos) })),
+  ];
+}
+
+function abrirDesplegable(clave, boton) {
+  clearTimeout(temporizadorCierre);
+  if (abierto) cerrarDesplegable({ inmediato: true });
+  const titulo = clave === "orden" ? "Ordenar por" : FILTROS[clave].titulo;
+  panelDesplegable.innerHTML = `
+    <div class="desplegable-cabecera"><span class="desplegable-titulo" id="desplegable-titulo">${titulo}</span><button type="button" class="desplegable-cerrar" data-cerrar-desplegable aria-label="Cerrar">${ICONO_CERRAR}</button></div>
+    <div class="desplegable-lista" role="listbox" aria-labelledby="desplegable-titulo">${filasDesplegable(clave)
+      .map(
+        (f) =>
+          `<button type="button" role="option" class="desplegable-opcion${f.todas ? " todas" : ""}" aria-selected="${f.elegida}" data-valor="${escapeHtml(f.valor)}"><span class="opcion-texto">${escapeHtml(f.texto)}</span>${
+            f.extra ? `<span class="opcion-extra">${escapeHtml(f.extra)}</span>` : ""
+          }${ICONO_TILDE}</button>`
+      )
+      .join("")}</div>`;
+  abierto = { clave, boton };
+  boton.setAttribute("aria-expanded", "true");
+  boton.closest(".filtro-grupo")?.classList.add("abierto");
+  const hoja = enCelular();
+  desplegable.classList.toggle("hoja", hoja);
+  desplegable.classList.remove("cerrando");
+  panelDesplegable.style.cssText = "";
+  desplegable.hidden = false;
+  if (hoja) document.documentElement.classList.add("hoja-abierta");
+  else ubicarDesplegable();
+  const elegida = panelDesplegable.querySelector('[aria-selected="true"]') ?? panelDesplegable.querySelector('[role="option"]');
+  elegida?.focus({ preventScroll: true });
+  elegida?.scrollIntoView({ block: "nearest" });
+}
+
+// Debajo del boton, sin pasarse de la pantalla (si no entra a la derecha, se alinea al borde
+// derecho del boton). En el celular no hace falta: es una hoja abajo de todo.
+function ubicarDesplegable() {
+  if (!abierto || desplegable.classList.contains("hoja")) return;
+  const r = (abierto.boton.closest(".filtro-grupo") ?? abierto.boton).getBoundingClientRect();
+  // Si al bajar el boton queda tapado por la barra de busqueda pegada arriba (o sale de la
+  // pantalla), la lista se cierra en vez de quedar flotando sola.
+  const tope = document.querySelector(".herramientas").getBoundingClientRect().bottom;
+  if (r.top < tope || r.top > window.innerHeight) return cerrarDesplegable();
+  const panel = panelDesplegable;
+  panel.style.minWidth = `${Math.max(r.width, 220)}px`;
+  const ancho = panel.offsetWidth;
+  const alDerecho = r.left + ancho > window.innerWidth - 12;
+  panel.style.left = `${alDerecho ? Math.max(12, r.right - ancho) : r.left}px`;
+  panel.style.top = `${r.bottom + 8}px`;
+  panel.style.maxHeight = `${Math.max(180, window.innerHeight - r.bottom - 24)}px`;
+  panel.style.transformOrigin = alDerecho ? "top right" : "top left";
+}
+
+function cerrarDesplegable({ inmediato = false, devolverFoco = false } = {}) {
+  if (!abierto) return;
+  const { clave, boton } = abierto;
+  abierto = null;
+  boton.setAttribute("aria-expanded", "false");
+  boton.closest(".filtro-grupo")?.classList.remove("abierto");
+  document.documentElement.classList.remove("hoja-abierta");
+  const terminar = () => {
+    desplegable.hidden = true;
+    desplegable.classList.remove("cerrando");
+    panelDesplegable.innerHTML = "";
+  };
+  clearTimeout(temporizadorCierre);
+  if (inmediato || window.matchMedia("(prefers-reduced-motion: reduce)").matches) terminar();
+  else {
+    desplegable.classList.add("cerrando");
+    temporizadorCierre = setTimeout(terminar, desplegable.classList.contains("hoja") ? 220 : 130);
+  }
+  if (devolverFoco) enfocarFiltro(clave);
+}
+
+function enfocarFiltro(clave) {
+  document.querySelector(`[data-filtro="${clave}"]`)?.focus({ preventScroll: true });
+}
+
+function elegirOpcion(valor) {
+  if (!abierto) return;
+  const { clave } = abierto;
+  cerrarDesplegable();
+  if (clave === "orden") estado.orden = valor;
+  else {
+    const nuevo = valor || null;
+    if (estado[clave] === nuevo) return enfocarFiltro(clave);
+    estado[clave] = nuevo;
+    if (clave === "marca") estado.modelo = null;
+  }
+  actualizarLista();
+  enfocarFiltro(clave);
+}
+
+function quitarFiltro(clave) {
+  estado[clave] = null;
+  if (clave === "marca") estado.modelo = null;
+  actualizarLista();
+  enfocarFiltro(clave);
+}
+
+// ---------- grilla ----------
 function dibujarProductos() {
   const lista = productosFiltrados();
   const grilla = document.getElementById("grilla");
   document.getElementById("resultado-info").textContent = estado.productos.length
-    ? `${lista.length} ${lista.length === 1 ? "producto" : "productos"}${estado.categoria !== "Todos" ? ` en ${estado.categoria}` : ""}${estado.busqueda ? ` para "${estado.busqueda}"` : ""}`
+    ? `${lista.length} ${lista.length === 1 ? "producto" : "productos"}${estado.busqueda ? ` para "${estado.busqueda}"` : ""}`
     : "";
   if (!lista.length) {
     grilla.innerHTML = estado.productos.length
@@ -626,12 +945,13 @@ function mostrarEsqueleto() {
   document.getElementById("grilla").innerHTML = tarjeta.repeat(8);
 }
 
+// "Ver todo" (cuando no hay resultados): saca todo, incluida la categoria y la busqueda.
 function limpiarFiltros() {
-  estado.categoria = "Todos";
   estado.busqueda = "";
   document.getElementById("buscar").value = "";
-  dibujarCategorias();
-  dibujarProductos();
+  estado.marca = estado.modelo = estado.condicion = null;
+  marcarCategoria("Todos");
+  actualizarLista();
 }
 
 // ---------- tema claro / oscuro ----------
@@ -664,13 +984,65 @@ document.getElementById("cambiar-tema").addEventListener("click", () => {
 });
 
 // ---------- eventos ----------
-document.getElementById("categorias").addEventListener("click", (ev) => {
+contenedorCategorias.addEventListener("click", (ev) => {
   const chip = ev.target.closest(".chip");
   if (!chip) return;
-  estado.categoria = chip.dataset.categoria;
-  dibujarCategorias();
-  dibujarProductos();
-  chip.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+  elegirCategoria(chip.dataset.categoria);
+  chip.scrollIntoView?.({ inline: "nearest", block: "nearest", behavior: "smooth" });
+});
+contenedorCategorias.addEventListener("scroll", revisarDesborde, { passive: true });
+
+const barraFiltros = document.querySelector(".filtros-barra");
+barraFiltros.addEventListener("click", (ev) => {
+  const quitar = ev.target.closest("[data-quitar]");
+  if (quitar) return quitarFiltro(quitar.dataset.quitar);
+  if (ev.target.closest("[data-limpiar]")) {
+    estado.marca = estado.modelo = estado.condicion = null;
+    actualizarLista();
+    return document.querySelector("#filtros [data-filtro]")?.focus({ preventScroll: true });
+  }
+  const boton = ev.target.closest("[data-filtro]");
+  if (!boton) return;
+  if (abierto?.boton === boton) cerrarDesplegable();
+  else abrirDesplegable(boton.dataset.filtro, boton);
+});
+// Con el teclado: flecha abajo (o arriba) sobre un filtro tambien lo abre.
+barraFiltros.addEventListener("keydown", (ev) => {
+  const boton = ev.target.closest("[data-filtro]");
+  if (!boton || (ev.key !== "ArrowDown" && ev.key !== "ArrowUp") || abierto?.boton === boton) return;
+  ev.preventDefault();
+  abrirDesplegable(boton.dataset.filtro, boton);
+});
+
+panelDesplegable.addEventListener("click", (ev) => {
+  if (ev.target.closest("[data-cerrar-desplegable]")) return cerrarDesplegable({ devolverFoco: true });
+  const opcion = ev.target.closest('[role="option"]');
+  if (opcion) elegirOpcion(opcion.dataset.valor);
+});
+panelDesplegable.addEventListener("keydown", (ev) => {
+  const opciones = [...panelDesplegable.querySelectorAll('[role="option"]')];
+  const i = opciones.indexOf(document.activeElement);
+  const ir = (n) => {
+    ev.preventDefault();
+    opciones[Math.max(0, Math.min(opciones.length - 1, n))]?.focus();
+  };
+  if (ev.key === "ArrowDown") ir(i + 1);
+  else if (ev.key === "ArrowUp") ir(i - 1);
+  else if (ev.key === "Home") ir(0);
+  else if (ev.key === "End") ir(opciones.length - 1);
+  else if (ev.key === "Escape" || ev.key === "Tab") {
+    ev.preventDefault();
+    cerrarDesplegable({ devolverFoco: true });
+  }
+});
+// Tocar afuera cierra (en el celular, tocar el fondo oscuro).
+document.addEventListener("pointerdown", (ev) => {
+  if (!abierto || panelDesplegable.contains(ev.target) || abierto.boton.contains(ev.target)) return;
+  cerrarDesplegable();
+});
+window.addEventListener("scroll", ubicarDesplegable, { passive: true });
+window.addEventListener("resize", () => {
+  if (abierto && !desplegable.classList.contains("hoja")) cerrarDesplegable({ inmediato: true });
 });
 
 // Tocar una tarjeta abre la ficha (el link cambia la direccion a #p-ID y eso la abre).
@@ -683,13 +1055,8 @@ document.getElementById("buscar").addEventListener("input", (ev) => {
   clearTimeout(temporizadorBusqueda);
   temporizadorBusqueda = setTimeout(() => {
     estado.busqueda = ev.target.value.trim();
-    dibujarProductos();
+    actualizarLista();
   }, 160);
-});
-
-document.getElementById("orden").addEventListener("change", (ev) => {
-  estado.orden = ev.target.value;
-  dibujarProductos();
 });
 
 // La barra de busqueda queda pegada arriba al bajar; con sombra solo cuando ya esta pegada.
@@ -731,7 +1098,7 @@ async function iniciar() {
       document.getElementById("pie-texto").textContent = `Precios en dólares convertidos al dólar blue (${formatoPrecio(estado.dolar, "ARS")}) como referencia. Precios sujetos a cambio sin previo aviso.`;
     }
     dibujarCategorias();
-    dibujarProductos();
+    actualizarLista();
     if (idEnDireccion() != null) abrirFicha(idEnDireccion());
   } catch {
     document.getElementById("grilla").innerHTML = `<div class="vacio">${ICONO_BUSCAR_VACIO}<strong>No pudimos cargar el catálogo</strong>Probá recargar la página en un ratito.</div>`;

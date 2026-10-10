@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { get, all, run, enTransaccion, sqlAhora, ZONA_ARGENTINA, db, asegurarTablas } from "./db.js";
 import { inferirCategoria } from "./categorizador.js";
-import { estadoYBateriaDelNombre, nombreConBateria, validarBateria, validarEstado } from "./equipos.js";
+import { estadoYBateriaDelNombre, marcaYModelo, nombreConBateria, validarBateria, validarEstado } from "./equipos.js";
 
 // Esta es la UNICA capa que toca la base de datos. Tanto el cerebro (Claude, via tools.ts)
 // como el panel web (via panel-server.ts) llaman a estas mismas funciones, para que el chat
@@ -775,15 +775,20 @@ export async function listarItemsCatalogo() {
 }
 
 // Lo que ve el cliente: solo las publicaciones visibles. Si no tengo ninguna de sus memorias, la
-// publicacion entera cuenta como "sin stock".
+// publicacion entera cuenta como "sin stock". Los equipos llevan marca y modelo para los filtros.
 export async function listarCatalogo() {
   const items = await listarItemsCatalogo();
   return items
     .filter((i) => i.visible)
-    .map(({ visible: _visible, orden: _orden, ...i }) => ({
-      ...i,
-      disponible: i.disponible && (i.memorias.length === 0 || i.memorias.some((m) => m.disponible)),
-    }));
+    .map(({ visible: _visible, orden: _orden, ...i }) => {
+      const equipo = marcaYModelo(i.nombre);
+      return {
+        ...i,
+        marca: equipo?.marca ?? null,
+        modelo: equipo?.modelo ?? null,
+        disponible: i.disponible && (i.memorias.length === 0 || i.memorias.some((m) => m.disponible)),
+      };
+    });
 }
 
 function validarItemCatalogo(datos: any) {

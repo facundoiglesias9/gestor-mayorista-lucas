@@ -39,7 +39,11 @@
   --esqueleto-1: #eeeef1;
   --esqueleto-2: #f6f6f8;
 
+  --sombra-desplegable: 0 14px 40px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.06);
+
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  /* frena suave al llegar, sin rebote: para lo que se desliza (pestañas, listas, hojas) */
+  --resorte: cubic-bezier(0.32, 0.72, 0, 1);
   --dur-rapida: 150ms;
   --dur: 260ms;
   --dur-lenta: 520ms;
@@ -76,6 +80,7 @@
   --escenario-foto: #ececef;
   --esqueleto-1: #1f1f22;
   --esqueleto-2: #2a2a2e;
+  --sombra-desplegable: 0 18px 48px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 /* al cambiar de tema, los colores pasan suave (solo en ese momento, no al cargar la pagina) */
 .tema-transicion, .tema-transicion *, .tema-transicion *::before, .tema-transicion *::after {
@@ -84,6 +89,10 @@
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+/* el brillo de atras del titulo se pasa de los costados: sin esto, en el celular la pagina queda
+   mas ancha que la pantalla (se achica un poco y lo que va pegado abajo queda cortado). "clip" y
+   no "hidden": asi la barra de arriba sigue quedando pegada al bajar */
+html, body { overflow-x: clip; }
 body {
   margin: 0;
   background: var(--fondo);
@@ -292,59 +301,225 @@ main { max-width: 1240px; margin: 0 auto; padding: 0 24px 64px; }
 }
 .buscador input:focus { outline: none; border-color: var(--acento); box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.15); }
 
-/* las categorias se deslizan de costado; se desvanecen en los bordes si no entran */
-.categorias {
-  flex: 1;
+/* las categorias: pestañas en un riel, con un fondo oscuro que se desliza hasta la elegida. Si no
+   entran, el riel se desliza de costado y se desvanece del lado donde hay mas */
+.categorias-marco {
+  flex: 0 1 auto;
   min-width: 0;
+  border: 1px solid var(--borde);
+  border-radius: 999px;
+  background: var(--superficie);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+}
+.categorias {
+  position: relative;
   display: flex;
-  gap: 8px;
+  gap: 2px;
+  padding: 4px;
   overflow-x: auto;
   scrollbar-width: none;
-  padding: 2px;
-  margin: -2px;
-  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
-  mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
 }
 .categorias::-webkit-scrollbar { display: none; }
+.categorias-marco.hay-despues .categorias {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent);
+}
+.categorias-marco.hay-antes .categorias {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px);
+  mask-image: linear-gradient(90deg, transparent, #000 40px);
+}
+.categorias-marco.hay-antes.hay-despues .categorias {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 40px, #000 calc(100% - 40px), transparent);
+}
+.categorias-indicador {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: 0;
+  border-radius: 999px;
+  background: var(--texto);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
+  pointer-events: none;
+  transition: transform 420ms var(--resorte), width 420ms var(--resorte);
+}
 .chip {
+  position: relative;
+  z-index: 1;
   flex: none;
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 8px 15px;
+  padding: 7px 15px;
+  border: none;
   border-radius: 999px;
-  border: 1px solid var(--borde);
-  background: var(--superficie);
+  background: transparent;
   color: var(--texto-suave);
   font-family: inherit;
   font-size: 0.87rem;
   font-weight: 550;
+  white-space: nowrap;
   cursor: pointer;
-  transition: background var(--dur-rapida) var(--ease), color var(--dur-rapida) var(--ease), border-color var(--dur-rapida) var(--ease), transform var(--dur-rapida) var(--ease);
+  transition: color 300ms var(--ease), background var(--dur-rapida) var(--ease), transform var(--dur-rapida) var(--ease);
+  -webkit-tap-highlight-color: transparent;
 }
-.chip:hover { border-color: var(--borde-fuerte); color: var(--texto); }
+.chip:not(.activo):hover { color: var(--texto); background: color-mix(in srgb, var(--texto) 6%, transparent); }
 .chip:active { transform: scale(0.96); }
-.chip .cantidad { font-size: 0.75rem; color: var(--texto-tenue); font-variant-numeric: tabular-nums; }
-.chip.activo { background: var(--texto); border-color: var(--texto); color: var(--texto-invertido); }
-.chip.activo .cantidad { color: var(--texto-invertido); opacity: 0.65; }
+.chip .cantidad { font-size: 0.74rem; color: var(--texto-tenue); font-variant-numeric: tabular-nums; transition: color 300ms var(--ease); }
+.chip.activo { color: var(--texto-invertido); }
+.chip.activo .cantidad { color: var(--texto-invertido); opacity: 0.6; }
 
-.lista-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px 2px 16px; }
-.resultado-info { margin: 0; color: var(--texto-tenue); font-size: 0.86rem; min-height: 1.3em; }
-.orden { flex: none; position: relative; display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--texto-tenue); }
-.orden svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.orden select {
-  appearance: none;
-  -webkit-appearance: none;
-  padding: 7px 30px 7px 12px;
-  border-radius: 999px;
+/* ---------- filtros desplegables (marca -> modelo, estado) y orden ---------- */
+.filtros-barra { display: flex; align-items: center; gap: 10px 14px; margin: 18px 2px 16px; min-height: 40px; }
+.filtros { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.filtros:empty { display: none; }
+.resultado-info { flex: none; margin: 0 0 0 auto; color: var(--texto-tenue); font-size: 0.86rem; white-space: nowrap; }
+.filtros:empty + .resultado-info { margin: 0 auto 0 0; }
+.orden-lugar { flex: none; }
+
+/* cada filtro es una pastilla: el boton que despliega y, si hay algo elegido, la "x" para sacarlo */
+.filtro-grupo {
+  display: inline-flex;
+  align-items: center;
   border: 1px solid var(--borde);
-  background: var(--superficie) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236e6e73' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center / 13px;
+  border-radius: 999px;
+  background: var(--superficie);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.filtro-grupo:hover { border-color: var(--borde-fuerte); }
+.filtro-grupo.activo { border-color: color-mix(in srgb, var(--acento) 42%, var(--borde)); background: color-mix(in srgb, var(--acento) 7%, var(--superficie)); }
+.filtro-grupo.abierto { border-color: var(--acento); box-shadow: 0 0 0 4px color-mix(in srgb, var(--acento) 15%, transparent); }
+.filtro-grupo.aparece { animation: filtro-aparece 360ms var(--resorte) both; }
+.filtro-grupo.saliendo, .filtros-limpiar.saliendo { animation: filtro-sale 160ms var(--ease) both; pointer-events: none; }
+.filtro {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 13px 8px 16px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--texto);
+  font-family: inherit;
+  font-size: 0.87rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform var(--dur-rapida) var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.filtro:active { transform: scale(0.97); }
+.filtro-etiqueta { color: var(--texto-suave); font-weight: 550; }
+.filtro-grupo.activo .filtro-etiqueta { color: var(--texto-tenue); font-weight: 500; }
+.filtro-grupo.activo .filtro-etiqueta::after { content: ":"; }
+.filtro-grupo.activo .filtro-valor { color: var(--acento); }
+.filtro-flecha { width: 14px; height: 14px; fill: none; stroke: var(--texto-tenue); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; transition: transform 300ms var(--resorte); }
+.filtro[aria-expanded="true"] .filtro-flecha { transform: rotate(180deg); }
+.filtro-icono { width: 16px; height: 16px; fill: none; stroke: var(--texto-tenue); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.filtro-grupo.activo .filtro { padding-right: 7px; }
+.filtro-quitar {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 7px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--acento) 13%, transparent);
+  color: var(--acento);
+  cursor: pointer;
+  transition: background var(--dur-rapida) var(--ease), transform var(--dur-rapida) var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.filtro-quitar:hover { background: color-mix(in srgb, var(--acento) 24%, transparent); }
+.filtro-quitar:active { transform: scale(0.88); }
+.filtro-quitar svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
+.filtros-limpiar {
+  padding: 6px 6px;
+  border: none;
+  background: none;
+  color: var(--acento);
   font-family: inherit;
   font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: underline transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--dur-rapida) var(--ease);
+}
+.filtros-limpiar:hover { text-decoration-color: currentColor; }
+.filtros-limpiar.aparece { animation: aparecer 240ms var(--ease) both; }
+
+/* la lista que se despliega debajo del filtro (en el celular, una hoja desde abajo) */
+.desplegable { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
+.desplegable[hidden] { display: none; }
+.desplegable-fondo { display: none; }
+.desplegable-panel {
+  position: fixed;
+  pointer-events: auto;
+  min-width: 220px;
+  max-width: min(360px, calc(100vw - 24px));
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 16px;
+  box-shadow: var(--sombra-desplegable);
+  animation: desplegable-entra 220ms var(--resorte) both;
+}
+.desplegable.cerrando .desplegable-panel { animation: desplegable-sale 130ms var(--ease) both; }
+.desplegable-cabecera { display: none; }
+.desplegable-lista { display: flex; flex-direction: column; gap: 1px; }
+.desplegable-opcion {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--texto);
+  font-family: inherit;
+  font-size: 0.9rem;
   font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.desplegable-opcion:hover, .desplegable-opcion:focus-visible { background: color-mix(in srgb, var(--texto) 6%, transparent); outline: none; }
+.desplegable-opcion:active { background: color-mix(in srgb, var(--texto) 10%, transparent); }
+.desplegable-opcion.todas { margin-bottom: 6px; color: var(--texto-suave); }
+.desplegable-opcion.todas::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -4px; height: 1px; background: var(--borde); }
+.desplegable-opcion[aria-selected="true"] { color: var(--acento); font-weight: 650; }
+.opcion-texto { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opcion-extra { flex: none; font-size: 0.8rem; font-weight: 500; color: var(--texto-tenue); font-variant-numeric: tabular-nums; }
+.opcion-tilde { flex: none; width: 16px; height: 16px; fill: none; stroke: var(--acento); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; visibility: hidden; }
+.desplegable-opcion[aria-selected="true"] .opcion-tilde { visibility: visible; }
+.desplegable-titulo { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.015em; }
+.desplegable-cerrar {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--texto) 7%, transparent);
   color: var(--texto);
   cursor: pointer;
 }
+.desplegable-cerrar svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+html.hoja-abierta { overflow: hidden; }
 
 /* ---------- grilla de productos ---------- */
 .grilla {
@@ -690,6 +865,10 @@ html.ficha-abierta { overflow: hidden; }
 @keyframes ficha-sale { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(12px) scale(0.98); } }
 @keyframes hoja-entra { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes hoja-sale { from { transform: none; } to { transform: translateY(100%); } }
+@keyframes desplegable-entra { from { opacity: 0; transform: translateY(-6px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes desplegable-sale { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-4px) scale(0.97); } }
+@keyframes filtro-aparece { from { opacity: 0; transform: translateX(-10px) scale(0.92); } to { opacity: 1; transform: none; } }
+@keyframes filtro-sale { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.92); } }
 
 /* ---------- tablet ---------- */
 @media (max-width: 860px) {
@@ -706,9 +885,54 @@ html.ficha-abierta { overflow: hidden; }
   .hero-datos li { font-size: 0.78rem; }
   .herramientas { top: 58px; margin: 0 -16px; padding: 10px 16px; flex-direction: column; align-items: stretch; gap: 10px; }
   .buscador { flex: none; min-width: 0; }
-  .categorias { margin-right: -16px; padding-right: 16px; }
-  .lista-cabecera { margin: 10px 0 12px; }
-  .orden-texto { display: none; }
+  .categorias-marco { flex: none; }
+
+  /* arriba: cuantos productos y el orden; abajo, los filtros en una fila que se desliza */
+  .filtros-barra { flex-wrap: wrap; gap: 10px; margin: 12px 0 14px; }
+  .resultado-info, .filtros:empty + .resultado-info { order: 1; flex: 1; margin: 0; }
+  .orden-lugar { order: 2; }
+  .filtros { order: 3; flex: 1 0 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px; }
+  .filtros::-webkit-scrollbar { display: none; }
+  .filtro-grupo { flex: none; }
+  .filtro { padding: 8px 12px 8px 14px; font-size: 0.85rem; }
+  .filtro-grupo-orden .filtro-etiqueta { display: none; }
+
+  /* la lista sube desde abajo como una hoja, con el fondo oscurecido */
+  .desplegable.hoja { pointer-events: auto; }
+  .desplegable.hoja .desplegable-fondo {
+    display: block;
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.42);
+    animation: aparecer 260ms var(--ease) both;
+  }
+  .desplegable.hoja.cerrando .desplegable-fondo { animation: desaparecer 220ms var(--ease) both; }
+  .desplegable.hoja .desplegable-panel {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    max-height: 75dvh;
+    padding: 0 10px calc(12px + env(safe-area-inset-bottom));
+    border-bottom: none;
+    border-radius: 24px 24px 0 0;
+    animation: hoja-entra 340ms var(--resorte) both;
+  }
+  .desplegable.hoja.cerrando .desplegable-panel { animation: hoja-sale 220ms var(--ease) both; }
+  .desplegable.hoja .desplegable-cabecera {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 6px 10px 10px;
+    background: var(--superficie);
+  }
+  .desplegable.hoja .desplegable-opcion { min-height: 50px; padding: 12px; font-size: 1rem; }
   .grilla { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .producto { border-radius: 18px; }
   .producto-imagen { margin: 6px 6px 0; border-radius: 13px; }
