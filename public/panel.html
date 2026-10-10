@@ -58,6 +58,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
           <span class="tab-texto">Resumen</span>
         </button>
+        <button type="button" data-tab="notas" class="tab" data-tip="Notas">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3.5h14a1.5 1.5 0 0 1 1.5 1.5v9.5L14.5 20.5H5A1.5 1.5 0 0 1 3.5 19V5A1.5 1.5 0 0 1 5 3.5z"/><path d="M20.5 14.5h-4.5a1.5 1.5 0 0 0-1.5 1.5v4.5"/><path d="M7.5 8.5h9M7.5 12h6"/></svg>
+          <span class="tab-texto">Notas</span>
+        </button>
       </div>
       <div class="nav-grupo">
         <p class="nav-grupo-titulo">Operación</p>
@@ -369,6 +373,32 @@
         </form>
       </dialog>
 
+      <!-- Pagos en partes de la diferencia de un canje: cuanto falta, cargar otro pago y lo que
+           ya se pago. Los textos cambian segun quien le debe a quien (ver dibujarPagosCanje). -->
+      <dialog id="dialogo-pagos-canje" class="dialogo-ancho">
+        <div class="dialogo-header">
+          <h3 class="dialogo-titulo" id="titulo-pagos-canje">Pagos del canje</h3>
+          <p class="ayuda" id="sub-pagos-canje"></p>
+        </div>
+        <div class="resumen-pago" id="resumen-pagos-canje"></div>
+        <form id="form-pago-canje">
+          <div class="fila-campos">
+            <label>Monto<input name="monto" type="number" step="0.01" min="0.01" required placeholder="Ej: 300" /></label>
+            <label>Fecha<input name="fecha" type="date" required /></label>
+          </div>
+          <div class="atajos-memoria" id="atajos-pago-canje"></div>
+          <label>Nota (opcional)<input name="nota" placeholder="Ej: en efectivo, por transferencia" autocomplete="off" /></label>
+          <button type="submit" class="btn-primario" id="boton-pago-canje">Registrar pago</button>
+        </form>
+        <div class="historial-pagos">
+          <span class="historial-titulo" id="titulo-historial-pagos">Pagos</span>
+          <ul class="lista-pagos" id="lista-pagos-canje"></ul>
+        </div>
+        <div class="dialogo-botones">
+          <button type="button" class="btn-secundario" onclick="cerrarDialogo('dialogo-pagos-canje')">Cerrar</button>
+        </div>
+      </dialog>
+
       <section id="tab-empleados" class="panel oculto">
         <div class="barra-acciones">
           <div>
@@ -611,6 +641,28 @@
       <datalist id="lista-modelos"></datalist>
       <datalist id="lista-colores-modelo"></datalist>
 
+      <section id="tab-notas" class="panel oculto">
+        <!-- Notas sueltas tipo post-it. Las arma notas.js con /api/notas; se guardan solas mientras
+             se escribe. -->
+        <div class="barra-acciones">
+          <div>
+            <h3 class="titulo-bloque">Notas</h3>
+            <p class="subtitulo" id="sub-notas"></p>
+          </div>
+          <div class="notas-herramientas">
+            <label class="buscador-panel">
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+              <input id="buscar-notas" type="search" placeholder="Buscar en las notas…" autocomplete="off" />
+            </label>
+            <button type="button" class="btn-primario" id="btn-nueva-nota">
+              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+              Nueva nota
+            </button>
+          </div>
+        </div>
+        <div class="notas-grilla" id="notas-grilla"></div>
+      </section>
+
       <section id="tab-logs" class="panel oculto">
         <!-- Logs: lo que pasa en todo el sistema (errores, avisos) y las conversaciones del bot.
              Lo arma logs.js con /api/logs/resumen, /api/logs/sistema y /api/logs. -->
@@ -764,6 +816,7 @@
 <script src="/graficos.js"></script>
 <script src="/dashboard.js"></script>
 <script src="/logs.js"></script>
+<script src="/notas.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

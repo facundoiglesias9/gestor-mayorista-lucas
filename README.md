@@ -72,6 +72,8 @@ Dejalo corriendo (la terminal abierta) mientras lo querés usar así, local. Si 
 - "Le presté 500 dólares a María Gómez"
 - "María me pagó 200"
 - "Me trajeron un Samsung S21 en canje, lo tomo a 300 dólares"
+- "Gonzalo me dio 300 de los 600 del canje" (pago en partes: te dice cuánto falta)
+- "Agregame una nota: llamar al proveedor el lunes"
 - "Pagué 300 mil de alquiler" o "Gasté 20 lucas en nafta" (gasto del negocio: se anota solo y va a la ganancia real y al flujo de caja)
 - "¿Cuánto stock tengo de iPhone 12?"
 - "¿Cómo estamos en general?"
@@ -161,7 +163,8 @@ En los dos casos te va a pedir una clave — es el valor de `PANEL_PASSWORD` (en
 - **Stock**: cargar productos (con botón "Agregar stock") y editar cualquier campo con el lápiz de cada fila. Los celulares tienen **Estado** (Sellado, Usado - como nuevo o Usado) y, si no son sellados, **Batería (%)**: el % se agrega solo al nombre (ej. "iPhone 15 Pro 128GB 85%"), así cada usado con su batería queda como un producto aparte.
 - **Ventas**: cargar una venta nueva, filtrar por fecha/producto/cliente, con totales facturados y ganancia estimada.
 - **Préstamos**: registrar préstamos nuevos y anotar pagos con un botón.
-- **Plan Canje**: registrar un trade-in (celular recibido, precio, y la diferencia en plata o producto a favor tuyo o del cliente) y marcarlo saldado cuando se resuelve.
+- **Plan Canje**: registrar un trade-in (celular recibido, precio, y la diferencia en plata o producto a favor tuyo o del cliente). Si la diferencia en plata se paga en partes (ej. U$D 600 en dos meses), con "Cobrar" (o "Pagar", si sos vos el que debe) se carga cada parte con su fecha: la tabla muestra cuánto falta con una barra de lo pagado, y el canje queda saldado solo cuando se completa. Los pagos mal cargados se borran desde el mismo lugar.
+- **Notas**: notas sueltas tipo post-it (recordatorios, pendientes, datos). Se guardan solas mientras escribís; se pueden pintar de colores, fijar arriba, buscar y borrar. También se agregan por Telegram ("agregame una nota: …").
 - **Empleados**: agregar y ver la lista de precio amigo.
 - **Logs**: qué está pasando en todo el sistema, para ver qué falla sin entrar a Vercel.
   - **Sistema**: errores y avisos del bot, la IA, las herramientas (ej: "no existe ese producto"), el panel (pedidos rechazados o lentos), Telegram, el chequeo automático, la cotización del dólar, los intentos de clave incorrecta, la gente sin acceso que le escribe al bot y los errores de la página en el navegador. Cada evento tiene su detalle técnico para copiar. Arriba: si anda todo bien, cuántos errores y avisos hubo, el último chequeo automático, y en qué parte pasa más.

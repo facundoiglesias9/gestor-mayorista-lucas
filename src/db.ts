@@ -183,6 +183,26 @@ CREATE TABLE IF NOT EXISTS canjes (
   nota TEXT
 );
 
+-- Notas sueltas del panel (los "post-it"): texto libre, un color y si esta fijada arriba.
+CREATE TABLE IF NOT EXISTS notas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  texto TEXT NOT NULL DEFAULT '',
+  color TEXT NOT NULL DEFAULT 'amarillo',
+  fijada INTEGER NOT NULL DEFAULT 0,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+-- Pagos en partes de la diferencia de un canje (ej: U$D 600 en dos cuotas de 300). El saldo del
+-- canje queda como el total acordado; lo que falta es ese total menos lo pagado aca.
+CREATE TABLE IF NOT EXISTS pagos_canje (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  canje_id INTEGER NOT NULL REFERENCES canjes(id),
+  monto REAL NOT NULL,
+  fecha TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  nota TEXT
+);
+
 -- Historial de conversacion con el cerebro, guardado en la base (no en memoria del proceso):
 -- en Vercel cada mensaje puede caer en una instancia de funcion distinta, asi que la memoria
 -- de RAM no sobrevive entre un mensaje y el siguiente. Esto si.

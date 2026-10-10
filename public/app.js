@@ -440,11 +440,13 @@ const TITULOS_TAB = {
   bot: "Bot",
   logs: "Logs",
   catalogo: "Catálogo",
+  notas: "Notas",
 };
 
 // En que grupo del menu esta cada seccion (se muestra chiquito arriba del titulo).
 const GRUPO_TAB = {
   resumen: "General",
+  notas: "General",
   stock: "Operación",
   ventas: "Operación",
   pedidos: "Operación",
@@ -558,6 +560,7 @@ function cargarTab(tab) {
   }
   if (tab === "logs") cargarLogs();
   if (tab === "catalogo") cargarCatalogoPanel();
+  if (tab === "notas") cargarNotas();
 }
 
 async function cargarListaPersonas() {
@@ -1030,7 +1033,21 @@ async function cargarPrendas() {
   try {
     canjesCache = await api("GET", "/api/canjes");
     const pendientes = canjesCache.filter((c) => c.estado === "pendiente").length;
-    ponerSubtitulo("sub-prendas", canjesCache.length ? `${plural(canjesCache.length, "canje")} · ${plural(pendientes, "pendiente")}` : "");
+    // Cuanta plata falta, de cada lado (solo de los canjes pendientes).
+    const teDeben = {}, lesDebes = {};
+    for (const c of canjesCache) {
+      if (c.estado !== "pendiente" || !c.saldo_monto || !c.pendiente) continue;
+      const lado = c.saldo_monto > 0 ? teDeben : lesDebes;
+      lado[c.saldo_moneda] = (lado[c.saldo_moneda] ?? 0) + c.pendiente;
+    }
+    ponerSubtitulo(
+      "sub-prendas",
+      canjesCache.length
+        ? [plural(canjesCache.length, "canje"), plural(pendientes, "pendiente"), totalesPorMoneda(teDeben) && `te deben ${totalesPorMoneda(teDeben)}`, totalesPorMoneda(lesDebes) && `les debés ${totalesPorMoneda(lesDebes)}`]
+            .filter(Boolean)
+            .join(" · ")
+        : ""
+    );
     renderTabla(
       "tabla-prendas",
       canjesCache,
@@ -1041,10 +1058,10 @@ async function cargarPrendas() {
         <td data-etiqueta="Estado del equipo">${c.condicion ? escapeHtml(c.condicion) : `<span class="texto-tenue">-</span>`}</td>
         <td data-etiqueta="Valor tomado" class="num">${c.valor_tomado != null ? formatoConSimbolo(c.valor_tomado, c.moneda_valor) : `<span class="texto-tenue">-</span>`}</td>
         <td data-etiqueta="Entregado">${c.producto_entregado ? escapeHtml(c.producto_entregado) : `<span class="texto-tenue">-</span>`}</td>
-        <td data-etiqueta="Saldo" class="num">${textoSaldo(c)}</td>
+        <td data-etiqueta="Saldo" class="num">${celdaSaldoCanje(c)}</td>
         <td data-etiqueta="Situación">${pillEstadoCanje(c.estado)}</td>
         <td data-etiqueta="Fecha">${formatoFecha(c.fecha, false)}</td>
-        <td class="acciones"><button class="btn-icono" title="Editar" aria-label="Editar canje" onclick="editarCanje(${c.id})">${ICONO_LAPIZ}</button></td>
+        <td class="acciones"><div class="acciones-fila">${botonPagosCanje(c)}<button class="btn-icono" title="Editar" aria-label="Editar canje" onclick="editarCanje(${c.id})">${ICONO_LAPIZ}</button></div></td>
       </tr>`,
       "Todavía no registraste ningún canje."
     );
@@ -1052,6 +1069,157 @@ async function cargarPrendas() {
     mostrarToast(e.message, true);
   }
 }
+
+// ---------- pagos en partes de un canje ----------
+const ICONO_PAGOS = `<svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg>`;
+
+// Saldo de la tabla: sin pagos, como siempre ("Te deben U$D 600"); con pagos, lo que falta, una
+// barra de cuanto se pago y "Pagó U$D 300 de 600".
+function celdaSaldoCanje(c) {
+  if (!c.cantidad_pagos) return textoSaldo(c);
+  const total = Math.abs(c.saldo_monto);
+  const avance = total ? Math.min(c.pagado / total, 1) : 1;
+  const teDeben = c.saldo_monto > 0;
+  const texto = c.pendiente > 0
+    ? `<span class="${teDeben ? "a-favor-negocio" : "a-favor-cliente"}">${teDeben ? "Te deben" : "Les debés"} ${formatoConSimbolo(c.pendiente, c.saldo_moneda)}</span>`
+    : `<span class="saldo-completo">Pagado ${formatoConSimbolo(total, c.saldo_moneda)}</span>`;
+  const pie = c.pendiente > 0
+    ? `${teDeben ? "Pagó" : "Pagaste"} ${formatoConSimbolo(c.pagado, c.saldo_moneda)} de ${formatoConSimbolo(total, c.saldo_moneda)}`
+    : `en ${plural(c.cantidad_pagos, "pago")}`;
+  return `<div class="progreso progreso-canje">
+    <span class="progreso-texto">${texto}</span>
+    <div class="progreso-barra" title="Pagado: ${Math.round(avance * 100)}%"><span style="width:${(avance * 100).toFixed(1)}%"></span></div>
+    <span class="progreso-pie">${pie}</span>
+  </div>`;
+}
+
+// Si hay plata de por medio: "Cobrar" (te deben) o "Pagar" (les debés); ya saldado, ver los pagos.
+function botonPagosCanje(c) {
+  if (!c.saldo_monto) return "";
+  if (c.pendiente > 0) {
+    return `<button class="btn-chico pago" onclick="abrirPagosCanje(${c.id})" title="Cargar un pago en partes">${c.saldo_monto > 0 ? "Cobrar" : "Pagar"}</button>`;
+  }
+  return c.cantidad_pagos ? `<button class="btn-icono" title="Ver pagos" aria-label="Ver pagos del canje" onclick="abrirPagosCanje(${c.id})">${ICONO_PAGOS}</button>` : "";
+}
+
+let canjeEnPagos = null;
+
+function hoyEnArgentinaISO() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+}
+
+async function abrirPagosCanje(id) {
+  const c = canjesCache.find((x) => x.id === id);
+  if (!c) return;
+  canjeEnPagos = c;
+  abrirDialogo("dialogo-pagos-canje");
+  const form = document.getElementById("form-pago-canje");
+  form.elements.fecha.value = form.elements.fecha.max = hoyEnArgentinaISO();
+  dibujarPagosCanje(c, null);
+  if (c.pendiente > 0) form.elements.monto.focus();
+  await cargarPagosCanje();
+}
+
+async function cargarPagosCanje() {
+  const c = canjeEnPagos;
+  try {
+    const pagos = await api("GET", `/api/canjes/${c.id}/pagos`);
+    if (canjeEnPagos === c) dibujarPagosCanje(c, pagos);
+  } catch (e) {
+    mostrarToast(e.message, true);
+  }
+}
+
+function dibujarPagosCanje(c, pagos) {
+  const teDeben = c.saldo_monto > 0;
+  const total = Math.abs(c.saldo_monto);
+  const avance = total ? Math.min(c.pagado / total, 1) : 1;
+  const m = (n) => formatoConSimbolo(n, c.saldo_moneda);
+  document.getElementById("titulo-pagos-canje").textContent = teDeben ? `Cobros de ${c.persona_nombre}` : `Pagos a ${c.persona_nombre}`;
+  document.getElementById("sub-pagos-canje").textContent = `Canje de ${c.descripcion}${c.producto_entregado ? ` → ${c.producto_entregado}` : ""}. ${
+    teDeben ? `Te tiene que dar ${m(total)} en total: cargá cada parte que te va dando.` : `Le tenés que dar ${m(total)} en total: cargá cada parte que le vas pagando.`
+  }`;
+  document.getElementById("resumen-pagos-canje").innerHTML = `
+    <div class="resumen-pago-fila">
+      <div class="resumen-pago-dato"><span>${c.pendiente > 0 ? (teDeben ? "Falta cobrar" : "Falta pagar") : "Estado"}</span><strong class="${c.pendiente > 0 ? (teDeben ? "a-favor-negocio" : "a-favor-cliente") : "saldo-completo"}">${c.pendiente > 0 ? m(c.pendiente) : "Saldado"}</strong></div>
+      <div class="resumen-pago-dato"><span>${teDeben ? "Cobrado" : "Pagado"}</span><strong>${m(c.pagado)}</strong></div>
+      <div class="resumen-pago-dato"><span>Total</span><strong>${m(total)}</strong></div>
+    </div>
+    <div class="progreso-barra progreso-grande"><span style="width:${(avance * 100).toFixed(1)}%"></span></div>
+    <span class="progreso-pie">${Math.round(avance * 100)}% ${teDeben ? "cobrado" : "pagado"}</span>`;
+  const form = document.getElementById("form-pago-canje");
+  form.classList.toggle("oculto", !(c.pendiente > 0));
+  document.getElementById("boton-pago-canje").textContent = teDeben ? "Registrar cobro" : "Registrar pago";
+  const mitad = Math.round((c.pendiente / 2) * 100) / 100;
+  document.getElementById("atajos-pago-canje").innerHTML = c.pendiente > 0
+    ? [[`Todo lo que falta (${m(c.pendiente)})`, c.pendiente], ...(mitad > 0 && mitad < c.pendiente ? [[`La mitad (${m(mitad)})`, mitad]] : [])]
+        .map(([texto, monto]) => `<button type="button" class="chip-agregar" data-monto="${monto}"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>${escapeHtml(texto)}</button>`)
+        .join("")
+    : "";
+  document.getElementById("titulo-historial-pagos").textContent = teDeben ? "Lo que ya te dio" : "Lo que ya le pagaste";
+  const lista = document.getElementById("lista-pagos-canje");
+  if (!pagos) lista.innerHTML = `<li class="pago-vacio">Cargando…</li>`;
+  else if (!pagos.length) lista.innerHTML = `<li class="pago-vacio">Todavía no hay pagos cargados.</li>`;
+  else
+    lista.innerHTML = pagos
+      .map(
+        (p) => `<li class="pago-fila">
+          <span class="pago-fecha">${formatoFecha(p.fecha, false)}</span>
+          <strong class="pago-monto">${m(p.monto)}</strong>
+          <span class="pago-nota">${p.nota ? escapeHtml(p.nota) : ""}</span>
+          <button type="button" class="btn-icono peligro" title="Borrar este pago" aria-label="Borrar este pago" data-borrar-pago="${p.id}">${ICONO_TACHO}</button>
+        </li>`
+      )
+      .join("");
+}
+
+document.getElementById("atajos-pago-canje").addEventListener("click", (ev) => {
+  const atajo = ev.target.closest("[data-monto]");
+  if (!atajo) return;
+  const input = document.getElementById("form-pago-canje").elements.monto;
+  input.value = atajo.dataset.monto;
+  input.focus();
+});
+
+// Despues de cargar o borrar un pago: se recarga la tabla y el dialogo queda abierto, al dia.
+async function refrescarPagosCanje() {
+  await cargarPrendas();
+  const actualizado = canjesCache.find((x) => x.id === canjeEnPagos?.id);
+  if (!actualizado) return;
+  canjeEnPagos = actualizado;
+  await cargarPagosCanje();
+}
+
+document.getElementById("form-pago-canje").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const form = ev.target;
+  const body = { monto: Number(form.elements.monto.value), fecha: form.elements.fecha.value, nota: form.elements.nota.value };
+  conCarga(ev.submitter, async () => {
+    try {
+      const r = await api("POST", `/api/canjes/${canjeEnPagos.id}/pagos`, body);
+      mostrarToast(r.mensaje);
+      form.elements.monto.value = "";
+      form.elements.nota.value = "";
+      await refrescarPagosCanje();
+    } catch (e) {
+      mostrarToast(e.message, true);
+    }
+  });
+});
+
+document.getElementById("lista-pagos-canje").addEventListener("click", async (ev) => {
+  const boton = ev.target.closest("[data-borrar-pago]");
+  if (!boton) return;
+  const ok = await confirmar({ titulo: "¿Borrar este pago?", mensaje: "Lo que falta vuelve a sumar ese monto. Usalo si lo cargaste mal.", textoBoton: "Borrar", peligro: true });
+  if (!ok) return;
+  try {
+    await api("DELETE", `/api/canjes/${canjeEnPagos.id}/pagos/${boton.dataset.borrarPago}`);
+    mostrarToast("Pago borrado.");
+    await refrescarPagosCanje();
+  } catch (e) {
+    mostrarToast(e.message, true);
+  }
+});
 
 function abrirDialogoCanje() {
   abrirDialogo("dialogo-canje");
