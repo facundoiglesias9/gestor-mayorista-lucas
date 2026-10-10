@@ -3,11 +3,13 @@
 // formatoFecha, plural, ponerSubtitulo, conCarga, mostrarToast y confirmar, de app.js (que carga
 // despues: aca solo se usan dentro de funciones).
 
+// Los nombres guardados en la base (amarillo, celeste...) se mantienen; en pantalla cada uno es un
+// acento de neon (ver .nota-amarillo, etc. en styles.css).
 const COLORES_NOTA = [
-  ["amarillo", "Amarillo"],
+  ["amarillo", "Ámbar"],
   ["rosa", "Rosa"],
   ["verde", "Verde"],
-  ["celeste", "Celeste"],
+  ["celeste", "Cian"],
   ["violeta", "Violeta"],
   ["naranja", "Naranja"],
 ];
@@ -21,11 +23,6 @@ const grillaNotas = document.getElementById("notas-grilla");
 
 function normalizarNota(texto) {
   return String(texto ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-}
-
-// Cada nota queda un poquito torcida, como pegada a mano (siempre igual para la misma nota).
-function giroNota(id) {
-  return [-1.2, 0.8, -0.5, 1.1, -0.9, 0.5][id % 6];
 }
 
 function ordenarNotas() {
@@ -48,19 +45,25 @@ function subtituloNotas() {
   ponerSubtitulo("sub-notas", conTexto.length ? `${plural(conTexto.length, "nota")}${fijadas ? ` · ${plural(fijadas, "fijada")}` : ""}` : "");
 }
 
-function tarjetaNota(n) {
-  return `<article class="nota nota-${n.color}${n.fijada ? " fijada" : ""}" data-id="${n.id}" style="--giro:${giroNota(n.id)}deg">
-    <div class="nota-barra">
-      <button type="button" class="nota-boton nota-fijar" data-accion="fijar" aria-pressed="${n.fijada}" title="${n.fijada ? "Desfijar" : "Fijar arriba"}" aria-label="${n.fijada ? "Desfijar nota" : "Fijar nota arriba"}">${ICONO_CHINCHE}</button>
+function tarjetaNota(n, i = 0) {
+  return `<article class="nota nota-${n.color}${n.fijada ? " fijada" : ""}" data-id="${n.id}" style="--i:${Math.min(i, 10)}">
+    <header class="nota-cabecera">
+      <span class="nota-punto" aria-hidden="true"></span>
       <span class="nota-fecha">${formatoFecha(n.actualizado_en)}</span>
-      <span class="nota-estado" aria-live="polite"></span>
-      <button type="button" class="nota-boton" data-accion="borrar" title="Borrar nota" aria-label="Borrar nota">${ICONO_TACHO}</button>
-    </div>
+      <span class="nota-chip-fijada">Fijada</span>
+      <div class="nota-acciones">
+        <button type="button" class="nota-boton nota-fijar" data-accion="fijar" aria-pressed="${n.fijada}" title="${n.fijada ? "Desfijar" : "Fijar arriba"}" aria-label="${n.fijada ? "Desfijar nota" : "Fijar nota arriba"}">${ICONO_CHINCHE}</button>
+        <button type="button" class="nota-boton nota-borrar" data-accion="borrar" title="Borrar nota" aria-label="Borrar nota">${ICONO_TACHO}</button>
+      </div>
+    </header>
     <textarea class="nota-texto" placeholder="Escribí algo…" aria-label="Texto de la nota" maxlength="5000">${escapeHtml(n.texto)}</textarea>
-    <div class="nota-colores" role="radiogroup" aria-label="Color de la nota">${COLORES_NOTA.map(
-      ([c, nombre]) =>
-        `<button type="button" class="nota-color nota-color-${c}${c === n.color ? " activo" : ""}" role="radio" aria-checked="${c === n.color}" data-color="${c}" title="${nombre}" aria-label="${nombre}"></button>`
-    ).join("")}</div>
+    <footer class="nota-pie">
+      <div class="nota-colores" role="radiogroup" aria-label="Color de la nota">${COLORES_NOTA.map(
+        ([c, nombre]) =>
+          `<button type="button" class="nota-color nota-color-${c}${c === n.color ? " activo" : ""}" role="radio" aria-checked="${c === n.color}" data-color="${c}" title="${nombre}" aria-label="${nombre}"></button>`
+      ).join("")}</div>
+      <span class="nota-estado" aria-live="polite"></span>
+    </footer>
   </article>`;
 }
 
@@ -76,7 +79,13 @@ function dibujarNotas() {
     grillaNotas.innerHTML = `<div class="notas-vacio"><strong>No hay notas con «${escapeHtml(estadoNotas.busqueda.trim())}»</strong></div>`;
     return;
   }
-  grillaNotas.innerHTML = lista.map(tarjetaNota).join("");
+  grillaNotas.innerHTML = lista.map((n, i) => tarjetaNota(n, i)).join("");
+  ajustarAltosNotas();
+  // Si la letra termina de cargar despues, el texto ocupa otro alto: se vuelve a medir.
+  document.fonts?.ready.then(ajustarAltosNotas);
+}
+
+function ajustarAltosNotas() {
   grillaNotas.querySelectorAll(".nota-texto").forEach(ajustarAltoNota);
 }
 
@@ -91,11 +100,13 @@ function notaDe(el) {
   return { tarjeta, nota: tarjeta && estadoNotas.lista.find((n) => n.id === Number(tarjeta.dataset.id)) };
 }
 
-function mostrarEstadoNota(tarjeta, texto) {
+// "guardando" (punto que late), "guardado" (tilde) o "error"; null lo esconde.
+function mostrarEstadoNota(tarjeta, tipo) {
   const estado = tarjeta?.querySelector(".nota-estado");
   if (!estado) return;
-  estado.textContent = texto;
-  estado.classList.toggle("visible", Boolean(texto));
+  const textos = { guardando: "Guardando", guardado: "Guardado", error: "No se guardó" };
+  estado.className = `nota-estado${tipo ? ` visible ${tipo}` : ""}`;
+  if (tipo) estado.textContent = textos[tipo];
 }
 
 async function guardarTextoNota(id, texto) {
@@ -104,18 +115,21 @@ async function guardarTextoNota(id, texto) {
   const nota = estadoNotas.lista.find((n) => n.id === id);
   if (!nota || nota.texto === texto) return;
   const tarjeta = () => grillaNotas.querySelector(`.nota[data-id="${id}"]`);
-  mostrarEstadoNota(tarjeta(), "Guardando…");
+  mostrarEstadoNota(tarjeta(), "guardando");
   try {
     const guardada = await api("PUT", `/api/notas/${id}`, { texto });
     nota.texto = guardada.texto;
     nota.actualizado_en = guardada.actualizado_en;
     const t = tarjeta();
     if (t) t.querySelector(".nota-fecha").innerHTML = formatoFecha(guardada.actualizado_en);
-    mostrarEstadoNota(t, "Guardado");
-    setTimeout(() => mostrarEstadoNota(tarjeta(), ""), 1400);
+    mostrarEstadoNota(t, "guardado");
+    setTimeout(() => {
+      const actual = tarjeta()?.querySelector(".nota-estado");
+      if (actual?.classList.contains("guardado")) mostrarEstadoNota(tarjeta(), null);
+    }, 1600);
     subtituloNotas();
   } catch (e) {
-    mostrarEstadoNota(tarjeta(), "No se guardó");
+    mostrarEstadoNota(tarjeta(), "error");
     mostrarToast(e.message, true);
   }
 }
@@ -200,6 +214,24 @@ async function fijarNota(nota) {
 
 // ---------- eventos ----------
 document.getElementById("btn-nueva-nota").addEventListener("click", (ev) => nuevaNota(ev.currentTarget));
+
+// Atajo: "N" en la seccion Notas crea una nota (si no se esta escribiendo en otro lado).
+document.addEventListener("keydown", (ev) => {
+  if (ev.key.toLowerCase() !== "n" || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  if (document.getElementById("tab-notas").classList.contains("oculto") || document.querySelector("dialog[open]")) return;
+  if (ev.target.closest?.("input, textarea, select, [contenteditable]")) return;
+  ev.preventDefault();
+  nuevaNota(document.getElementById("btn-nueva-nota"));
+});
+
+// Al cambiar el ancho (girar el celular, achicar la ventana) cambia cuantas lineas ocupa cada nota.
+let anchoGrillaNotas = 0;
+new ResizeObserver(([entrada]) => {
+  const ancho = Math.round(entrada.contentRect.width);
+  if (ancho === anchoGrillaNotas) return;
+  anchoGrillaNotas = ancho;
+  ajustarAltosNotas();
+}).observe(grillaNotas);
 
 let temporizadorBuscarNotas;
 document.getElementById("buscar-notas").addEventListener("input", (ev) => {
