@@ -352,6 +352,23 @@ CREATE TABLE IF NOT EXISTS logs_bot (
   herramientas_usadas TEXT,
   fecha TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
+
+-- Quienes pueden entrar al panel con su cuenta de Google, ademas de los duenos (los mails de
+-- PANEL_EMAILS en Vercel, que no estan aca y no se pueden sacar desde el panel).
+CREATE TABLE IF NOT EXISTS usuarios_panel (
+  email TEXT PRIMARY KEY,
+  nombre TEXT,
+  agregado_por TEXT,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+-- Ultima vez que entro cada uno (duenos incluidos). Va aparte de usuarios_panel a proposito:
+-- anotar un ingreso nunca puede darle acceso a nadie.
+CREATE TABLE IF NOT EXISTS ingresos_panel (
+  email TEXT PRIMARY KEY,
+  nombre TEXT,
+  ultimo_ingreso TEXT NOT NULL
+);
 `);
   // Columna agregada despues de la version inicial de la tabla productos: en que moneda
   // estan cargados el costo y el precio de venta de ese producto.
@@ -381,6 +398,9 @@ UPDATE catalogo_items SET detalle = NULL WHERE detalle GLOB 'Batería [0-9]*%';
   // nombre (ver marcaYModelo en equipos.ts); se cargan a mano solo si salen mal.
   await agregarColumnaSiFalta("catalogo_items", "marca", "TEXT");
   await agregarColumnaSiFalta("catalogo_items", "modelo", "TEXT");
+  // Rol de cada usuario del panel: "usuario" (todo menos la seccion Usuarios) o "admin" (todo, como
+  // un dueno, pero sin poder sacar a los duenos). Ver sesion.ts.
+  await agregarColumnaSiFalta("usuarios_panel", "rol", "TEXT NOT NULL DEFAULT 'usuario'");
 }
 
 // Lo que ya estaba guardado quedo en la hora de la base (UTC en Turso): una sola vez se pasa a hora

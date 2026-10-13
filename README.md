@@ -151,7 +151,7 @@ El panel está en **`/panel`**: la dirección principal es el catálogo para cli
 - **Corriendo local** (`npm start`, o `npm run panel` para levantar solo la web sin el bot): **http://localhost:4000/panel**, o desde el celu/otra compu en tu wifi con la IP de tu PC (`ipconfig` en Windows) en vez de `localhost`.
 - **Desplegado en Vercel**: la URL que te dio Vercel con `/panel` al final (ej. `https://gestor-mayorista-lucas.vercel.app/panel`), accesible desde cualquier lado con internet.
 
-En los dos casos se entra con una cuenta de Google, y solo pueden entrar los mails de `PANEL_EMAILS`. La sesión dura 30 días en cada dispositivo (o hasta tocar "Cerrar sesión").
+En los dos casos se entra con una cuenta de Google. Pueden entrar los **dueños** (los mails de `PANEL_EMAILS`) y los **usuarios** que los dueños agregan desde la sección **Usuarios** del panel (Equipo y sistema), sin tocar Vercel. La sesión dura 30 días en cada dispositivo (o hasta tocar "Cerrar sesión").
 
 ### Login con Google
 
@@ -161,7 +161,7 @@ Se configura una sola vez:
 2. **APIs y servicios → Pantalla de consentimiento de OAuth** (o "Google Auth Platform"): tipo **Externo**, nombre de la app "Gestor Mayorista", tu mail de soporte. En **Público**, publicá la app ("En producción"). Solo pide mail y nombre, así que no hace falta que Google la revise; si la dejás "En prueba", agregá ahí como usuarios de prueba los mismos mails de `PANEL_EMAILS`.
 3. **Credenciales → Crear credenciales → ID de cliente de OAuth**, tipo **Aplicación web**. En **Orígenes de JavaScript autorizados** agregá `https://gestor-mayorista-lucas.vercel.app` y, para probar en tu PC, `http://localhost:4000` (y el puerto que uses, ej. `http://localhost:3001`). No hace falta cargar "URIs de redireccionamiento".
 4. Copiá el **ID de cliente** y el **Secreto del cliente** a `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`.
-5. En `PANEL_EMAILS` poné los mails que pueden entrar, separados por coma.
+5. En `PANEL_EMAILS` poné los mails de los **dueños**, separados por coma: entran siempre y son los únicos que ven la sección Usuarios, desde donde se suma al resto.
 6. En `PANEL_SESSION_SECRET` poné una clave larga al azar. La generás con `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
 7. Cargá las 4 en tu `.env` y en las variables de Vercel, y volvé a desplegar.
 
@@ -187,7 +187,7 @@ Si falta alguna, el panel no deja entrar a nadie y la pantalla de login dice cu�
 
 El panel y el chat de Telegram comparten exactamente la misma base de datos (Turso) — lo que cargás en uno lo ves reflejado en el otro al instante, corra donde corra cada uno.
 
-> Importante: quien entre al panel puede ver y editar todos tus datos, así que en `PANEL_EMAILS` poné solo cuentas de confianza. Para sacarle el acceso a alguien, borrá su mail de `PANEL_EMAILS` y volvé a desplegar: su sesión deja de valer en el próximo pedido. Para cerrar la sesión de todos de golpe (ej. si perdiste el celu), cambiá `PANEL_SESSION_SECRET`. Cada entrada queda anotada en Logs (con el mail), igual que los intentos con cuentas no autorizadas.
+> Importante: quien entre al panel puede ver y editar todos tus datos, así que agregá solo cuentas de confianza. Para sacarle el acceso a un usuario, tocá el tacho en **Usuarios**: su sesión deja de valer en menos de un minuto. A un dueño se lo saca borrando su mail de `PANEL_EMAILS` y volviendo a desplegar. Para que entren mails nuevos sin cargarlos uno por uno en Google, la app de Google tiene que estar publicada ("En producción", paso 2). Para cerrar la sesión de todos de golpe (ej. si perdiste el celu), cambiá `PANEL_SESSION_SECRET`. Cada entrada queda anotada en Logs (con el mail), igual que los intentos con cuentas no autorizadas.
 
 ## Catálogo para clientes
 

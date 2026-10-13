@@ -90,6 +90,15 @@ function estadoVacio(mensaje) {
 // La sesion es una cookie que maneja el servidor (ver src/sesion.ts): el navegador la manda sola en
 // cada llamada a la API y este JavaScript ni la ve. Aca solo se arma la ventanita de Google.
 let sesionActual = null; // mail de quien entro, o null
+let rolActual = null; // "dueno", "admin" o "usuario"
+let gestionaUsuariosActual = false; // duenos y admins: ven la seccion Usuarios
+
+// Lo que es solo para quienes manejan usuarios (la seccion Usuarios) se muestra o se esconde segun quien entro.
+function mostrarSegunRol(datos) {
+  rolActual = datos?.rol ?? null;
+  gestionaUsuariosActual = Boolean(datos?.gestionaUsuarios);
+  document.querySelectorAll(".solo-gestion").forEach((el) => el.classList.toggle("oculto", !gestionaUsuariosActual));
+}
 let clienteGoogle = null; // la ventanita de Google, lista para abrirse con el boton
 let motivoSinGoogle = "Cargando Google… probá de nuevo en un segundo.";
 
@@ -104,6 +113,7 @@ async function iniciarLogin() {
     .catch(() => null);
   if (estado?.email) {
     sesionActual = estado.email;
+    mostrarSegunRol(estado);
     mostrarApp();
     return;
   }
@@ -496,6 +506,7 @@ async function alVolverDeGoogle(respuesta) {
   }
   if (ok) {
     sesionActual = datos.email;
+    mostrarSegunRol(datos);
     await botonLiquido.exito(); // se corta, gotea, se vuelve a unir y muestra el tilde
     mostrarApp();
     return;
@@ -787,6 +798,7 @@ const TITULOS_TAB = {
   logs: "Logs",
   catalogo: "Catálogo",
   notas: "Notas",
+  usuarios: "Usuarios",
 };
 
 // En que grupo del menu esta cada seccion (se muestra chiquito arriba del titulo).
@@ -802,10 +814,11 @@ const GRUPO_TAB = {
   empleados: "Equipo y sistema",
   bot: "Equipo y sistema",
   logs: "Equipo y sistema",
+  usuarios: "Equipo y sistema",
 };
 
 function irATab(tab) {
-  if (!TITULOS_TAB[tab]) tab = "resumen";
+  if (!TITULOS_TAB[tab] || (tab === "usuarios" && !gestionaUsuariosActual)) tab = "resumen";
   // Marca la seccion en los dos menus (la barra lateral y la de abajo del celular). Si la
   // seccion no esta en la barra de abajo, se marca "Mas".
   let enBarraInferior = false;
@@ -907,6 +920,7 @@ function cargarTab(tab) {
   if (tab === "logs") cargarLogs();
   if (tab === "catalogo") cargarCatalogoPanel();
   if (tab === "notas") cargarNotas();
+  if (tab === "usuarios") cargarUsuarios();
 }
 
 async function cargarListaPersonas() {
@@ -1652,6 +1666,109 @@ document.getElementById("form-empleado").addEventListener("submit", (ev) => {
       mostrarToast("Usuario generado.");
       cargarEmpleados();
       cargarListaPersonas();
+    } catch (e) {
+      mostrarToast(e.message, true);
+    }
+  });
+});
+
+// ---------- usuarios del panel (quien puede entrar con su cuenta de Google; duenos y admins) ----------
+// Roles: "dueno" (PANEL_EMAILS, en Vercel: no se tocan desde aca), "admin" (todo, incluida esta
+// seccion, menos tocar a los duenos) y "usuario" (todo menos esta seccion).
+let usuariosPanel = [];
+
+const PILDORA_ROL = {
+  dueno: `<span class="estado-pill estado-info">Dueño</span>`,
+  admin: `<span class="estado-pill estado-admin">Admin</span>`,
+  usuario: `<span class="estado-pill estado-neutro">Usuario</span>`,
+};
+
+function filaUsuarioPanel(u) {
+  const nombre = u.nombre || u.nombre_google;
+  const agregado = u.dueno
+    ? `<span class="texto-tenue">Desde Vercel</span>`
+    : `${formatoFecha(u.creado_en, false)}${u.agregado_por ? `<span class="celda-sub">por ${escapeHtml(u.agregado_por)}</span>` : ""}`;
+  const i = usuariosPanel.indexOf(u);
+  const acciones = u.dueno
+    ? ""
+    : `<div class="acciones-fila">
+        <button class="btn-icono" title="Editar" aria-label="Editar a ${escapeAttr(u.email)}" onclick="abrirDialogoUsuario(${i})">${ICONO_LAPIZ}</button>
+        <button class="btn-icono peligro" title="Quitar acceso" aria-label="Quitar acceso a ${escapeAttr(u.email)}" onclick="quitarUsuarioPanel(${i}, this)">${ICONO_TACHO}</button>
+      </div>`;
+  return `<tr>
+    <td data-etiqueta="Usuario"><span class="texto-fuerte">${escapeHtml(nombre || u.email)}</span>${nombre ? `<span class="celda-sub">${escapeHtml(u.email)}</span>` : ""}</td>
+    <td data-etiqueta="Rol">${PILDORA_ROL[u.dueno ? "dueno" : u.rol] ?? PILDORA_ROL.usuario}</td>
+    <td data-etiqueta="Agregado">${agregado}</td>
+    <td data-etiqueta="Último ingreso">${u.ultimo_ingreso ? formatoFecha(u.ultimo_ingreso) : `<span class="texto-tenue">Todavía no entró</span>`}</td>
+    <td class="acciones">${acciones}</td>
+  </tr>`;
+}
+
+async function cargarUsuarios() {
+  mostrarEsqueleto("tabla-usuarios");
+  try {
+    const { duenos, usuarios } = await api("GET", "/api/usuarios");
+    usuariosPanel = [...duenos.map((d) => ({ ...d, dueno: true })), ...usuarios];
+    ponerSubtitulo("sub-usuarios", `${plural(usuariosPanel.length, "persona puede", "personas pueden")} entrar al panel`);
+    renderTabla("tabla-usuarios", usuariosPanel, filaUsuarioPanel, "Todavía no agregaste a nadie.");
+  } catch (e) {
+    mostrarToast(e.message, true);
+  }
+}
+
+// Sin indice: agregar. Con indice: editar el nombre y el rol de ese usuario (el mail no se cambia).
+function abrirDialogoUsuario(indice = null) {
+  const u = indice == null ? null : usuariosPanel[indice];
+  abrirDialogo("dialogo-usuario");
+  const form = document.getElementById("form-usuario");
+  form.elements.editando.value = u ? u.email : "";
+  form.elements.email.readOnly = Boolean(u);
+  form.elements.email.value = u ? u.email : "";
+  form.elements.nombre.value = u ? (u.nombre ?? "") : "";
+  form.elements.rol.value = u ? u.rol : "usuario";
+  document.getElementById("titulo-dialogo-usuario").textContent = u ? "Editar usuario" : "Agregar usuario";
+  document.getElementById("ayuda-dialogo-usuario").textContent = u
+    ? "Podés cambiarle el nombre y el rol. Si le sacás Admin, deja de ver esta sección al toque."
+    : "Va a poder entrar al panel con este mail de Google (un Gmail, o un correo de empresa que use Google).";
+  document.getElementById("boton-guardar-usuario").textContent = u ? "Guardar" : "Agregar";
+}
+
+async function quitarUsuarioPanel(indice, boton) {
+  const u = usuariosPanel[indice];
+  if (!u) return;
+  const ok = await confirmar({
+    titulo: "¿Quitarle el acceso?",
+    mensaje: `${u.email} ya no va a poder entrar al panel. Si tiene la sesión abierta, se le cierra en menos de un minuto.`,
+    textoBoton: "Quitar acceso",
+    peligro: true,
+  });
+  if (!ok) return;
+  await conCarga(boton, async () => {
+    try {
+      await api("DELETE", `/api/usuarios/${encodeURIComponent(u.email)}`);
+      mostrarToast("Acceso quitado.");
+      if (u.email === sesionActual) return location.reload(); // se saco a si mismo
+      cargarUsuarios();
+    } catch (e) {
+      mostrarToast(e.message, true);
+    }
+  });
+}
+
+document.getElementById("form-usuario").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const form = ev.target;
+  const editando = form.elements.editando.value;
+  const datos = { email: form.elements.email.value.trim(), nombre: form.elements.nombre.value.trim(), rol: form.elements.rol.value };
+  conCarga(ev.submitter, async () => {
+    try {
+      if (editando) await api("PUT", `/api/usuarios/${encodeURIComponent(editando)}`, { nombre: datos.nombre, rol: datos.rol });
+      else await api("POST", "/api/usuarios", limpiarVacios(datos));
+      cerrarDialogo("dialogo-usuario");
+      mostrarToast(editando ? "Cambios guardados." : `Listo: ${datos.email} ya puede entrar con Google.`);
+      // si se saco Admin a si mismo, deja de ver la seccion: se recarga para volver al Resumen
+      if (editando && editando === sesionActual && datos.rol !== "admin") return location.reload();
+      cargarUsuarios();
     } catch (e) {
       mostrarToast(e.message, true);
     }

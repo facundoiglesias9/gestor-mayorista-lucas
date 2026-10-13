@@ -1892,3 +1892,74 @@ export async function chequearConexionDb(): Promise<boolean> {
     return false;
   }
 }
+
+// ---------- usuarios del panel ----------
+// Los duenos (PANEL_EMAILS, en Vercel) siempre pueden entrar y no estan en esta tabla; aca van
+// los que se agregan desde el panel, cada uno con su rol (ver sesion.ts):
+//   - "admin": todo el panel, incluida la seccion Usuarios (agregar, editar y sacar a otros),
+//     menos sacar o cambiar a un dueno.
+//   - "usuario": todo el panel menos la seccion Usuarios.
+
+export const ROLES_PANEL = ["usuario", "admin"] as const;
+export type RolPanel = (typeof ROLES_PANEL)[number];
+
+const FORMATO_EMAIL = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
+
+function validarRolPanel(rol: unknown): RolPanel {
+  const normalizado = String(rol ?? "usuario").trim().toLowerCase();
+  if (!(ROLES_PANEL as readonly string[]).includes(normalizado)) throw new Error(`Rol inválido: "${rol}". Tiene que ser ${ROLES_PANEL.join(" o ")}.`);
+  return normalizado as RolPanel;
+}
+
+export async function listarUsuariosPanel() {
+  return all(
+    `SELECT u.email, u.nombre, u.rol, u.agregado_por, u.creado_en, i.ultimo_ingreso, i.nombre AS nombre_google
+     FROM usuarios_panel u LEFT JOIN ingresos_panel i ON i.email = u.email
+     ORDER BY u.rol = 'admin' DESC, u.creado_en`
+  );
+}
+
+// email -> rol de todos los agregados desde el panel (para saber quien puede entrar y que puede hacer).
+export async function rolesUsuariosPanel(): Promise<Map<string, RolPanel>> {
+  const filas = await all(`SELECT email, rol FROM usuarios_panel`);
+  return new Map(filas.map((f) => [String(f.email), (ROLES_PANEL as readonly string[]).includes(f.rol) ? (f.rol as RolPanel) : "usuario"]));
+}
+
+export async function ingresosPanel(emails: string[]) {
+  if (!emails.length) return [];
+  return all(`SELECT email, nombre, ultimo_ingreso FROM ingresos_panel WHERE email IN (${emails.map(() => "?").join(", ")})`, emails);
+}
+
+export async function agregarUsuarioPanel(args: { email: unknown; nombre?: unknown; rol?: unknown; agregado_por: string }) {
+  const email = String(args.email ?? "").trim().toLowerCase();
+  if (!FORMATO_EMAIL.test(email)) throw new Error("Ese mail no es válido.");
+  const nombre = String(args.nombre ?? "").trim().slice(0, 80) || null;
+  const rol = validarRolPanel(args.rol);
+  if (await get(`SELECT email FROM usuarios_panel WHERE email = ?`, [email])) throw new Error("Ese mail ya puede entrar al panel.");
+  await run(`INSERT INTO usuarios_panel (email, nombre, rol, agregado_por, creado_en) VALUES (?, ?, ?, ?, ${sqlAhora()})`, [email, nombre, rol, args.agregado_por]);
+  return { ok: true, email, rol };
+}
+
+export async function editarUsuarioPanel(emailRecibido: string, cambios: { nombre?: unknown; rol?: unknown }) {
+  const email = String(emailRecibido ?? "").trim().toLowerCase();
+  const actual = await get(`SELECT email, nombre, rol FROM usuarios_panel WHERE email = ?`, [email]);
+  if (!actual) throw new Error("Ese mail no estaba en la lista.");
+  const nombre = cambios.nombre === undefined ? actual.nombre : String(cambios.nombre ?? "").trim().slice(0, 80) || null;
+  const rol = cambios.rol === undefined ? validarRolPanel(actual.rol) : validarRolPanel(cambios.rol);
+  await run(`UPDATE usuarios_panel SET nombre = ?, rol = ? WHERE email = ?`, [nombre, rol, email]);
+  return { ok: true, email, rol, rol_anterior: actual.rol as string };
+}
+
+export async function quitarUsuarioPanel(email: string) {
+  const { changes } = await run(`DELETE FROM usuarios_panel WHERE email = ?`, [String(email ?? "").trim().toLowerCase()]);
+  if (!changes) throw new Error("Ese mail no estaba en la lista.");
+  return { ok: true };
+}
+
+export async function registrarIngresoPanel(email: string, nombre: string | null) {
+  await run(
+    `INSERT INTO ingresos_panel (email, nombre, ultimo_ingreso) VALUES (?, ?, ${sqlAhora()})
+     ON CONFLICT(email) DO UPDATE SET nombre = excluded.nombre, ultimo_ingreso = excluded.ultimo_ingreso`,
+    [email, nombre]
+  );
+}

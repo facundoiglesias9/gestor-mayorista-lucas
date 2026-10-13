@@ -66,7 +66,7 @@ function puedeAvisar(clave: string, cadaMs: number) {
 // El HTML/CSS/JS estatico se sirve libre (no tiene datos, es solo la pantalla). Para usar la
 // API hay que haber entrado con una cuenta de Google permitida (ver sesion.ts): el navegador
 // manda solo la cookie de sesion en cada pedido.
-app.use("/api", (req, res, next) => {
+app.use("/api", async (req, res, next) => {
   // El webhook de Telegram (registrado aparte, en api/index.ts) no usa la sesion: Telegram se
   // autentica solo con su propio secretToken, verificado por grammy en su propio handler.
   if (req.path === "/telegram-webhook") return next();
@@ -78,9 +78,10 @@ app.use("/api", (req, res, next) => {
   if (req.path === "/catalogo" || req.path.startsWith("/catalogo/")) return next();
   // Entrar y salir (y preguntar si hay sesion) obviamente no pueden exigir sesion.
   if (req.path === "/sesion" || req.path.startsWith("/sesion/")) return next();
-  const actual = sesion.leerSesion(req.headers.cookie);
+  const actual = await sesion.leerSesion(req.headers.cookie);
   if (actual) {
     res.locals.usuario = actual.email;
+    res.locals.rol = actual.rol;
     return next();
   }
   res.status(401).json({ ok: false, error: "Tenés que entrar con tu cuenta de Google." });
@@ -88,9 +89,17 @@ app.use("/api", (req, res, next) => {
 
 // ---------- sesion (login con Google) ----------
 // La pagina pregunta al cargar: si ya hay sesion entra directo; si no, muestra el login.
-app.get("/api/sesion", (req, res) => {
-  const actual = sesion.leerSesion(req.headers.cookie);
-  res.json({ ok: true, email: actual?.email ?? null, nombre: actual?.nombre ?? null, googleClientId: sesion.googleClientId(), faltaConfigurar: sesion.faltaConfigurar() });
+app.get("/api/sesion", async (req, res) => {
+  const actual = await sesion.leerSesion(req.headers.cookie);
+  res.json({
+    ok: true,
+    email: actual?.email ?? null,
+    nombre: actual?.nombre ?? null,
+    rol: actual?.rol ?? null,
+    gestionaUsuarios: sesion.gestionaUsuarios(actual?.rol),
+    googleClientId: sesion.googleClientId(),
+    faltaConfigurar: sesion.faltaConfigurar(),
+  });
 });
 
 // Recibe el codigo de un solo uso que Google le dio a la pagina y, si la cuenta esta permitida,
@@ -110,7 +119,8 @@ app.post("/api/sesion/google", async (req, res) => {
     await repo.registrarEvento({ nivel: "aviso", origen: "seguridad", evento: "Google no confirmó una cuenta al entrar al panel", detalle: e, ruta: "POST /api/sesion/google" });
     return res.status(401).json({ ok: false, error: "Google no confirmó la cuenta. Probá de nuevo." });
   }
-  if (!cuenta.verificado || !sesion.emailPermitido(cuenta.email)) {
+  const rol = cuenta.verificado ? await sesion.rolDe(cuenta.email) : null;
+  if (!rol) {
     if (puedeAvisar(`cuenta:${cuenta.email}`, 10 * 60 * 1000)) {
       void repo.registrarEvento({ nivel: "aviso", origen: "seguridad", evento: `Intento de entrar al panel con una cuenta no autorizada: ${cuenta.email}`, detalle: `IP: ${ip}\nNavegador: ${req.headers["user-agent"] ?? "-"}`, ruta: "POST /api/sesion/google" });
     }
@@ -118,7 +128,8 @@ app.post("/api/sesion/google", async (req, res) => {
   }
   res.setHeader("Set-Cookie", sesion.crearCookieSesion(cuenta, req.secure));
   void repo.registrarEvento({ nivel: "info", origen: "seguridad", evento: `Entró al panel: ${cuenta.email}`, detalle: `IP: ${ip}\nNavegador: ${req.headers["user-agent"] ?? "-"}`, usuario: cuenta.email, ruta: "POST /api/sesion/google" });
-  res.json({ ok: true, email: cuenta.email, nombre: cuenta.nombre });
+  void repo.registrarIngresoPanel(cuenta.email, cuenta.nombre).catch(() => {}); // para la columna "Ultimo ingreso" de Usuarios
+  res.json({ ok: true, email: cuenta.email, nombre: cuenta.nombre, rol, gestionaUsuarios: sesion.gestionaUsuarios(rol) });
 });
 
 app.post("/api/sesion/salir", (req, res) => {
@@ -132,10 +143,10 @@ function esFallaInterna(e: any) {
   return e instanceof TypeError || e instanceof ReferenceError || e instanceof SyntaxError || /libsql|sqlite|fetch failed|ECONN|ETIMEDOUT/i.test(`${e?.name} ${e?.code} ${e?.message}`);
 }
 
-function envolver(handler: (req: express.Request) => any) {
+function envolver(handler: (req: express.Request, res: express.Response) => any) {
   return async (req: express.Request, res: express.Response) => {
     try {
-      const resultado = await handler(req);
+      const resultado = await handler(req, res);
       res.json(resultado ?? { ok: true });
     } catch (e: any) {
       const interna = esFallaInterna(e);
@@ -151,6 +162,74 @@ function envolver(handler: (req: express.Request) => any) {
     }
   };
 }
+
+// ---------- usuarios del panel (duenos y admins) ----------
+// Agregan, editan o sacan a quien puede entrar con su cuenta de Google, sin tocar Vercel. A los
+// duenos (PANEL_EMAILS) no los toca nadie desde aca: ni siquiera estan en la tabla.
+function soloGestionUsuarios(_req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (sesion.gestionaUsuarios(res.locals.rol)) return next();
+  res.status(403).json({ ok: false, error: "Solo los dueños y los admins pueden manejar los usuarios." });
+}
+
+function mailDelPedido(req: express.Request) {
+  return String(req.params.email ?? "").trim().toLowerCase();
+}
+
+app.get(
+  "/api/usuarios",
+  soloGestionUsuarios,
+  envolver(async () => {
+    const duenos = sesion.emailsDuenos();
+    const ingresos = await repo.ingresosPanel(duenos);
+    return {
+      duenos: duenos.map((email) => {
+        const ingreso = ingresos.find((i) => i.email === email);
+        return { email, nombre_google: ingreso?.nombre ?? null, ultimo_ingreso: ingreso?.ultimo_ingreso ?? null };
+      }),
+      usuarios: await repo.listarUsuariosPanel(),
+    };
+  })
+);
+
+app.post(
+  "/api/usuarios",
+  soloGestionUsuarios,
+  envolver(async (req, res) => {
+    if (sesion.esDueno(String(req.body?.email ?? ""))) throw new Error("Ese mail es de un dueño: ya puede entrar siempre.");
+    const resultado = await repo.agregarUsuarioPanel({ email: req.body?.email, nombre: req.body?.nombre, rol: req.body?.rol, agregado_por: res.locals.usuario });
+    sesion.olvidarUsuariosEnCache();
+    void repo.registrarEvento({ nivel: "info", origen: "seguridad", evento: `Usuario agregado al panel: ${resultado.email} (${resultado.rol})`, usuario: res.locals.usuario, ruta: "POST /api/usuarios" });
+    return resultado;
+  })
+);
+
+app.put(
+  "/api/usuarios/:email",
+  soloGestionUsuarios,
+  envolver(async (req, res) => {
+    const email = mailDelPedido(req);
+    if (sesion.esDueno(email)) throw new Error("A un dueño no se lo puede cambiar desde el panel.");
+    const resultado = await repo.editarUsuarioPanel(email, { nombre: req.body?.nombre, rol: req.body?.rol });
+    sesion.olvidarUsuariosEnCache();
+    if (resultado.rol !== resultado.rol_anterior) {
+      void repo.registrarEvento({ nivel: "info", origen: "seguridad", evento: `Rol cambiado en el panel: ${email} (${resultado.rol_anterior} → ${resultado.rol})`, usuario: res.locals.usuario, ruta: "PUT /api/usuarios" });
+    }
+    return resultado;
+  })
+);
+
+app.delete(
+  "/api/usuarios/:email",
+  soloGestionUsuarios,
+  envolver(async (req, res) => {
+    const email = mailDelPedido(req);
+    if (sesion.esDueno(email)) throw new Error("A un dueño no se lo puede sacar desde el panel.");
+    const resultado = await repo.quitarUsuarioPanel(email);
+    sesion.olvidarUsuariosEnCache();
+    void repo.registrarEvento({ nivel: "info", origen: "seguridad", evento: `Usuario quitado del panel: ${email}`, usuario: res.locals.usuario, ruta: "DELETE /api/usuarios" });
+    return resultado;
+  })
+);
 
 // ---------- productos ----------
 app.get("/api/productos", envolver(() => repo.listarProductos()));

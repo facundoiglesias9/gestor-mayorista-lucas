@@ -935,6 +935,8 @@ tbody tr { transition: background var(--dur-rapida) var(--ease); }
 tbody tr:hover { background: rgba(255, 255, 255, 0.022); }
 .texto-fuerte { font-weight: 600; color: var(--texto); }
 .texto-tenue { color: var(--texto-tenue); }
+/* segundo renglon chico dentro de una celda (ej: el mail debajo del nombre en Usuarios) */
+.celda-sub { display: block; margin-top: 2px; font-size: 0.78rem; color: var(--texto-tenue); }
 .fecha { color: var(--texto-suave); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .fecha small { color: var(--texto-tenue); font-size: 0.78rem; margin-left: 6px; }
 
@@ -1043,6 +1045,7 @@ tr:nth-child(even) td:nth-child(odd) .esqueleto { width: 58%; }
 .estado-parcial, .estado-info { background: rgba(110, 168, 254, 0.12); color: var(--acento); border-color: rgba(110, 168, 254, 0.2); }
 .estado-pagado, .estado-devuelta { background: rgba(76, 175, 125, 0.12); color: var(--verde); border-color: rgba(76, 175, 125, 0.2); }
 .estado-vendida, .estado-neutro { background: rgba(139, 147, 161, 0.12); color: var(--texto-tenue); border-color: rgba(139, 147, 161, 0.2); }
+.estado-admin { background: rgba(143, 124, 240, 0.14); color: var(--acento-2); border-color: rgba(143, 124, 240, 0.25); }
 .estado-rechazado, .estado-error { background: rgba(229, 104, 106, 0.12); color: var(--rojo); border-color: rgba(229, 104, 106, 0.2); }
 .estado-fija { background: rgba(53, 201, 182, 0.12); color: var(--teal); border-color: rgba(53, 201, 182, 0.2); }
 
