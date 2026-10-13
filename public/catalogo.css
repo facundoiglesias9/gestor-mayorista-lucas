@@ -160,6 +160,11 @@ svg { width: 18px; height: 18px; flex: none; }
 
 .barra-botones { display: flex; align-items: center; gap: 8px; }
 
+/* links a cada seccion de la pagina (en el celular no entran: se baja nomas) */
+.barra-nav { display: flex; align-items: center; gap: 28px; }
+.barra-nav a { font-size: 0.86rem; font-weight: 550; color: var(--texto-suave); text-decoration: none; transition: color var(--dur-rapida) var(--ease); }
+.barra-nav a:hover { color: var(--texto); }
+
 /* boton sol/luna: se ve el icono del tema al que se va a pasar, con un giro corto al cambiar */
 .btn-redondo {
   position: relative;
@@ -194,9 +199,45 @@ svg { width: 18px; height: 18px; flex: none; }
 :root[data-tema="oscuro"] .icono-sol { opacity: 1; transform: none; }
 :root[data-tema="oscuro"] .icono-luna { opacity: 0; transform: rotate(90deg) scale(0.5); }
 
-/* ---------- hero ---------- */
+/* ---------- quienes somos (lo primero de la pagina) ---------- */
 main { max-width: 1240px; margin: 0 auto; padding: 0 24px 64px; }
-.hero { position: relative; text-align: center; padding: 64px 0 34px; animation: subir 700ms var(--ease) both; }
+.quienes { position: relative; padding-top: 40px; }
+.quienes-intro { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.6fr); align-items: center; gap: 48px; }
+.quienes-titulo { margin: 0; font-size: clamp(1.9rem, 3.8vw, 2.8rem); font-weight: 800; letter-spacing: -0.045em; line-height: 1.05; }
+.quienes-titulo em { font-style: normal; color: var(--texto-tenue); }
+.quienes-parrafo { margin: 16px 0 0; max-width: 580px; color: var(--texto-suave); font-size: 1rem; line-height: 1.6; }
+.quienes-acciones { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.quienes-imagen {
+  position: relative;
+  justify-self: end;
+  width: 100%;
+  max-width: 280px;
+  aspect-ratio: 1;
+  border-radius: var(--radio);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--superficie);
+  border: 1px solid var(--barra-borde);
+  box-shadow: var(--sombra-card);
+}
+.quienes-brillo {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(45% 38% at 45% 48%, color-mix(in srgb, var(--acento) 18%, transparent), transparent 70%),
+    radial-gradient(38% 32% at 62% 40%, color-mix(in srgb, #bf5af2 15%, transparent), transparent 70%);
+  filter: blur(12px);
+}
+.quienes-imagen img { position: relative; width: 46%; aspect-ratio: 1; border-radius: 22%; object-fit: cover; box-shadow: 0 24px 48px rgba(0, 0, 0, 0.28); }
+
+/* por que elegirnos: los 4 motivos en una franja, numerados */
+.pilares { list-style: none; margin: 40px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--borde); }
+.pilar { display: flex; flex-direction: column; gap: 6px; padding: 20px 22px 4px; border-left: 1px solid var(--borde); }
+.pilar:first-child { border-left: none; padding-left: 0; }
+.pilar-titulo { font-size: 0.76rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+.pilar-texto { margin: 0; color: var(--texto-tenue); font-size: 0.86rem; }
+
 /* un brillo suave de color detras del titulo */
 .hero-fondo {
   position: absolute;
@@ -213,7 +254,7 @@ main { max-width: 1240px; margin: 0 auto; padding: 0 24px 64px; }
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 18px;
+  margin: 0;
   padding: 6px 14px 6px 12px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--verde) 10%, var(--superficie));
@@ -231,19 +272,9 @@ main { max-width: 1240px; margin: 0 auto; padding: 0 24px 64px; }
   box-shadow: 0 0 0 0 rgba(31, 157, 85, 0.45);
   animation: latido 2.4s var(--ease) infinite;
 }
-.hero h1 {
-  margin: 0;
-  font-size: clamp(2.3rem, 6.2vw, 4rem);
-  font-weight: 800;
-  letter-spacing: -0.045em;
-  line-height: 1.02;
-  background: linear-gradient(180deg, var(--texto) 55%, color-mix(in srgb, var(--texto) 62%, var(--fondo)));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-.hero-texto { margin: 16px auto 0; max-width: 540px; color: var(--texto-tenue); font-size: clamp(1rem, 2vw, 1.16rem); }
-.hero-datos { list-style: none; display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 22px; margin: 22px 0 0; padding: 0; }
+.destacados .hero-etiqueta { justify-self: end; }
+/* datos cortos del catalogo, debajo del texto de su cabecera */
+.hero-datos { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 14px 0 0; padding: 0; }
 .hero-datos:empty { display: none; }
 .hero-datos li { display: inline-flex; align-items: center; gap: 8px; font-size: 0.84rem; font-weight: 550; color: var(--texto-suave); }
 .hero-datos li::before {
@@ -253,6 +284,77 @@ main { max-width: 1240px; margin: 0 auto; padding: 0 24px 64px; }
   border-radius: 50%;
   background: color-mix(in srgb, var(--acento) 14%, transparent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232997ff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5l4 4 8-9'/%3E%3C/svg%3E") no-repeat center / 10px;
 }
+/* ---------- destacados: un producto a la vez, con sus detalles a los costados ---------- */
+.vitrina {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 24px;
+  text-align: left;
+}
+.vitrina-nombre { margin: 0; font-size: clamp(1.3rem, 2.3vw, 1.75rem); font-weight: 800; letter-spacing: -0.035em; line-height: 1.1; }
+.vitrina-info .precio { margin-top: 14px; }
+.vitrina-centro { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.vitrina-escenario {
+  position: relative;
+  justify-self: center;
+  width: min(100%, 290px);
+  aspect-ratio: 1 / 0.92;
+  border-radius: var(--radio);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 0%, var(--escenario-1) 0%, var(--escenario-2) 70%);
+  box-shadow: var(--sombra-card);
+  touch-action: pan-y; /* deslizar de costado cambia de equipo; para arriba y abajo, la pagina */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+.vitrina-escenario.con-foto { background: var(--escenario-foto); }
+.vitrina-escenario .foto-producto { padding: 8% 10%; }
+.vitrina-escenario svg.equipo { width: auto; height: 70%; filter: drop-shadow(0 18px 22px rgba(0, 0, 0, 0.16)); }
+.vitrina-escenario .esqueleto-bloque { width: 100%; height: 100%; border-radius: 0; }
+.vitrina-flecha {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--texto-tenue);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: color var(--dur-rapida) var(--ease), transform var(--dur) var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.vitrina-flecha svg { width: 40px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+.vitrina-flecha:hover { color: var(--texto); }
+.vitrina-flecha:active { transform: scale(0.92); }
+.vitrina-detalle { display: flex; flex-direction: column; align-items: flex-end; text-align: right; gap: 8px; }
+.vitrina-detalle .ceja { margin-bottom: 4px; }
+.vitrina-detalle .producto-resumen { align-items: flex-end; }
+.vitrina-detalle .resumen-linea { font-size: 0.9rem; }
+.vitrina-detalle .puntos-colores { justify-content: flex-end; }
+.vitrina-puntos { display: flex; gap: 6px; margin-top: 12px; }
+.vitrina-punto {
+  width: 18px;
+  height: 19px; /* el area para tocar es mas alta que la rayita que se ve */
+  padding: 8px 0;
+  border: none;
+  border-radius: 2px;
+  background: var(--borde-fuerte);
+  background-clip: content-box;
+  cursor: pointer;
+  transition: width var(--dur) var(--resorte), background-color var(--dur) var(--ease);
+}
+.vitrina-punto.activo { width: 34px; background-color: var(--texto); }
+
+/* al pasar de un equipo a otro: lo viejo se desvanece y lo nuevo sube apenas */
+.vitrina-info, #vitrina-detalle, .vitrina-escenario > * { transition: opacity 220ms var(--ease), transform 340ms var(--ease); }
+.vitrina.cambiando .vitrina-info, .vitrina.cambiando #vitrina-detalle { opacity: 0; transform: translateY(8px); }
+.vitrina.cambiando .vitrina-escenario > * { opacity: 0; transform: scale(0.96); }
 
 /* ---------- buscador y categorias (quedan pegados arriba al bajar) ---------- */
 .herramientas {
@@ -524,8 +626,8 @@ html.hoja-abierta { overflow: hidden; }
 /* ---------- grilla de productos ---------- */
 .grilla {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: 14px;
 }
 
 /* cada tarjeta es un link que abre la ficha del producto */
@@ -607,9 +709,9 @@ a.producto:hover .foto-producto { transform: scale(1.05); }
 .insignia-estado[data-estado="usado"] { color: #6e6e73; }
 .insignia-agotado { color: #c46a00; }
 
-.producto-cuerpo { display: flex; flex-direction: column; gap: 4px; padding: 14px 18px 16px; flex: 1; }
+.producto-cuerpo { display: flex; flex-direction: column; gap: 4px; padding: 12px 15px 14px; flex: 1; }
 .producto-categoria { font-size: 0.7rem; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase; color: var(--texto-tenue); }
-.producto-nombre { margin: 0; font-size: 1.08rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.3; }
+.producto-nombre { margin: 0; font-size: 1rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.3; }
 .producto-resumen { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
 .resumen-linea { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--texto-tenue); font-variant-numeric: tabular-nums; }
 .resumen-linea .pila { width: 18px; height: 9px; }
@@ -622,7 +724,7 @@ a.producto:hover .foto-producto { transform: scale(1.05); }
 .producto-pie { margin-top: auto; padding-top: 14px; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
 .precio { display: flex; flex-direction: column; min-width: 0; }
 .precio-desde { font-size: 0.72rem; font-weight: 600; color: var(--texto-tenue); line-height: 1.2; }
-.precio-valor { font-size: 1.4rem; font-weight: 750; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1.2; }
+.precio-valor { font-size: 1.25rem; font-weight: 750; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1.2; }
 .precio-equivalente { font-size: 0.76rem; color: var(--texto-tenue); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .precio-consultar { font-size: 1.02rem; font-weight: 650; color: var(--texto-suave); }
 .precio.cambio .precio-valor { animation: subir 320ms var(--ease) both; }
@@ -783,25 +885,179 @@ html.ficha-abierta { overflow: hidden; }
 .btn-grande { grid-column: 1 / -1; margin-top: 12px; padding: 15px 22px; font-size: 1rem; }
 .btn-grande svg { width: 20px; height: 20px; }
 
-/* ---------- bloque de contacto ---------- */
-.contacto {
-  margin-top: 56px;
-  padding: 30px 34px;
-  border-radius: 26px;
-  display: flex;
+/* ---------- secciones (catalogo, por que elegirnos, que ofrecemos, contacto) ---------- */
+.seccion { padding-top: 84px; scroll-margin-top: 58px; } /* 58px: lo que tapa la barra de arriba */
+.seccion-cabecera { margin-bottom: 26px; }
+.seccion-cabecera.centrada { text-align: center; }
+.seccion-cabecera-partida { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); align-items: end; gap: 20px 56px; }
+.ceja { margin: 0 0 14px; font-size: 0.74rem; font-weight: 650; letter-spacing: 0.16em; text-transform: uppercase; color: var(--acento); }
+.seccion-titulo { margin: 0; font-size: clamp(1.65rem, 3.2vw, 2.4rem); font-weight: 800; letter-spacing: -0.045em; line-height: 1.04; }
+/* la segunda parte del titulo, en gris: "Descubrí nuestros equipos." */
+.seccion-titulo em { font-style: normal; color: var(--texto-tenue); }
+.seccion-texto { margin: 0; max-width: 420px; color: var(--texto-tenue); font-size: 1rem; }
+.seccion-cabecera-partida .seccion-texto, .seccion-cabecera-lado { justify-self: end; }
+.seccion-cabecera-lado { max-width: 420px; }
+.seccion-cabecera.centrada .seccion-texto { margin: 14px auto 0; }
+
+/* "12 de 40 equipos" + boton para traer los siguientes */
+.ver-mas { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 28px; }
+.ver-mas-info { margin: 0; font-size: 0.76rem; font-weight: 650; letter-spacing: 0.14em; text-transform: uppercase; color: var(--texto-tenue); font-variant-numeric: tabular-nums; }
+.ver-mas .btn { padding: 12px 26px; }
+
+/* ---------- que ofrecemos: sellados, usados, plan canje ---------- */
+.lineas-grilla { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); border-top: 1px solid var(--borde); }
+.linea { display: flex; flex-direction: column; gap: 8px; padding: 26px 26px 4px; border-left: 1px solid var(--borde); }
+.linea:first-child { border-left: none; padding-left: 0; }
+.linea-icono { margin-bottom: 8px; }
+.linea-icono svg { width: 36px; height: 36px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.linea-titulo { margin: 0; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+/* "3 en stock hoy", en el mismo verde que la etiqueta de la portada */
+.linea-cuenta { margin: -4px 0 0; font-size: 0.84rem; font-weight: 600; color: var(--verde); font-variant-numeric: tabular-nums; }
+.linea-cuenta:empty { display: none; }
+.linea-texto { margin: 0; max-width: 300px; color: var(--texto-tenue); font-size: 0.92rem; }
+
+/* links de texto con flecha larga ("Ver sellados", "Ver equipo") */
+.linea-link, .vitrina-ver {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  flex-wrap: wrap;
-  background:
-    radial-gradient(60% 120% at 0% 0%, color-mix(in srgb, var(--whatsapp) 14%, transparent), transparent 70%),
-    var(--superficie);
+  align-self: flex-start;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--acento);
+  text-decoration: none;
+}
+.vitrina-ver { margin-top: 18px; }
+.linea-link svg, .vitrina-ver svg { width: 34px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; transition: transform var(--dur) var(--ease); }
+
+/* ---------- contacto: una fila por cada forma de escribirnos ---------- */
+.contacto-filas { list-style: none; max-width: 980px; margin: 0 auto; padding: 0; border-top: 1px solid var(--borde); }
+.contacto-fila {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 10px;
+  border-bottom: 1px solid var(--borde);
+  color: inherit;
+  text-decoration: none;
+  transition: background var(--dur) var(--ease);
+}
+.contacto-icono { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; }
+.contacto-icono svg { width: 19px; height: 19px; }
+.contacto-icono-whatsapp { background: color-mix(in srgb, var(--whatsapp) 15%, transparent); color: var(--whatsapp-oscuro); }
+.contacto-icono-whatsapp svg { fill: currentColor; }
+.contacto-icono-instagram { background: color-mix(in srgb, #d62976 13%, transparent); color: #d62976; }
+.contacto-icono-instagram svg { fill: none; stroke: currentColor; stroke-width: 1.8; }
+.contacto-textos strong { display: block; font-size: clamp(1.1rem, 1.9vw, 1.4rem); font-weight: 750; letter-spacing: -0.03em; line-height: 1.2; }
+.contacto-textos small { font-size: 0.84rem; color: var(--texto-tenue); }
+.contacto-flecha { width: 40px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; color: var(--texto-tenue); transition: transform var(--dur) var(--ease), color var(--dur) var(--ease); }
+
+/* ---------- plan canje: como funciona + cotizador ---------- */
+.canje-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 40px; }
+.canje-pasos { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--borde); }
+.canje-paso { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 14px; padding: 16px 0; border-bottom: 1px solid var(--borde); }
+.canje-paso-icono { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--acento) 12%, transparent); color: var(--acento); }
+.canje-paso-icono svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.canje-paso strong { font-size: 0.95rem; letter-spacing: -0.01em; }
+.canje-paso p { margin: 2px 0 0; color: var(--texto-tenue); font-size: 0.86rem; }
+
+.canje-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  border-radius: var(--radio);
+  background: var(--superficie);
   border: 1px solid var(--barra-borde);
   box-shadow: var(--sombra-card);
 }
-.contacto h2 { margin: 0; font-size: 1.35rem; letter-spacing: -0.025em; }
-.contacto p { margin: 4px 0 0; color: var(--texto-tenue); }
-.contacto .btn { padding: 13px 24px; }
+.canje-form h3 { margin: 0; font-size: 1.15rem; letter-spacing: -0.02em; }
+.campo { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 0; padding: 0; border: none; }
+.campo > span, .campo > legend { padding: 0; margin-bottom: 0; font-size: 0.8rem; font-weight: 600; color: var(--texto-suave); }
+.campo em { font-style: normal; font-weight: 500; color: var(--texto-tenue); }
+.campo input, .campo select {
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: var(--radio-chico);
+  border: 1px solid var(--borde);
+  background: var(--fondo);
+  color: var(--texto);
+  font-family: inherit;
+  font-size: 16px; /* 16px: asi el iPhone no hace zoom al tocar el campo */
+  transition: border-color var(--dur-rapida) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.campo input::placeholder { color: var(--placeholder); }
+.campo input:focus, .campo select:focus { outline: none; border-color: var(--acento); box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.15); }
+.campo small { color: var(--texto-tenue); font-size: 0.76rem; }
+.campo-doble { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; }
+
+/* el estado del equipo: botones en vez de circulitos (sigue siendo un radio, para el teclado y lectores) */
+.opciones-estado { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
+.opcion { position: relative; }
+.opcion input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.opcion span {
+  display: block;
+  padding: 10px 12px;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-chico);
+  text-align: center;
+  font-size: 0.88rem;
+  font-weight: 550;
+  transition: border-color var(--dur-rapida) var(--ease), background var(--dur-rapida) var(--ease), color var(--dur-rapida) var(--ease);
+}
+.opcion input:checked + span { border-color: var(--texto); background: var(--texto); color: var(--texto-invertido); }
+.opcion input:focus-visible + span { outline: 3px solid rgba(0, 113, 227, 0.45); outline-offset: 2px; }
+.canje-form .btn-grande { margin-top: 2px; }
+.canje-error { margin: 0; color: #e5484d; font-size: 0.85rem; font-weight: 550; }
+.canje-nota { margin: -4px 0 0; text-align: center; font-size: 0.78rem; color: var(--texto-tenue); }
+
+@media (hover: hover) and (pointer: fine) {
+  .opcion input:not(:checked):hover + span { border-color: var(--borde-fuerte); }
+  .linea-link:hover svg, .vitrina-ver:hover svg { transform: translateX(4px); }
+  .vitrina-flecha[data-paso="1"]:hover { transform: translateX(3px); }
+  .vitrina-flecha[data-paso="-1"]:hover { transform: translateX(-3px); }
+  .contacto-fila:hover { background: color-mix(in srgb, var(--texto) 3%, transparent); }
+  .contacto-fila:hover .contacto-flecha { transform: translateX(6px); color: var(--texto); }
+}
+
+/* Aparecer al bajar, igual que la web de referencia: cada bloque llega desenfocado, transparente y
+   un poco mas abajo, y se enfoca en su lugar (una sola vez: la primera vez que se ve). Los titulos
+   suben linea por linea desde abajo de una ranura, apenas girados; las tarjetas solo suben y
+   aparecen, sin desenfoque (son muchas). Las clases las pone catalogo.js: sin JavaScript se ve todo
+   normal. */
+:root { --ease-difuminado: cubic-bezier(0.22, 1, 0.36, 1); }
+.difuminar {
+  opacity: 0;
+  filter: blur(10px);
+  transform: translateY(64px);
+  transition: opacity 1600ms var(--ease-difuminado), filter 1600ms var(--ease-difuminado), transform 1300ms var(--ease-difuminado);
+  transition-delay: var(--retraso, 0ms);
+}
+.difuminar.visible { opacity: 1; filter: blur(0); transform: none; }
+
+/* cada linea del titulo vive en su propia ranura (overflow hidden) y sube desde abajo */
+.titulo-linea { display: block; overflow: hidden; padding-bottom: 0.12em; margin-bottom: -0.12em; }
+.titulo-linea > span { display: block; transform-origin: bottom left; }
+.titulo-ranura .titulo-linea > span {
+  transform: translateY(110%) rotate(4deg);
+  transition: transform 1300ms var(--ease-difuminado);
+  transition-delay: calc(var(--retraso, 0ms) + var(--linea, 0) * 120ms);
+}
+.titulo-ranura.visible .titulo-linea > span { transform: none; }
+
+/* las tarjetas usan "translate" (no "transform"), asi no se pisa con el levantarse al pasar el mouse */
+.producto.aparecer-tarjeta {
+  animation: none;
+  opacity: 0;
+  translate: 0 48px;
+  transition: opacity 900ms var(--ease-difuminado), translate 1100ms var(--ease-difuminado), transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  transition-delay: var(--retraso, 0ms), var(--retraso, 0ms), 0ms, 0ms, 0ms;
+}
+.producto.aparecer-tarjeta.visible { opacity: 1; translate: none; }
 
 /* ---------- esqueleto de carga ---------- */
 .producto.esqueleto { animation: subir 560ms var(--ease) both; }
@@ -896,16 +1152,29 @@ main.legal { max-width: 768px; padding-top: 88px; padding-bottom: 112px; }
 @keyframes filtro-sale { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.92); } }
 
 /* ---------- tablet ---------- */
+@media (max-width: 900px) {
+  .barra-nav { display: none; }
+}
 @media (max-width: 860px) {
   .ficha-cuerpo { grid-template-columns: 1fr 1fr; }
   .ficha-info { padding: 30px 22px 22px 8px; }
+
+  /* vitrina en columna: la foto arriba (con las flechas a los costados) y el nombre abajo */
+  .vitrina { grid-template-columns: minmax(0, 1fr); gap: 16px; text-align: center; }
+  .vitrina-centro { order: -1; max-width: 420px; width: 100%; margin: 0 auto; }
+  .vitrina-detalle { align-items: center; text-align: center; }
+  #vitrina-detalle { display: none; }
+  .vitrina-puntos { margin-top: 0; }
+  .vitrina-ver { align-self: center; }
+  .quienes-intro { gap: 32px; }
+  .pilares { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pilar:nth-child(3) { border-left: none; padding-left: 0; }
 }
 
 /* ---------- celular ---------- */
 @media (max-width: 640px) {
   body { font-size: 14px; }
   .barra-contenido, main { padding-left: 16px; padding-right: 16px; }
-  .hero { padding: 40px 0 22px; }
   .hero-datos { gap: 6px 16px; margin-top: 18px; }
   .hero-datos li { font-size: 0.78rem; }
   .herramientas { top: 58px; margin: 0 -16px; padding: 10px 16px; flex-direction: column; align-items: stretch; gap: 10px; }
@@ -977,8 +1246,27 @@ main.legal { max-width: 768px; padding-top: 88px; padding-bottom: 112px; }
   .whatsapp-flotante { right: 16px; bottom: 16px; width: 52px; height: 52px; }
   .texto-boton { display: none; }
   .btn-contorno.btn-chico { padding: 0; width: 38px; height: 38px; }
-  .contacto { margin-top: 40px; padding: 24px 22px; border-radius: 22px; }
-  .contacto .btn { width: 100%; }
+
+  .quienes { padding-top: 24px; }
+  .vitrina-centro { gap: 2px; }
+  .vitrina-flecha { width: 34px; }
+  .vitrina-flecha svg { width: 26px; }
+  .seccion { padding-top: 76px; }
+  .seccion-cabecera { margin-bottom: 24px; }
+  .seccion-cabecera-partida { grid-template-columns: minmax(0, 1fr); }
+  .seccion-cabecera-partida .seccion-texto, .seccion-cabecera-lado, .destacados .hero-etiqueta { justify-self: start; }
+  .quienes-intro { grid-template-columns: minmax(0, 1fr); }
+  .quienes-imagen { display: none; } /* el logo ya esta en la barra de arriba */
+  .pilares { margin-top: 28px; }
+  .pilar, .pilar:nth-child(3) { padding: 16px 12px 4px 0; border-left: none; }
+  .pilar-texto { font-size: 0.8rem; }
+  .lineas-grilla { grid-template-columns: minmax(0, 1fr); }
+  .linea { padding: 26px 0 22px; border-left: none; border-top: 1px solid var(--borde); }
+  .linea:first-child { border-top: none; }
+  .canje-cuerpo { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .canje-form { padding: 18px; }
+  .contacto-fila { gap: 14px; padding: 18px 4px; }
+  .contacto-flecha { width: 28px; }
 
   /* la ficha pasa a ser una hoja que sube desde abajo, con el precio y el boton fijos al pie */
   .ficha {

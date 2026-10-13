@@ -7,12 +7,13 @@
 const erroresWebEnviados = new Set();
 function reportarErrorWeb(mensaje, detalle) {
   try {
-    const auth = typeof authHeader === "function" ? authHeader() : null;
-    if (!auth || erroresWebEnviados.size >= 5 || erroresWebEnviados.has(mensaje)) return;
+    // sin sesion el servidor lo rechazaria igual (la cookie de sesion va sola en el fetch)
+    const conSesion = typeof haySesion === "function" && haySesion();
+    if (!conSesion || erroresWebEnviados.size >= 5 || erroresWebEnviados.has(mensaje)) return;
     erroresWebEnviados.add(mensaje);
     fetch("/api/logs/web", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: auth },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mensaje, detalle, url: location.pathname + location.hash, seccion: location.hash.slice(1) || "resumen" }),
     }).catch(() => {});
   } catch {

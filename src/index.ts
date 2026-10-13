@@ -4,7 +4,6 @@ for (const [nombre, valor] of Object.entries({
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
   OWNER_TELEGRAM_ID: process.env.OWNER_TELEGRAM_ID,
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-  PANEL_PASSWORD: process.env.PANEL_PASSWORD,
   TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL,
 })) {
   if (!valor) {

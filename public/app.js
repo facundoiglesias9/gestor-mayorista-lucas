@@ -86,35 +86,72 @@ function estadoVacio(mensaje) {
   return `<div class="estado-vacio">${ICONO_VACIO}<span>${escapeHtml(mensaje)}</span></div>`;
 }
 
-// ---------- login (la clave se guarda en sessionStorage del navegador, se manda como header en cada llamada) ----------
-// btoa solo acepta caracteres "latinos" de 1 byte: se pasa la clave a UTF-8 antes, asi una clave
-// con tildes, ñ o emojis funciona igual que en el servidor (que la lee como UTF-8).
-function headerConClave(clave) {
-  const bytes = new TextEncoder().encode("gestor:" + clave);
-  return "Basic " + btoa(String.fromCharCode(...bytes));
-}
+// ---------- login con Google ----------
+// La sesion es una cookie que maneja el servidor (ver src/sesion.ts): el navegador la manda sola en
+// cada llamada a la API y este JavaScript ni la ve. Aca solo se arma la ventanita de Google.
+let sesionActual = null; // mail de quien entro, o null
+let clienteGoogle = null; // la ventanita de Google, lista para abrirse con el boton
+let motivoSinGoogle = "Cargando Google… probá de nuevo en un segundo.";
 
-function authHeader() {
-  const clave = sessionStorage.getItem("panel_clave");
-  return clave ? headerConClave(clave) : null;
-}
-
-// Devuelve el codigo HTTP: 200 = clave correcta, 401 = incorrecta, 429 = demasiados intentos.
-async function probarClave(clave) {
-  const resp = await fetch("/api/resumen", { headers: { Authorization: headerConClave(clave) } });
-  return resp.status;
+function haySesion() {
+  return sesionActual !== null;
 }
 
 async function iniciarLogin() {
   const overlay = document.getElementById("login-overlay");
-  const claveGuardada = sessionStorage.getItem("panel_clave");
-  if (claveGuardada && (await probarClave(claveGuardada).catch(() => 0)) === 200) {
+  const estado = await fetch("/api/sesion")
+    .then((r) => r.json())
+    .catch(() => null);
+  if (estado?.email) {
+    sesionActual = estado.email;
     mostrarApp();
     return;
   }
-  sessionStorage.removeItem("panel_clave");
   overlay.classList.remove("verificando");
-  document.getElementById("login-clave").focus();
+  prepararGoogle(estado);
+}
+
+// Deja armada la ventanita de Google ANTES del click: si se armara despues de esperar algo, el
+// navegador la tomaria como una ventana emergente no pedida y la bloquearia.
+async function prepararGoogle(estado) {
+  if (!estado) {
+    motivoSinGoogle = "No me pude conectar con el servidor. Recargá la página.";
+    return mostrarErrorLogin(motivoSinGoogle, false);
+  }
+  if (estado.faltaConfigurar?.length) {
+    motivoSinGoogle = `Falta configurar el login con Google en el servidor (${estado.faltaConfigurar.join(", ")}).`;
+    return mostrarErrorLogin(motivoSinGoogle, false);
+  }
+  // el script de Google carga aparte (async): se lo espera hasta 10 s
+  for (let i = 0; i < 100 && !window.google?.accounts?.oauth2; i++) await new Promise((r) => setTimeout(r, 100));
+  if (!window.google?.accounts?.oauth2) {
+    motivoSinGoogle = "No cargó Google (¿sin internet, o un bloqueador de anuncios?). Recargá la página.";
+    return mostrarErrorLogin(motivoSinGoogle, false);
+  }
+  clienteGoogle = google.accounts.oauth2.initCodeClient({
+    client_id: estado.googleClientId,
+    scope: "openid email profile",
+    ux_mode: "popup",
+    select_account: true,
+    callback: alVolverDeGoogle,
+    error_callback: (err) => {
+      // si la cerro la persona no es un error; si el navegador no la dejo abrir, si
+      if (err?.type === "popup_failed_to_open") {
+        mostrarErrorLogin("El navegador bloqueó la ventana de Google. Permití las ventanas emergentes para este sitio y probá de nuevo.");
+      }
+    },
+  });
+}
+
+function mostrarErrorLogin(mensaje, sacudir = true) {
+  const error = document.getElementById("login-error");
+  error.textContent = mensaje;
+  error.classList.remove("oculto");
+  if (!sacudir) return;
+  const form = document.getElementById("form-login");
+  form.classList.remove("sacudir");
+  void form.offsetWidth; // reinicia la animacion si ya se habia sacudido antes
+  form.classList.add("sacudir");
 }
 
 function mostrarApp() {
@@ -130,31 +167,342 @@ function mostrarApp() {
   actualizarBadgePedidos();
 }
 
-document.getElementById("form-login").addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  const form = ev.target;
-  const clave = document.getElementById("login-clave").value;
-  const error = document.getElementById("login-error");
-  await conCarga(form.querySelector("button[type=submit]"), async () => {
-    const estado = await probarClave(clave).catch(() => 0);
-    if (estado === 200) {
-      sessionStorage.setItem("panel_clave", clave);
-      mostrarApp();
+// ---------- boton "metal liquido" del login ----------
+// La pastilla es un unico <path> que se recalcula en cada frame a partir de unos pocos resortes. Al
+// enviar se estrangula en el medio mientras el servidor verifica la clave; si es correcta la cintura
+// llega a cero, se corta, caen 3 gotas y las dos mitades se vuelven a unir con el tilde. Si no, vuelve
+// a su forma con un rebote (y la tarjeta se sacude como siempre). Pasa una vez por sesion, por eso
+// puede ser mas vistoso que el resto del panel.
+const botonLiquido = (() => {
+  const boton = document.getElementById("btn-login");
+  const svg = boton.querySelector(".liquido-svg");
+  const caminos = svg.querySelectorAll(".liquido-cuerpo, .liquido-brillo, .liquido-borde");
+  const sombra = svg.querySelector(".liquido-sombra");
+  const capaGotas = svg.querySelector(".liquido-gotas");
+  const reflejo = document.getElementById("liq-reflejo");
+  const punteroFino = window.matchMedia("(hover: hover) and (pointer: fine)");
+
+  const K = 0.5523; // constante de bezier para aproximar un cuarto de circulo
+  const NECK = 0.34; // largo maximo del cuello, como fraccion de media pastilla
+  const GRAVEDAD = 1500; // px/s², para las gotas
+
+  // resorte amortiguado (masa 1): k = rigidez, c = amortiguacion, eps = cuando se lo da por quieto
+  const resorte = (x, k, c, eps) => ({ x, v: 0, objetivo: x, k, c, eps });
+  const quieto = (r) => Math.abs(r.x - r.objetivo) < r.eps && Math.abs(r.v) < r.eps * 10;
+  function avanzarResorte(r, dt) {
+    r.v += (-r.k * (r.x - r.objetivo) - r.c * r.v) * dt;
+    r.x += r.v * dt;
+  }
+  function iniciar(r, x, v, objetivo, k, c) {
+    Object.assign(r, { x, v, objetivo, k, c });
+  }
+  function rigidez(r, k, c) {
+    r.k = k;
+    r.c = c;
+  }
+
+  let W = 0; // ancho de la pastilla
+  let h = 25; // medio alto (= radio de las puntas)
+  let fase = "reposo"; // reposo | estirando | cortado | uniendo | unido | listo
+  let exitoPedido = false;
+  let resolverExito = null;
+  let tiempo = 0;
+  let tiempoFase = 0;
+  let gotas = [];
+
+  // antes del corte toda la forma sale de un solo valor: g (0 = pastilla entera, 1 = cintura en cero)
+  const g = resorte(0, 180, 20, 0.001);
+  // despues del corte cada parte se mueve por su cuenta
+  const sep = resorte(0, 260, 24, 0.05); // cuanto se corre cada mitad hacia afuera
+  const cuello = resorte(0, 260, 24, 0.05); // medio largo del cuello
+  const cintura = resorte(0, 420, 22, 0.05); // medio alto del cuello
+  const alto = resorte(25, 300, 16, 0.05); // medio alto de la pastilla (se "bambolea" al unirse)
+  const punta = resorte(0, 420, 24, 0.05); // largo de la punta de cada mitad cortada
+  const redondez = resorte(0, 300, 20, 0.001); // 0 = punta afilada (recien cortada), 1 = redonda
+  const independientes = [sep, cuello, cintura, alto, punta, redondez];
+  const brilloX = resorte(0.32, 120, 22, 0.001); // el reflejo sigue al mouse
+
+  const separacionMax = () => Math.min(26, W * 0.09);
+
+  function formaDesdeG() {
+    const gp = Math.min(1, Math.max(0, g.x));
+    const hy = h * (1 - 0.12 * g.x); // al estirarse se afina un poco (y al rebotar se ensancha)
+    return { sep: separacionMax() * g.x, cuello: NECK * (W / 2) * gp, cintura: hy * (1 - gp ** 1.4), alto: hy };
+  }
+
+  // pastilla entera (con o sin cuello). Coordenadas centradas en (0,0).
+  function caminoUnido(s, L, w, hy) {
+    const xo = W / 2 + s - h; // centro de las tapas redondas de los extremos
+    L = Math.min(Math.max(L, 0), xo);
+    w = Math.min(Math.max(w, 0), hy);
+    const a = 0.45 * L;
+    return (
+      `M${-xo},${-hy} L${-L},${-hy} C${-a},${-hy} ${-a},${-w} 0,${-w} C${a},${-w} ${a},${-hy} ${L},${-hy} ` +
+      `L${xo},${-hy} A${h},${hy} 0 0 1 ${xo},${hy} ` +
+      `L${L},${hy} C${a},${hy} ${a},${w} 0,${w} C${-a},${w} ${-a},${hy} ${-L},${hy} ` +
+      `L${-xo},${hy} A${h},${hy} 0 0 1 ${-xo},${-hy}Z`
+    );
+  }
+
+  // dos mitades separadas. Con r = 0 la punta es la misma aguja en que termina el cuello al cortarse
+  // (asi el corte no "salta"); con r = 1 es un cuarto de circulo.
+  function caminoCortado(s, L, hy, t, r) {
+    const xo = W / 2 + s - h;
+    L = Math.min(Math.max(L, 0), xo);
+    t = Math.max(t, 0);
+    r = Math.min(Math.max(r, 0), 1.2);
+    const c1 = (0.55 + (K - 0.55) * r) * t;
+    const c2x = (0.55 + 0.45 * r) * t;
+    const c2y = K * hy * r;
+    return (
+      `M${-xo},${-hy} L${-L},${-hy} C${-L + c1},${-hy} ${-L + c2x},${-c2y} ${-L + t},0 ` +
+      `C${-L + c2x},${c2y} ${-L + c1},${hy} ${-L},${hy} L${-xo},${hy} A${h},${hy} 0 0 1 ${-xo},${-hy}Z ` +
+      `M${L},${-hy} L${xo},${-hy} A${h},${hy} 0 0 1 ${xo},${hy} L${L},${hy} ` +
+      `C${L - c1},${hy} ${L - c2x},${c2y} ${L - t},0 C${L - c2x},${-c2y} ${L - c1},${-hy} ${L},${-hy}Z`
+    );
+  }
+
+  function cortar() {
+    const f = formaDesdeG();
+    const sMax = separacionMax();
+    fase = "cortado";
+    tiempoFase = 0;
+    // cada parte arranca donde estaba y con la velocidad que traia, para que no haya saltos
+    iniciar(sep, f.sep, sMax * g.v, sMax * 1.1, 260, 24);
+    iniciar(cuello, f.cuello, NECK * (W / 2) * g.v, f.cuello, 260, 24);
+    iniciar(alto, f.alto, -0.12 * h * g.v, h, 300, 16);
+    iniciar(punta, f.cuello, 0, h, 420, 24);
+    iniciar(redondez, 0, 0, 1, 300, 20);
+    gotas = [
+      { x: -3, y: 0, vx: -70, vy: -60, r: 4 },
+      { x: 0, y: 2, vx: 8, vy: 30, r: 5.2 },
+      { x: 3, y: 0, vx: 62, vy: -90, r: 3.2 },
+    ].map((gota) => {
+      const el = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+      el.setAttribute("fill", "url(#liq-metal)");
+      capaGotas.appendChild(el);
+      return { ...gota, vx: gota.vx + (Math.random() - 0.5) * 30, el };
+    });
+  }
+
+  function reconectar() {
+    fase = "unido";
+    iniciar(cintura, 0, 0, h, 420, 22);
+    cuello.objetivo = 0;
+    rigidez(cuello, 380, 30);
+    alto.v += 70; // el "plop" de las dos mitades al juntarse
+  }
+
+  function avanzar(dt) {
+    tiempo += dt;
+    tiempoFase += dt;
+    avanzarResorte(brilloX, dt);
+    for (const gota of gotas) {
+      gota.vy += GRAVEDAD * dt;
+      gota.x += gota.vx * dt;
+      gota.y += gota.vy * dt;
+    }
+
+    if (fase === "reposo" || fase === "estirando") {
+      // mientras espera la respuesta del servidor el cuello "respira", para que se note que esta trabajando
+      if (fase === "estirando" && !exitoPedido) g.objetivo = 0.6 + 0.05 * Math.sin(tiempo * 6);
+      avanzarResorte(g, dt);
+      if (exitoPedido && g.x >= 1) cortar();
       return;
     }
-    error.textContent =
-      estado === 429
-        ? "Demasiados intentos con clave incorrecta. Esperá 15 minutos y probá de nuevo."
-        : estado === 401
-          ? "Clave incorrecta."
-          : "No me pude conectar con el servidor. Probá de nuevo.";
-    error.classList.remove("oculto");
-    form.classList.remove("sacudir");
-    void form.offsetWidth; // reinicia la animacion si ya se habia sacudido antes
-    form.classList.add("sacudir");
-    document.getElementById("login-clave").select();
+
+    for (const r of independientes) avanzarResorte(r, dt);
+    if (fase === "cortado" && tiempoFase > 0.16) {
+      fase = "uniendo";
+      sep.objetivo = 0;
+      cuello.objetivo = h * 0.8; // un poco menos que la punta: asi las mitades llegan a tocarse
+    } else if (fase === "uniendo" && cuello.x <= punta.x) {
+      reconectar();
+    } else if (fase === "unido") {
+      if (cintura.x > alto.x * 0.7 && !boton.classList.contains("listo")) {
+        boton.classList.add("listo");
+        setTimeout(resolverExito, 650); // un momento para leer "Sesión iniciada" (el bamboleo sigue mientras)
+      }
+      if (independientes.every(quieto) && gotas.length === 0) fase = "listo";
+    }
+  }
+
+  function dibujar() {
+    if (!W) return;
+    let d, s, hy;
+    if (fase === "reposo" || fase === "estirando") {
+      const f = formaDesdeG();
+      ({ sep: s, alto: hy } = f);
+      d = caminoUnido(f.sep, f.cuello, f.cintura, f.alto);
+    } else if (fase === "cortado" || fase === "uniendo") {
+      [s, hy] = [sep.x, alto.x];
+      d = caminoCortado(sep.x, cuello.x, alto.x, punta.x, redondez.x);
+    } else {
+      [s, hy] = [sep.x, alto.x];
+      d = caminoUnido(sep.x, cuello.x, cintura.x, alto.x);
+    }
+    for (const camino of caminos) camino.setAttribute("d", d);
+
+    sombra.setAttribute("cx", 0);
+    sombra.setAttribute("cy", hy + 10);
+    sombra.setAttribute("rx", W / 2 + s);
+    sombra.setAttribute("ry", 10);
+
+    gotas = gotas.filter((gota) => {
+      const opacidad = 1 - Math.max(0, gota.y - hy - 10) / 60;
+      if (opacidad <= 0) {
+        gota.el.remove();
+        return false;
+      }
+      gota.el.setAttribute("cx", gota.x);
+      gota.el.setAttribute("cy", gota.y);
+      gota.el.setAttribute("rx", gota.r);
+      gota.el.setAttribute("ry", gota.r * (1 + Math.min(0.5, Math.abs(gota.vy) / 1400))); // se estira al caer
+      gota.el.setAttribute("opacity", opacidad);
+      return true;
+    });
+
+    reflejo.setAttribute("cx", brilloX.x);
+    reflejo.setAttribute("fx", brilloX.x);
+  }
+
+  let raf = 0;
+  let ultimo = 0;
+  function enMovimiento() {
+    if (["estirando", "cortado", "uniendo", "unido"].includes(fase)) return true;
+    return !quieto(g) || !quieto(brilloX) || gotas.length > 0;
+  }
+  function frame(ahora) {
+    const dt = Math.min(0.05, (ahora - ultimo) / 1000);
+    ultimo = ahora;
+    // pasos chicos: con dt grande los resortes rigidos se vuelven inestables
+    const pasos = Math.max(1, Math.ceil(dt / 0.004));
+    for (let i = 0; i < pasos; i++) avanzar(dt / pasos);
+    dibujar();
+    raf = enMovimiento() ? requestAnimationFrame(frame) : 0;
+  }
+  function despertar() {
+    if (raf) return;
+    ultimo = performance.now();
+    raf = requestAnimationFrame(frame);
+  }
+
+  // el svg mide lo mismo que el boton; se re-mide cuando aparece el login o cambia el tamaño
+  new ResizeObserver(() => {
+    W = boton.clientWidth;
+    h = boton.clientHeight / 2;
+    if (fase === "reposo") alto.x = alto.objetivo = h;
+    svg.setAttribute("viewBox", `${-W / 2} ${-h} ${W} ${h * 2}`);
+    dibujar();
+  }).observe(boton);
+
+  // al apretar, la pastilla insinua el estrangulamiento (respuesta inmediata, antes del click)
+  boton.addEventListener("pointerdown", () => {
+    if (fase !== "reposo" || sinAnimaciones()) return;
+    rigidez(g, 400, 26);
+    g.objetivo = 0.16;
+    despertar();
   });
+  for (const tipo of ["pointerup", "pointercancel", "pointerleave"]) {
+    boton.addEventListener(tipo, () => {
+      if (fase !== "reposo") return;
+      g.objetivo = 0;
+      despertar();
+    });
+  }
+  boton.addEventListener("pointermove", (ev) => {
+    if (!punteroFino.matches || sinAnimaciones()) return;
+    const caja = boton.getBoundingClientRect();
+    brilloX.objetivo = (ev.clientX - caja.left) / caja.width;
+    despertar();
+  });
+  boton.addEventListener("pointerleave", () => {
+    brilloX.objetivo = 0.32;
+    despertar();
+  });
+
+  return {
+    ocupado: () => fase !== "reposo",
+    estirar() {
+      fase = "estirando";
+      exitoPedido = false;
+      boton.disabled = true;
+      if (sinAnimaciones()) {
+        boton.classList.add("cargando"); // el spinner de siempre, sin estirarse
+        return;
+      }
+      boton.classList.add("estirando");
+      rigidez(g, 180, 20);
+      despertar();
+    },
+    exito() {
+      return new Promise((resolve) => {
+        resolverExito = resolve;
+        if (sinAnimaciones()) {
+          fase = "listo";
+          boton.classList.remove("cargando");
+          boton.classList.add("listo");
+          setTimeout(resolve, 600);
+          return;
+        }
+        exitoPedido = true;
+        rigidez(g, 260, 22);
+        g.objetivo = 1.15; // apunta mas alla de 1 para que la cintura llegue a cero y se corte
+        despertar();
+      });
+    },
+    error() {
+      fase = "reposo";
+      exitoPedido = false;
+      boton.disabled = false;
+      boton.classList.remove("estirando", "cargando");
+      if (sinAnimaciones()) return;
+      rigidez(g, 300, 14); // vuelve con rebote, como un liquido que se acomoda
+      g.objetivo = 0;
+      despertar();
+    },
+  };
+})();
+
+document.getElementById("form-login").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  if (botonLiquido.ocupado()) return;
+  if (!clienteGoogle) return mostrarErrorLogin(motivoSinGoogle);
+  document.getElementById("login-error").classList.add("oculto");
+  clienteGoogle.requestCode(); // abre la ventanita de Google; la respuesta llega a alVolverDeGoogle
 });
+
+// Google le da a la pagina un codigo de un solo uso; el servidor lo cambia por los datos de la
+// cuenta, se fija que el mail este permitido y deja la cookie de sesion.
+async function alVolverDeGoogle(respuesta) {
+  if (respuesta.error) {
+    // "access_denied" = toco "Cancelar" en la ventanita: no hace falta avisar nada
+    if (respuesta.error !== "access_denied") mostrarErrorLogin("Google no dejó entrar. Probá de nuevo.");
+    return;
+  }
+  botonLiquido.estirar(); // se va estrangulando mientras el servidor verifica la cuenta
+  let datos = null;
+  let ok = false;
+  try {
+    const resp = await fetch("/api/sesion/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+      body: JSON.stringify({ code: respuesta.code }),
+    });
+    datos = await resp.json().catch(() => null);
+    ok = resp.ok;
+  } catch {
+    /* sin conexion: cae en el mensaje de abajo */
+  }
+  if (ok) {
+    sesionActual = datos.email;
+    await botonLiquido.exito(); // se corta, gotea, se vuelve a unir y muestra el tilde
+    mostrarApp();
+    return;
+  }
+  botonLiquido.error();
+  mostrarErrorLogin(datos?.error ?? "No me pude conectar con el servidor. Probá de nuevo.");
+}
 
 // ---------- avisos (toast) ----------
 let temporizadorToast = null;
@@ -172,17 +520,15 @@ function mostrarToast(mensaje, esError = false) {
 // ---------- llamadas a la API ----------
 async function api(metodo, url, body) {
   const opciones = { method: metodo, headers: {} };
-  const auth = authHeader();
-  if (auth) opciones.headers["Authorization"] = auth;
   if (body !== undefined) {
     opciones.headers["Content-Type"] = "application/json";
     opciones.body = JSON.stringify(body);
   }
   const resp = await fetch(url, opciones);
   if (resp.status === 401) {
-    sessionStorage.removeItem("panel_clave");
+    // la sesion vencio (o sacaron este mail de PANEL_EMAILS): al recargar aparece el login
     location.reload();
-    throw new Error("Sesion vencida, volve a entrar la clave.");
+    throw new Error("Sesion vencida, volve a entrar con Google.");
   }
   const datos = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(datos.error ?? `Error ${resp.status}`);
@@ -540,8 +886,8 @@ document.addEventListener("keydown", (ev) => {
 });
 
 document.getElementById("btn-salir").addEventListener("click", async () => {
-  if (!(await confirmar({ titulo: "¿Cerrar sesión?", mensaje: "Vas a tener que volver a poner la clave para entrar.", textoBoton: "Cerrar sesión" }))) return;
-  sessionStorage.removeItem("panel_clave");
+  if (!(await confirmar({ titulo: "¿Cerrar sesión?", mensaje: "Vas a tener que volver a entrar con Google.", textoBoton: "Cerrar sesión" }))) return;
+  await fetch("/api/sesion/salir", { method: "POST" }).catch(() => {});
   location.replace(location.pathname);
 });
 
@@ -1356,7 +1702,7 @@ function tarjetaEstado(titulo, ok, textoExtra) {
 async function descargarBackup(boton) {
   await conCarga(boton, async () => {
     try {
-      const resp = await fetch("/api/backup", { headers: { Authorization: authHeader() } });
+      const resp = await fetch("/api/backup");
       if (!resp.ok) {
         const datos = await resp.json().catch(() => ({}));
         throw new Error(datos.error ?? `Error ${resp.status}`);

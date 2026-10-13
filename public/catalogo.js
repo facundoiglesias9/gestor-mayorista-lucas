@@ -155,7 +155,9 @@ const ICONO_ORDEN = `<svg class="filtro-icono" viewBox="0 0 24 24" aria-hidden="
 
 // ---------- estado ----------
 // marca, modelo y condicion (Sellado / Usado...) son los filtros desplegables; null = todos.
-const estado = { productos: [], tienda: null, dolar: null, categoria: "Todos", busqueda: "", orden: "destacados", marca: null, modelo: null, condicion: null };
+// La grilla muestra de a POR_PAGINA; "Ver más" agrega los siguientes.
+const POR_PAGINA = 12;
+const estado = { productos: [], tienda: null, dolar: null, categoria: "Todos", busqueda: "", orden: "destacados", marca: null, modelo: null, condicion: null, limite: POR_PAGINA };
 
 function linkWhatsapp(texto) {
   return `https://wa.me/${estado.tienda.whatsapp}?text=${encodeURIComponent(texto)}`;
@@ -348,7 +350,7 @@ function htmlPrecioTarjeta(p) {
 
 function tarjetaProducto(p, i) {
   return `
-    <a class="producto${p.disponible ? "" : " agotado"}" href="#p-${p.id}" data-id="${p.id}" style="--i:${Math.min(i, 12)}" aria-label="${escapeHtml(`Ver ${p.nombre}${p.estado ? `, ${p.estado}` : ""}`)}">
+    <a class="producto${sinAparecer ? "" : " aparecer-tarjeta"}${p.disponible ? "" : " agotado"}" href="#p-${p.id}" data-id="${p.id}" style="--i:${Math.min(i, 12)}" aria-label="${escapeHtml(`Ver ${p.nombre}${p.estado ? `, ${p.estado}` : ""}`)}">
       <div class="producto-imagen${p.fotos.length ? " con-foto" : ""}">
         ${imagenProducto(p, p.id)}
         ${insignias(p)}
@@ -789,6 +791,7 @@ function dibujarOrden() {
 }
 
 function actualizarLista() {
+  estado.limite = POR_PAGINA; // otra busqueda, categoria, filtro u orden: arranca de nuevo de a 12
   dibujarFiltros();
   dibujarProductos();
 }
@@ -921,6 +924,7 @@ function dibujarProductos() {
   document.getElementById("resultado-info").textContent = estado.productos.length
     ? `${lista.length} ${lista.length === 1 ? "producto" : "productos"}${estado.busqueda ? ` para "${estado.busqueda}"` : ""}`
     : "";
+  actualizarVerMas(lista.length);
   if (!lista.length) {
     grilla.innerHTML = estado.productos.length
       ? `<div class="vacio">${ICONO_BUSCAR_VACIO}<strong>No encontramos nada con esa búsqueda</strong>Probá con otras palabras o mirá todo el catálogo.<br /><button type="button" class="btn btn-oscuro btn-chico" id="limpiar-filtros">Ver todo</button></div>`
@@ -928,7 +932,26 @@ function dibujarProductos() {
     document.getElementById("limpiar-filtros")?.addEventListener("click", limpiarFiltros);
     return;
   }
-  grilla.innerHTML = lista.map(tarjetaProducto).join("");
+  grilla.innerHTML = lista.slice(0, estado.limite).map(tarjetaProducto).join("");
+  observarTarjetas();
+}
+
+// "12 de 40 equipos" y el boton, solo si hay mas de los que se ven.
+function actualizarVerMas(total) {
+  const visibles = Math.min(estado.limite, total);
+  document.getElementById("ver-mas").classList.toggle("oculto", total <= POR_PAGINA);
+  document.getElementById("ver-mas-info").textContent = `${visibles} de ${total} ${total === 1 ? "producto" : "productos"}`;
+  document.getElementById("btn-ver-mas").classList.toggle("oculto", visibles >= total);
+}
+
+// Agrega los siguientes al final, sin redibujar (ni volver a animar) los que ya estaban.
+function verMas() {
+  const lista = productosFiltrados();
+  const desde = estado.limite;
+  estado.limite += POR_PAGINA;
+  document.getElementById("grilla").insertAdjacentHTML("beforeend", lista.slice(desde, estado.limite).map(tarjetaProducto).join(""));
+  actualizarVerMas(lista.length);
+  observarTarjetas();
 }
 
 function mostrarEsqueleto() {
@@ -943,6 +966,7 @@ function mostrarEsqueleto() {
       </div>
     </div>`;
   document.getElementById("grilla").innerHTML = tarjeta.repeat(8);
+  document.getElementById("vitrina-escenario").innerHTML = `<div class="esqueleto-bloque"></div>`;
 }
 
 // "Ver todo" (cuando no hay resultados): saca todo, incluida la categoria y la busqueda.
@@ -1065,6 +1089,299 @@ new IntersectionObserver(([e]) => herramientas.classList.toggle("pegada", e.inte
   herramientas
 );
 
+// ---------- vitrina de la portada: equipos destacados ----------
+// Los primeros equipos del orden del panel (con foto, si hay suficientes) van pasando solos cada
+// 6 s. Se pausa con el mouse o el foco encima y con la ficha abierta; con "reducir movimiento" no
+// pasa sola. En el celular tambien se cambia deslizando la foto de costado.
+const ICONO_FLECHA_LARGA = `<svg viewBox="0 0 40 12" aria-hidden="true"><path d="M1 6h37M33 1l5 5-5 5"/></svg>`;
+const elVitrina = document.getElementById("vitrina");
+const escenarioVitrina = document.getElementById("vitrina-escenario");
+const vitrina = { lista: [], i: 0, temporizador: null, cambio: null, pausada: false, deslizo: false };
+const sinMovimiento = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function elegirDestacados() {
+  const conStock = estado.productos.filter((p) => p.disponible);
+  const conFoto = conStock.filter((p) => p.fotos.length);
+  return (conFoto.length >= 3 ? conFoto : conStock).slice(0, 7);
+}
+
+function pintarDestacado() {
+  const p = vitrina.lista[vitrina.i];
+  document.getElementById("vitrina-info").innerHTML = `
+    <h2 class="vitrina-nombre">${escapeHtml(p.nombre)}</h2>
+    <div class="precio">${htmlPrecioTarjeta(p)}</div>
+    <a class="vitrina-ver" href="#p-${p.id}">Ver producto ${ICONO_FLECHA_LARGA}</a>`;
+  escenarioVitrina.href = `#p-${p.id}`;
+  escenarioVitrina.classList.toggle("con-foto", p.fotos.length > 0);
+  escenarioVitrina.innerHTML = imagenProducto(p, `v${p.id}`);
+  document.getElementById("vitrina-detalle").innerHTML = `
+    ${p.estado ? `<p class="ceja">${escapeHtml(p.estado)}</p>` : ""}
+    <div class="producto-resumen">${resumenOpciones(p)}</div>
+    ${puntosColores(p)}`;
+  document.querySelectorAll(".vitrina-punto").forEach((b, j) => {
+    b.classList.toggle("activo", j === vitrina.i);
+    b.setAttribute("aria-current", String(j === vitrina.i));
+  });
+}
+
+function irADestacado(n, { manual = false } = {}) {
+  const total = vitrina.lista.length;
+  if (total < 2) return;
+  vitrina.i = ((n % total) + total) % total;
+  if (manual) {
+    // lo eligio la persona: que el lector de pantalla lo anuncie, y que el reloj arranque de nuevo
+    document.getElementById("vitrina-info").setAttribute("aria-live", "polite");
+    programarVitrina();
+  }
+  if (sinMovimiento()) return pintarDestacado();
+  elVitrina.classList.add("cambiando");
+  clearTimeout(vitrina.cambio);
+  vitrina.cambio = setTimeout(() => {
+    pintarDestacado();
+    void elVitrina.offsetWidth; // lo nuevo arranca invisible y aparece (si no, saltaria de golpe)
+    elVitrina.classList.remove("cambiando");
+  }, 220);
+}
+
+function programarVitrina() {
+  clearInterval(vitrina.temporizador);
+  if (sinMovimiento() || vitrina.lista.length < 2) return;
+  vitrina.temporizador = setInterval(() => {
+    if (!vitrina.pausada && !document.hidden && !dialogoFicha.open) irADestacado(vitrina.i + 1);
+  }, 6000);
+}
+
+function armarVitrina() {
+  vitrina.lista = elegirDestacados();
+  const total = vitrina.lista.length;
+  if (!total) return elVitrina.classList.add("oculto");
+  document.getElementById("vitrina-puntos").innerHTML =
+    total > 1
+      ? vitrina.lista.map((p, j) => `<button type="button" class="vitrina-punto" data-ir="${j}" aria-label="${escapeHtml(`Ver ${p.nombre} (${j + 1} de ${total})`)}"></button>`).join("")
+      : "";
+  elVitrina.querySelectorAll(".vitrina-flecha").forEach((b) => b.classList.toggle("oculto", total < 2));
+  pintarDestacado();
+  programarVitrina();
+}
+
+elVitrina.addEventListener("click", (ev) => {
+  const flecha = ev.target.closest("[data-paso]");
+  if (flecha) return irADestacado(vitrina.i + Number(flecha.dataset.paso), { manual: true });
+  const punto = ev.target.closest("[data-ir]");
+  if (punto) return irADestacado(Number(punto.dataset.ir), { manual: true });
+  if (ev.target.closest('a[href^="#p-"]')) {
+    // si recien deslizo la foto, no era un toque para abrir la ficha
+    if (vitrina.deslizo) {
+      vitrina.deslizo = false;
+      return ev.preventDefault();
+    }
+    fichaDesdeLaLista = true;
+  }
+});
+elVitrina.addEventListener("keydown", (ev) => {
+  if (ev.key === "ArrowRight") irADestacado(vitrina.i + 1, { manual: true });
+  if (ev.key === "ArrowLeft") irADestacado(vitrina.i - 1, { manual: true });
+});
+elVitrina.addEventListener("pointerenter", (ev) => {
+  if (ev.pointerType === "mouse") vitrina.pausada = true;
+});
+elVitrina.addEventListener("pointerleave", () => (vitrina.pausada = false));
+elVitrina.addEventListener("focusin", () => (vitrina.pausada = true));
+elVitrina.addEventListener("focusout", (ev) => {
+  if (!elVitrina.contains(ev.relatedTarget)) vitrina.pausada = false;
+});
+
+let inicioToque = null;
+escenarioVitrina.addEventListener("dragstart", (ev) => ev.preventDefault());
+escenarioVitrina.addEventListener("pointerdown", (ev) => {
+  inicioToque = { x: ev.clientX, y: ev.clientY };
+  vitrina.deslizo = false;
+});
+escenarioVitrina.addEventListener("pointerup", (ev) => {
+  if (!inicioToque) return;
+  const dx = ev.clientX - inicioToque.x;
+  const dy = ev.clientY - inicioToque.y;
+  inicioToque = null;
+  if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+  vitrina.deslizo = true;
+  irADestacado(vitrina.i + (dx < 0 ? 1 : -1), { manual: true });
+});
+escenarioVitrina.addEventListener("pointercancel", () => (inicioToque = null));
+
+// ---------- que ofrecemos y contacto ----------
+const enStockHoy = (n) => `${n} en stock hoy`;
+
+// Un celular: tiene estado (sellado/usado), equipos con su bateria, o esta en una categoria de celulares
+// (hay publicaciones viejas sin el estado cargado).
+const esCelular = (p) => Boolean(p.estado || p.unidades?.length || normalizar(p.categoria).includes("celular"));
+const esUsado = (p) => normalizar(p.estado).startsWith("usado") || (!p.estado && p.unidades?.length > 0);
+
+function armarSecciones(tienda) {
+  // Cuantos sellados y cuantos usados hay hoy (los usados por equipo: cada uno con su bateria).
+  const conStock = estado.productos.filter((p) => p.disponible);
+  const sellados = conStock.filter((p) => p.estado === "Sellado").length;
+  const usados = conStock.filter(esUsado).reduce((n, p) => n + (p.unidades?.length || 1), 0);
+  for (const [clave, cuenta] of [["sellados", sellados], ["usados", usados]]) {
+    if (cuenta) document.getElementById(`cuenta-${clave}`).textContent = enStockHoy(cuenta);
+    else document.getElementById(`linea-${clave}`).remove();
+  }
+
+  // Lo que no es un celular (vapers, etc.): una columna mas, con los nombres de sus categorias.
+  const otros = conStock.filter((p) => !esCelular(p));
+  if (otros.length) {
+    const porCategoria = {};
+    for (const p of otros) porCategoria[p.categoria] = (porCategoria[p.categoria] ?? 0) + 1;
+    const nombres = Object.keys(porCategoria).sort((a, b) => porCategoria[b] - porCategoria[a]);
+    const lista = nombres.length > 3 ? [...nombres.slice(0, 3), "más"] : nombres;
+    const texto = lista.length > 1 ? `${lista.slice(0, -1).join(", ")} y ${lista.at(-1)}` : lista[0];
+    document.getElementById("linea-canje").insertAdjacentHTML(
+      "beforebegin",
+      `<article class="linea">
+        <span class="linea-icono"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><path d="M17 13.5v7M13.5 17h7"/></svg></span>
+        <h3 class="linea-titulo">Y mucho más</h3>
+        <p class="linea-cuenta">${enStockHoy(otros.length)}</p>
+        <p class="linea-texto">${escapeHtml(texto.charAt(0).toUpperCase() + texto.slice(1))}, con precios al día.</p>
+        <a class="linea-link" href="#catalogo" data-buscar="">Ver todo ${ICONO_FLECHA_LARGA}</a>
+      </article>`
+    );
+    const tituloLineas = document.getElementById("lineas-titulo");
+    tituloLineas.innerHTML = "Nuevos, usados, canje <em>y mucho más.</em>";
+    partirTitulo(tituloLineas);
+  }
+
+  if (tienda.instagram) {
+    const instagram = document.getElementById("instagram-contacto");
+    instagram.href = `https://www.instagram.com/${encodeURIComponent(tienda.instagram)}/`;
+    document.getElementById("instagram-usuario").textContent = `@${tienda.instagram}`;
+    instagram.classList.remove("oculto");
+    document.getElementById("contacto").classList.remove("oculto");
+  }
+  document.getElementById("nav-contacto").classList.toggle("oculto", document.getElementById("contacto").classList.contains("oculto"));
+}
+
+// "Ver sellados" / "Ver usados": busca eso en el catalogo y baja hasta ahi.
+document.querySelector(".lineas").addEventListener("click", (ev) => {
+  const link = ev.target.closest("[data-buscar]");
+  if (!link) return;
+  ev.preventDefault();
+  document.getElementById("buscar").value = link.dataset.buscar;
+  estado.busqueda = link.dataset.buscar;
+  estado.marca = estado.modelo = estado.condicion = null;
+  marcarCategoria("Todos");
+  actualizarLista();
+  document.getElementById("catalogo").scrollIntoView({ behavior: sinMovimiento() ? "auto" : "smooth" });
+});
+
+document.getElementById("btn-ver-mas").addEventListener("click", verMas);
+
+// ---------- plan canje: el cotizador arma el mensaje de WhatsApp con los datos del equipo ----------
+const formCanje = document.getElementById("form-canje");
+const errorCanje = document.getElementById("canje-error");
+
+// "¿Que equipo te interesa?": los celulares que hay hoy en el catalogo.
+function armarCanje() {
+  const celulares = estado.productos.filter((p) => p.disponible && esCelular(p));
+  document.getElementById("canje-interes").insertAdjacentHTML(
+    "beforeend",
+    celulares.map((p) => `<option>${escapeHtml(`${p.nombre}${p.estado ? ` (${p.estado})` : ""}`)}</option>`).join("")
+  );
+}
+
+function errorDelCanje(mensaje, campo) {
+  errorCanje.textContent = mensaje;
+  errorCanje.classList.remove("oculto");
+  campo?.focus();
+}
+
+formCanje.addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  errorCanje.classList.add("oculto");
+  const datos = new FormData(formCanje);
+  const modelo = String(datos.get("modelo") ?? "").trim();
+  const bateria = String(datos.get("bateria") ?? "").trim();
+  const nombre = String(datos.get("nombre") ?? "").trim();
+  if (!modelo) return errorDelCanje("Contanos qué modelo es tu equipo.", formCanje.elements.modelo);
+  if (bateria && !(Number(bateria) >= 1 && Number(bateria) <= 100)) return errorDelCanje("La batería va de 1 a 100%.", formCanje.elements.bateria);
+  if (!datos.get("estado")) return errorDelCanje("Elegí cómo está tu equipo.", formCanje.querySelector('[name="estado"]'));
+  if (!estado.tienda?.whatsapp) return errorDelCanje("Por ahora no podemos recibir cotizaciones por acá. Probá en un rato.");
+  const lineas = [
+    "Hola! Quiero cotizar mi equipo para el Plan Canje:",
+    `• Equipo: ${[modelo, datos.get("capacidad")].filter(Boolean).join(" ")}`,
+    bateria ? `• Batería: ${Math.round(Number(bateria))}%` : null,
+    `• Estado: ${datos.get("estado")}`,
+    datos.get("interes") ? `• Me interesa: ${datos.get("interes")}` : null,
+    nombre ? `Soy ${nombre}.` : null,
+  ].filter(Boolean);
+  window.open(linkWhatsapp(lineas.join("\n")), "_blank", "noopener");
+});
+
+// ---------- aparecer al bajar (desenfoque, igual que la web de referencia) ----------
+// Cada bloque llega desenfocado y un poco mas abajo, y se enfoca en su lugar la primera vez que se
+// ve (ver ".difuminar" en catalogo.css). Los que entran juntos lo hacen de a uno. Con "reducir
+// movimiento" (o sin IntersectionObserver) todo esta en su lugar desde el principio.
+const sinAparecer = sinMovimiento() || !("IntersectionObserver" in window);
+const BLOQUES_QUE_APARECEN = [
+  ".quienes .ceja", ".quienes-parrafo", ".quienes-acciones", ".quienes-imagen", ".pilar",
+  ".seccion-cabecera .ceja", ".seccion-cabecera > .seccion-texto", ".seccion-cabecera-lado", ".destacados .hero-etiqueta",
+  ".vitrina", ".linea", ".canje-paso", ".canje-form", ".contacto-fila", ".filtros-barra",
+].join(", ");
+
+const observadorAparecer = sinAparecer
+  ? null
+  : new IntersectionObserver(
+      (entradas) => {
+        let orden = 0;
+        for (const e of entradas) {
+          if (!e.isIntersecting) continue;
+          const el = e.target;
+          observadorAparecer.unobserve(el);
+          const retraso = Math.min(orden++, 6) * 90;
+          el.style.setProperty("--retraso", `${retraso}ms`);
+          el.classList.add("visible");
+          // ya en su lugar, se sacan las clases: asi sus propias transiciones (el mouse encima, etc.)
+          // vuelven a ser las de siempre, sin el retraso de la entrada. "animation: none" para que no
+          // se repita la animacion de entrada que algunos ya tienen (las tarjetas, por ejemplo).
+          if (!el.classList.contains("titulo-ranura")) {
+            setTimeout(() => {
+              el.style.animation = "none";
+              el.classList.remove("difuminar", "aparecer-tarjeta", "visible");
+              el.style.removeProperty("--retraso");
+            }, 1700 + retraso);
+          }
+        }
+      },
+      { rootMargin: "0px 0px -8% 0px" }
+    );
+
+// Los titulos van en dos lineas como en la referencia (lo de antes del <em> y el <em>), cada una en
+// su ranura para poder subir.
+function partirTitulo(titulo) {
+  const em = titulo.querySelector("em");
+  const antes = [...titulo.childNodes].filter((n) => n !== em).map((n) => n.textContent).join("").trim();
+  titulo.innerHTML =
+    `<span class="titulo-linea"><span>${escapeHtml(antes)}</span></span>` +
+    (em ? `<span class="titulo-linea" style="--linea:1"><span><em>${escapeHtml(em.textContent)}</em></span></span>` : "");
+}
+
+function prepararAparecer() {
+  document.querySelectorAll(".seccion-titulo, .quienes-titulo").forEach(partirTitulo);
+  if (sinAparecer) return;
+  for (const el of document.querySelectorAll(BLOQUES_QUE_APARECEN)) {
+    el.classList.add("difuminar");
+    observadorAparecer.observe(el);
+  }
+  for (const titulo of document.querySelectorAll(".seccion-titulo, .quienes-titulo")) {
+    titulo.classList.add("titulo-ranura");
+    observadorAparecer.observe(titulo);
+  }
+}
+
+// Las tarjetas se dibujan de nuevo con cada busqueda o filtro: las nuevas tambien aparecen al verse.
+function observarTarjetas() {
+  if (!observadorAparecer) return;
+  document.querySelectorAll("#grilla .aparecer-tarjeta:not(.visible)").forEach((el) => observadorAparecer.observe(el));
+}
+
 // ---------- arranque ----------
 async function iniciar() {
   mostrarEsqueleto();
@@ -1087,7 +1404,7 @@ async function iniciar() {
     document.getElementById("hero-datos").innerHTML = datosHero.map((d) => `<li>${escapeHtml(d)}</li>`).join("");
     if (datos.tienda.whatsapp) {
       const link = linkWhatsapp("Hola! Vi el catálogo y quería hacer una consulta.");
-      for (const id of ["whatsapp-barra", "whatsapp-flotante", "whatsapp-contacto"]) {
+      for (const id of ["whatsapp-barra", "whatsapp-flotante", "whatsapp-contacto", "whatsapp-quienes"]) {
         const el = document.getElementById(id);
         el.href = link;
         el.classList.remove("oculto");
@@ -1099,10 +1416,15 @@ async function iniciar() {
     }
     dibujarCategorias();
     actualizarLista();
+    armarVitrina();
+    armarSecciones(datos.tienda);
+    armarCanje();
     if (idEnDireccion() != null) abrirFicha(idEnDireccion());
   } catch {
+    elVitrina.classList.add("oculto");
     document.getElementById("grilla").innerHTML = `<div class="vacio">${ICONO_BUSCAR_VACIO}<strong>No pudimos cargar el catálogo</strong>Probá recargar la página en un ratito.</div>`;
   }
 }
 
+prepararAparecer();
 iniciar();

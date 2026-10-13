@@ -30,6 +30,13 @@
     <a class="marca" href="#arriba" aria-label="Ir arriba">
       <img src="/img/logo-lv.png" alt="Logo" class="marca-logo" />
     </a>
+    <nav class="barra-nav" aria-label="Secciones">
+      <a href="#quienes-somos">Quiénes somos</a>
+      <a href="#destacados">Destacados</a>
+      <a href="#plan-canje">Plan Canje</a>
+      <a href="#contacto" id="nav-contacto" class="oculto">Contacto</a>
+      <a href="#catalogo">Catálogo</a>
+    </nav>
     <div class="barra-botones">
     <button type="button" class="btn-redondo" id="cambiar-tema" aria-label="Cambiar a fondo oscuro" title="Cambiar a fondo oscuro">
       <svg class="icono-sol" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg>
@@ -47,14 +54,232 @@
   </div>
 </header>
 
+<!-- Orden de la pagina: quienes somos (con por que elegirnos), los destacados en carrusel, que
+     ofrecemos, contacto y, al final de todo, el catalogo completo. -->
 <main id="arriba">
-  <section class="hero">
+  <!-- 1. Quienes somos, con los 4 motivos para elegirnos abajo -->
+  <section class="quienes" id="quienes-somos" aria-labelledby="quienes-titulo">
     <div class="hero-fondo" aria-hidden="true"></div>
-    <p class="hero-etiqueta" id="hero-etiqueta">Stock disponible</p>
-    <h1>Elegí tu próximo equipo.</h1>
-    <p class="hero-texto">Precios actualizados al día. Consultanos por WhatsApp y te respondemos al toque.</p>
-    <ul class="hero-datos" id="hero-datos" aria-label="Datos del catálogo"></ul>
+    <div class="quienes-intro">
+      <div>
+        <p class="ceja">Quiénes somos</p>
+        <h1 class="quienes-titulo" id="quienes-titulo">Tecnología y más, <em>con atención de verdad.</em></h1>
+        <p class="quienes-parrafo">Somos un emprendimiento de venta de celulares nuevos y usados, vapers y más. Trabajamos con stock real y precios que se actualizan todos los días, y te atendemos personalmente por WhatsApp para que compres tranquilo.</p>
+        <div class="quienes-acciones">
+          <a class="btn btn-oscuro" href="#catalogo">Ver catálogo</a>
+          <a class="btn btn-contorno oculto" id="whatsapp-quienes" target="_blank" rel="noopener">Escribinos</a>
+        </div>
+      </div>
+      <div class="quienes-imagen" aria-hidden="true">
+        <div class="quienes-brillo"></div>
+        <img src="/img/logo-lv.png" alt="" />
+      </div>
+    </div>
+    <ol class="pilares" aria-label="Por qué elegirnos">
+      <li class="pilar">
+        <strong class="pilar-titulo">Productos seleccionados</strong>
+        <p class="pilar-texto">Celulares sellados en su caja o usados elegidos uno por uno, con la batería real a la vista.</p>
+      </li>
+      <li class="pilar">
+        <strong class="pilar-titulo">Precios claros, al día</strong>
+        <p class="pilar-texto">Se actualizan todos los días, en dólares y en pesos al dólar blue del día.</p>
+      </li>
+      <li class="pilar">
+        <strong class="pilar-titulo">Plan Canje</strong>
+        <p class="pilar-texto">Tu celular usado puede ser parte del pago del nuevo.</p>
+      </li>
+      <li class="pilar">
+        <strong class="pilar-titulo">Atención personalizada</strong>
+        <p class="pilar-texto">Te asesoramos por WhatsApp para que elijas bien, y te respondemos al toque.</p>
+      </li>
+    </ol>
   </section>
+
+  <!-- 2. Destacados: los primeros productos del orden del panel van pasando solos, con sus detalles -->
+  <section class="seccion destacados" id="destacados" aria-labelledby="destacados-titulo">
+    <div class="seccion-cabecera seccion-cabecera-partida">
+      <div>
+        <p class="ceja">Destacados</p>
+        <h2 class="seccion-titulo" id="destacados-titulo">Elegí tu próximo <em>equipo.</em></h2>
+      </div>
+      <p class="hero-etiqueta" id="hero-etiqueta">Stock disponible</p>
+    </div>
+    <div class="vitrina" id="vitrina" role="region" aria-roledescription="carrusel" aria-label="Productos destacados">
+      <div class="vitrina-info" id="vitrina-info" aria-live="off"></div>
+      <div class="vitrina-centro">
+        <button type="button" class="vitrina-flecha" data-paso="-1" aria-label="Anterior"><svg viewBox="0 0 40 12" aria-hidden="true"><path d="M39 6H2M7 1L2 6l5 5"/></svg></button>
+        <a class="vitrina-escenario" id="vitrina-escenario" href="#catalogo" tabindex="-1" aria-hidden="true"></a>
+        <button type="button" class="vitrina-flecha" data-paso="1" aria-label="Siguiente"><svg viewBox="0 0 40 12" aria-hidden="true"><path d="M1 6h37M33 1l5 5-5 5"/></svg></button>
+      </div>
+      <div class="vitrina-detalle">
+        <div id="vitrina-detalle"></div>
+        <div class="vitrina-puntos" id="vitrina-puntos"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Que ofrecemos: sellados, usados y plan canje (las cantidades salen del catalogo) -->
+  <section class="seccion lineas" id="ofrecemos" aria-labelledby="lineas-titulo">
+    <div class="seccion-cabecera">
+      <p class="ceja">Qué ofrecemos</p>
+      <h2 class="seccion-titulo" id="lineas-titulo">Nuevos, usados <em>y canje.</em></h2>
+      <!-- si hay otras categorias (vapers, etc.), catalogo.js lo cambia por "Nuevos, usados, canje y mucho mas." -->
+    </div>
+    <div class="lineas-grilla" id="lineas-grilla">
+      <article class="linea" id="linea-sellados">
+        <span class="linea-icono"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5z"/><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9"/></svg></span>
+        <h3 class="linea-titulo">Sellados</h3>
+        <p class="linea-cuenta" id="cuenta-sellados"></p>
+        <p class="linea-texto">Celulares nuevos, en su caja original y sin uso.</p>
+        <a class="linea-link" href="#catalogo" data-buscar="sellado">Ver sellados <svg viewBox="0 0 40 12" aria-hidden="true"><path d="M1 6h37M33 1l5 5-5 5"/></svg></a>
+      </article>
+      <article class="linea" id="linea-usados">
+        <span class="linea-icono"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="7" width="17" height="10" rx="2.5"/><path d="M22 10.5v3"/><path d="M5.5 10v4M8.5 10v4M11.5 10v4"/></svg></span>
+        <h3 class="linea-titulo">Usados seleccionados</h3>
+        <p class="linea-cuenta" id="cuenta-usados"></p>
+        <p class="linea-texto">Cada equipo con su porcentaje de batería a la vista, para que elijas el que más te conviene.</p>
+        <a class="linea-link" href="#catalogo" data-buscar="usado">Ver usados <svg viewBox="0 0 40 12" aria-hidden="true"><path d="M1 6h37M33 1l5 5-5 5"/></svg></a>
+      </article>
+      <!-- "Y mucho mas" (las otras categorias: vapers, etc.) lo agrega catalogo.js aca si hay -->
+      <article class="linea" id="linea-canje">
+        <span class="linea-icono"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></svg></span>
+        <h3 class="linea-titulo">Plan Canje</h3>
+        <p class="linea-texto">Entregá tu celular usado como parte de pago y pagá solo la diferencia.</p>
+        <a class="linea-link" href="#plan-canje">Cotizar mi equipo <svg viewBox="0 0 40 12" aria-hidden="true"><path d="M1 6h37M33 1l5 5-5 5"/></svg></a>
+      </article>
+    </div>
+  </section>
+
+  <!-- 4. Plan Canje: como funciona y un cotizador que arma el mensaje de WhatsApp con los datos del
+       equipo (para mandar el link directo desde una publicidad: /#plan-canje) -->
+  <section class="seccion canje" id="plan-canje" aria-labelledby="canje-titulo">
+    <div class="seccion-cabecera seccion-cabecera-partida">
+      <div>
+        <p class="ceja">Plan Canje</p>
+        <h2 class="seccion-titulo" id="canje-titulo">Tu celular usado <em>vale como parte de pago.</em></h2>
+      </div>
+      <p class="seccion-texto">Contanos qué equipo tenés, te pasamos la cotización por WhatsApp y pagás solo la diferencia.</p>
+    </div>
+    <div class="canje-cuerpo">
+      <ol class="canje-pasos" aria-label="Cómo funciona">
+        <li class="canje-paso">
+          <span class="canje-paso-icono"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg></span>
+          <div><strong>Contanos qué equipo tenés</strong><p>Completá el formulario: modelo, capacidad, batería y cómo está.</p></div>
+        </li>
+        <li class="canje-paso">
+          <span class="canje-paso-icono"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-11.8 7L4 20l1.5-4.2A8 8 0 1 1 20 11.5z"/></svg></span>
+          <div><strong>Te cotizamos por WhatsApp</strong><p>Te respondemos con cuánto tomamos tu equipo.</p></div>
+        </li>
+        <li class="canje-paso">
+          <span class="canje-paso-icono"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.8"/></svg></span>
+          <div><strong>Elegís tu equipo nuevo</strong><p>Del catálogo, con stock y precios al día.</p></div>
+        </li>
+        <li class="canje-paso">
+          <span class="canje-paso-icono"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></svg></span>
+          <div><strong>Entregás el tuyo y pagás la diferencia</strong><p>Lo que vale tu equipo se descuenta del precio del nuevo.</p></div>
+        </li>
+      </ol>
+
+      <form class="canje-form" id="form-canje" novalidate>
+        <h3>Cotizá tu equipo</h3>
+        <div class="campo-doble">
+          <label class="campo">
+            <span>Modelo</span>
+            <input name="modelo" list="modelos-canje" placeholder="Ej: iPhone 13 Pro" autocomplete="off" required />
+          </label>
+          <label class="campo">
+            <span>Capacidad</span>
+            <select name="capacidad">
+              <option value="">Elegí</option>
+              <option>64 GB</option>
+              <option>128 GB</option>
+              <option>256 GB</option>
+              <option>512 GB</option>
+              <option>1 TB</option>
+            </select>
+          </label>
+        </div>
+        <label class="campo">
+          <span>Batería (%)</span>
+          <input name="bateria" type="number" min="1" max="100" inputmode="numeric" placeholder="Ej: 87" />
+          <small>En iPhone la ves en Ajustes › Batería › Estado de la batería.</small>
+        </label>
+        <fieldset class="campo">
+          <legend>¿Cómo está?</legend>
+          <div class="opciones-estado">
+            <label class="opcion"><input type="radio" name="estado" value="Impecable" required /><span>Impecable</span></label>
+            <label class="opcion"><input type="radio" name="estado" value="Detalles mínimos" /><span>Detalles mínimos</span></label>
+            <label class="opcion"><input type="radio" name="estado" value="Marcas de uso" /><span>Marcas de uso</span></label>
+            <label class="opcion"><input type="radio" name="estado" value="Algo roto o que no funciona" /><span>Algo roto</span></label>
+          </div>
+        </fieldset>
+        <label class="campo">
+          <span>¿Qué equipo te interesa? <em>(opcional)</em></span>
+          <select name="interes" id="canje-interes">
+            <option value="">Todavía no sé</option>
+          </select>
+        </label>
+        <label class="campo">
+          <span>Tu nombre <em>(opcional)</em></span>
+          <input name="nombre" autocomplete="given-name" />
+        </label>
+        <p class="canje-error oculto" id="canje-error" role="alert"></p>
+        <button type="submit" class="btn btn-whatsapp btn-grande">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 3.5A11.8 11.8 0 0 0 12 0C5.4 0 .1 5.3.1 11.9c0 2.1.6 4.1 1.6 5.9L0 24l6.4-1.7a11.9 11.9 0 0 0 5.6 1.4h.1c6.6 0 11.9-5.3 11.9-11.9 0-3.2-1.2-6.2-3.5-8.3zM12 21.7c-1.8 0-3.5-.5-5-1.4l-.4-.2-3.8 1 1-3.7-.2-.4a9.8 9.8 0 0 1-1.5-5.2c0-5.4 4.4-9.9 9.9-9.9 2.6 0 5.1 1 7 2.9a9.8 9.8 0 0 1 2.9 7c0 5.5-4.4 9.9-9.9 9.9zm5.4-7.4c-.3-.1-1.8-.9-2-1s-.5-.1-.7.1-.8 1-.9 1.2-.3.2-.6.1a8.1 8.1 0 0 1-4-3.5c-.3-.5.3-.5.9-1.6.1-.2 0-.4 0-.5l-.9-2.2c-.2-.6-.5-.5-.7-.5h-.6a1.1 1.1 0 0 0-.8.4 3.4 3.4 0 0 0-1.1 2.5c0 1.5 1.1 2.9 1.2 3.1s2.1 3.2 5.1 4.5c1.9.8 2.6.9 3.6.7.6-.1 1.8-.7 2-1.5s.3-1.3.2-1.5c-.1-.1-.3-.2-.6-.3z"/></svg>
+          Enviar por WhatsApp
+        </button>
+        <p class="canje-nota">Se abre WhatsApp con todo escrito: solo tenés que tocar enviar.</p>
+      </form>
+    </div>
+    <!-- sugerencias para el modelo (se puede escribir cualquier otro) -->
+    <datalist id="modelos-canje">
+      <option value="iPhone 11"></option><option value="iPhone 11 Pro"></option><option value="iPhone 11 Pro Max"></option>
+      <option value="iPhone 12"></option><option value="iPhone 12 mini"></option><option value="iPhone 12 Pro"></option><option value="iPhone 12 Pro Max"></option>
+      <option value="iPhone 13"></option><option value="iPhone 13 mini"></option><option value="iPhone 13 Pro"></option><option value="iPhone 13 Pro Max"></option>
+      <option value="iPhone 14"></option><option value="iPhone 14 Plus"></option><option value="iPhone 14 Pro"></option><option value="iPhone 14 Pro Max"></option>
+      <option value="iPhone 15"></option><option value="iPhone 15 Plus"></option><option value="iPhone 15 Pro"></option><option value="iPhone 15 Pro Max"></option>
+      <option value="iPhone 16e"></option><option value="iPhone 16"></option><option value="iPhone 16 Plus"></option><option value="iPhone 16 Pro"></option><option value="iPhone 16 Pro Max"></option>
+      <option value="iPhone 17"></option><option value="iPhone Air"></option><option value="iPhone 17 Pro"></option><option value="iPhone 17 Pro Max"></option>
+    </datalist>
+  </section>
+
+  <!-- 5. Contacto: una fila por cada forma de escribirnos (las que esten configuradas) -->
+  <section class="seccion contacto oculto" id="contacto" aria-labelledby="contacto-titulo">
+    <div class="seccion-cabecera centrada">
+      <p class="ceja">Contacto</p>
+      <h2 class="seccion-titulo" id="contacto-titulo">¿Tenés alguna <em>consulta?</em></h2>
+      <p class="seccion-texto">Estamos para ayudarte.</p>
+    </div>
+    <ul class="contacto-filas">
+      <li>
+        <a class="contacto-fila oculto" id="whatsapp-contacto" target="_blank" rel="noopener">
+          <span class="contacto-icono contacto-icono-whatsapp"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 3.5A11.8 11.8 0 0 0 12 0C5.4 0 .1 5.3.1 11.9c0 2.1.6 4.1 1.6 5.9L0 24l6.4-1.7a11.9 11.9 0 0 0 5.6 1.4h.1c6.6 0 11.9-5.3 11.9-11.9 0-3.2-1.2-6.2-3.5-8.3zM12 21.7c-1.8 0-3.5-.5-5-1.4l-.4-.2-3.8 1 1-3.7-.2-.4a9.8 9.8 0 0 1-1.5-5.2c0-5.4 4.4-9.9 9.9-9.9 2.6 0 5.1 1 7 2.9a9.8 9.8 0 0 1 2.9 7c0 5.5-4.4 9.9-9.9 9.9zm5.4-7.4c-.3-.1-1.8-.9-2-1s-.5-.1-.7.1-.8 1-.9 1.2-.3.2-.6.1a8.1 8.1 0 0 1-4-3.5c-.3-.5.3-.5.9-1.6.1-.2 0-.4 0-.5l-.9-2.2c-.2-.6-.5-.5-.7-.5h-.6a1.1 1.1 0 0 0-.8.4 3.4 3.4 0 0 0-1.1 2.5c0 1.5 1.1 2.9 1.2 3.1s2.1 3.2 5.1 4.5c1.9.8 2.6.9 3.6.7.6-.1 1.8-.7 2-1.5s.3-1.3.2-1.5c-.1-.1-.3-.2-.6-.3z"/></svg></span>
+          <span class="contacto-textos"><strong>WhatsApp</strong><small>Respondemos tus consultas</small></span>
+          <svg class="contacto-flecha" viewBox="0 0 40 12" aria-hidden="true"><path d="M1 6h37M33 1l5 5-5 5"/></svg>
+        </a>
+      </li>
+      <li>
+        <a class="contacto-fila oculto" id="instagram-contacto" target="_blank" rel="noopener">
+          <span class="contacto-icono contacto-icono-instagram"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.3" cy="6.7" r="1.1" fill="currentColor" stroke="none"/></svg></span>
+          <span class="contacto-textos"><strong>Instagram</strong><small id="instagram-usuario"></small></span>
+          <svg class="contacto-flecha" viewBox="0 0 40 12" aria-hidden="true"><path d="M1 6h37M33 1l5 5-5 5"/></svg>
+        </a>
+      </li>
+    </ul>
+  </section>
+
+  <!-- 6. Catalogo completo, al final de todo -->
+  <section class="seccion seccion-catalogo" id="catalogo" aria-labelledby="catalogo-titulo">
+  <div class="seccion-cabecera seccion-cabecera-partida">
+    <div>
+      <p class="ceja">Catálogo · Stock disponible</p>
+      <h2 class="seccion-titulo" id="catalogo-titulo">Descubrí nuestros <em>productos.</em></h2>
+    </div>
+    <div class="seccion-cabecera-lado">
+      <p class="seccion-texto">Todo lo que tenemos hoy, con precios actualizados todos los días. Tocá cualquiera para ver las opciones, los colores y el precio.</p>
+      <ul class="hero-datos" id="hero-datos" aria-label="Datos del catálogo"></ul>
+    </div>
+  </div>
 
   <section class="herramientas" aria-label="Buscar y filtrar">
     <label class="buscador">
@@ -75,15 +300,11 @@
   </div>
   <section class="grilla" id="grilla" aria-label="Productos"></section>
 
-  <section class="contacto oculto" id="contacto">
-    <div>
-      <h2>¿No encontrás lo que buscás?</h2>
-      <p>Escribinos por WhatsApp y te ayudamos a elegir.</p>
-    </div>
-    <a class="btn btn-whatsapp" id="whatsapp-contacto" target="_blank" rel="noopener">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 3.5A11.8 11.8 0 0 0 12 0C5.4 0 .1 5.3.1 11.9c0 2.1.6 4.1 1.6 5.9L0 24l6.4-1.7a11.9 11.9 0 0 0 5.6 1.4h.1c6.6 0 11.9-5.3 11.9-11.9 0-3.2-1.2-6.2-3.5-8.3zM12 21.7c-1.8 0-3.5-.5-5-1.4l-.4-.2-3.8 1 1-3.7-.2-.4a9.8 9.8 0 0 1-1.5-5.2c0-5.4 4.4-9.9 9.9-9.9 2.6 0 5.1 1 7 2.9a9.8 9.8 0 0 1 2.9 7c0 5.5-4.4 9.9-9.9 9.9zm5.4-7.4c-.3-.1-1.8-.9-2-1s-.5-.1-.7.1-.8 1-.9 1.2-.3.2-.6.1a8.1 8.1 0 0 1-4-3.5c-.3-.5.3-.5.9-1.6.1-.2 0-.4 0-.5l-.9-2.2c-.2-.6-.5-.5-.7-.5h-.6a1.1 1.1 0 0 0-.8.4 3.4 3.4 0 0 0-1.1 2.5c0 1.5 1.1 2.9 1.2 3.1s2.1 3.2 5.1 4.5c1.9.8 2.6.9 3.6.7.6-.1 1.8-.7 2-1.5s.3-1.3.2-1.5c-.1-.1-.3-.2-.6-.3z"/></svg>
-      Escribinos
-    </a>
+  <!-- de a 12: "Ver más" agrega los siguientes sin redibujar los que ya estan -->
+  <div class="ver-mas oculto" id="ver-mas">
+    <p class="ver-mas-info" id="ver-mas-info"></p>
+    <button type="button" class="btn btn-contorno" id="btn-ver-mas">Ver más productos</button>
+  </div>
   </section>
 </main>
 

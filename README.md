@@ -87,7 +87,7 @@ Corriendo solo en tu PC, el bot y el panel dejan de responder cuando la apagás.
 
 1. Entrá a [vercel.com](https://vercel.com), creá cuenta (podés con GitHub) y hacé **Add New → Project**.
 2. Elegí el repo `gestor-mayorista-lucas` de GitHub.
-3. En "Environment Variables" cargá **las mismas variables de tu `.env`** (todas, incluidas `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `PANEL_PASSWORD`, `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`, `OWNER_TELEGRAM_ID`, `OTROS_TELEGRAM_IDS`, `TELEGRAM_WEBHOOK_SECRET` — no hace falta `PANEL_PORT`, Vercel maneja el puerto solo).
+3. En "Environment Variables" cargá **las mismas variables de tu `.env`** (todas, incluidas `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, las 4 del login con Google — `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PANEL_EMAILS`, `PANEL_SESSION_SECRET`, ver "Login con Google" más abajo —, `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`, `OWNER_TELEGRAM_ID`, `OTROS_TELEGRAM_IDS`, `TELEGRAM_WEBHOOK_SECRET` — no hace falta `PANEL_PORT`, Vercel maneja el puerto solo).
    > `TELEGRAM_WEBHOOK_SECRET` es **obligatoria** en Vercel: sin ella el webhook no procesa ningún mensaje (y te avisa por Telegram), porque cualquiera que conozca la URL podría mandarle mensajes falsos al bot haciéndose pasar por vos.
 4. Deploy. Te va a quedar una URL tipo `https://gestor-mayorista-lucas.vercel.app`.
 
@@ -151,7 +151,21 @@ El panel está en **`/panel`**: la dirección principal es el catálogo para cli
 - **Corriendo local** (`npm start`, o `npm run panel` para levantar solo la web sin el bot): **http://localhost:4000/panel**, o desde el celu/otra compu en tu wifi con la IP de tu PC (`ipconfig` en Windows) en vez de `localhost`.
 - **Desplegado en Vercel**: la URL que te dio Vercel con `/panel` al final (ej. `https://gestor-mayorista-lucas.vercel.app/panel`), accesible desde cualquier lado con internet.
 
-En los dos casos te va a pedir una clave — es el valor de `PANEL_PASSWORD` (en tu `.env` local, o en las variables de entorno de Vercel).
+En los dos casos se entra con una cuenta de Google, y solo pueden entrar los mails de `PANEL_EMAILS`. La sesión dura 30 días en cada dispositivo (o hasta tocar "Cerrar sesión").
+
+### Login con Google
+
+Se configura una sola vez:
+
+1. Entrá a [console.cloud.google.com](https://console.cloud.google.com) con tu cuenta y creá un proyecto (ej. "Gestor Mayorista").
+2. **APIs y servicios → Pantalla de consentimiento de OAuth** (o "Google Auth Platform"): tipo **Externo**, nombre de la app "Gestor Mayorista", tu mail de soporte. En **Público**, publicá la app ("En producción"). Solo pide mail y nombre, así que no hace falta que Google la revise; si la dejás "En prueba", agregá ahí como usuarios de prueba los mismos mails de `PANEL_EMAILS`.
+3. **Credenciales → Crear credenciales → ID de cliente de OAuth**, tipo **Aplicación web**. En **Orígenes de JavaScript autorizados** agregá `https://gestor-mayorista-lucas.vercel.app` y, para probar en tu PC, `http://localhost:4000` (y el puerto que uses, ej. `http://localhost:3001`). No hace falta cargar "URIs de redireccionamiento".
+4. Copiá el **ID de cliente** y el **Secreto del cliente** a `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`.
+5. En `PANEL_EMAILS` poné los mails que pueden entrar, separados por coma.
+6. En `PANEL_SESSION_SECRET` poné una clave larga al azar. La generás con `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+7. Cargá las 4 en tu `.env` y en las variables de Vercel, y volvé a desplegar.
+
+Si falta alguna, el panel no deja entrar a nadie y la pantalla de login dice cuál falta (el bot sigue andando igual).
 
 ### Qué se puede hacer ahí
 
@@ -167,15 +181,13 @@ En los dos casos te va a pedir una clave — es el valor de `PANEL_PASSWORD` (en
 - **Notas**: notas sueltas tipo post-it (recordatorios, pendientes, datos). Se guardan solas mientras escribís; se pueden pintar de colores, fijar arriba, buscar y borrar. También se agregan por Telegram ("agregame una nota: …").
 - **Empleados**: agregar y ver la lista de precio amigo.
 - **Logs**: qué está pasando en todo el sistema, para ver qué falla sin entrar a Vercel.
-  - **Sistema**: errores y avisos del bot, la IA, las herramientas (ej: "no existe ese producto"), el panel (pedidos rechazados o lentos), Telegram, el chequeo automático, la cotización del dólar, los intentos de clave incorrecta, la gente sin acceso que le escribe al bot y los errores de la página en el navegador. Cada evento tiene su detalle técnico para copiar. Arriba: si anda todo bien, cuántos errores y avisos hubo, el último chequeo automático, y en qué parte pasa más.
+  - **Sistema**: errores y avisos del bot, la IA, las herramientas (ej: "no existe ese producto"), el panel (pedidos rechazados o lentos), Telegram, el chequeo automático, la cotización del dólar, quién entró al panel y los intentos con cuentas de Google no autorizadas, la gente sin acceso que le escribe al bot y los errores de la página en el navegador. Cada evento tiene su detalle técnico para copiar. Arriba: si anda todo bien, cuántos errores y avisos hubo, el último chequeo automático, y en qué parte pasa más.
   - **Conversaciones del bot**: qué le escribieron, qué contestó, qué herramientas usó y cuánto tardó.
   - Filtros por período (24 h, 7 o 30 días), nivel, origen y búsqueda; "En vivo" actualiza solo cada 20 segundos. Lo informativo se guarda 2 semanas y los avisos y errores, 2 meses.
 
 El panel y el chat de Telegram comparten exactamente la misma base de datos (Turso) — lo que cargás en uno lo ves reflejado en el otro al instante, corra donde corra cada uno.
 
-> Después de 10 intentos con clave incorrecta desde una misma conexión, el panel la bloquea 15 minutos.
-
-> Importante: quien tenga la clave del panel puede ver y editar todos tus datos. Si lo desplegás en Vercel queda accesible desde cualquier internet — la única traba es esa clave, así que elegí una que no sea obvia y no la compartas. Si sospechás que alguien más la tiene, cambiá `PANEL_PASSWORD` (en tu `.env` y/o en Vercel) y volvé a desplegar/reiniciar.
+> Importante: quien entre al panel puede ver y editar todos tus datos, así que en `PANEL_EMAILS` poné solo cuentas de confianza. Para sacarle el acceso a alguien, borrá su mail de `PANEL_EMAILS` y volvé a desplegar: su sesión deja de valer en el próximo pedido. Para cerrar la sesión de todos de golpe (ej. si perdiste el celu), cambiá `PANEL_SESSION_SECRET`. Cada entrada queda anotada en Logs (con el mail), igual que los intentos con cuentas no autorizadas.
 
 ## Catálogo para clientes
 

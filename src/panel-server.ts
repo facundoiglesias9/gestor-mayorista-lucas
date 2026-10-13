@@ -3,14 +3,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as repo from "./repo.js";
 import { toolDefinitions } from "./tools.js";
-import { claveCoincide } from "./seguridad.js";
+import * as sesion from "./sesion.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const PANEL_PORT = Number(process.env.PANEL_PORT ?? 4000);
-const PANEL_PASSWORD = process.env.PANEL_PASSWORD;
 
-if (!PANEL_PASSWORD) throw new Error("Falta PANEL_PASSWORD en el .env");
+// OJO: si falta configurar el login con Google NO se corta el arranque: api/index.ts (Vercel)
+// carga esta app junto con el webhook del bot, y un error aca tiraria abajo tambien al bot. En ese
+// caso el panel simplemente no deja entrar a nadie y el login muestra que variables faltan.
+const faltanAlArrancar = sesion.faltaConfigurar();
+if (faltanAlArrancar.length) console.warn(`Login del panel sin configurar (falta ${faltanAlArrancar.join(", ")}): nadie va a poder entrar.`);
 
 // OJO: esta app NO registra la ruta del webhook de Telegram (eso pasa solo en api/index.ts,
 // el entrypoint de Vercel). Si el webhook se registrara aca, grammy deshabilita bot.start()
@@ -20,7 +23,7 @@ export const app = express();
 // Limite mas alto que el de fabrica (100 KB) para poder subir las fotos del catalogo.
 app.use(express.json({ limit: "4mb" }));
 // Para que req.ip sea la IP real de quien entra (en Vercel llega en el header X-Forwarded-For)
-// y no la del proxy de Vercel: la usa el freno de intentos fallidos de abajo.
+// y no la del proxy de Vercel, y req.secure diga si fue por https (para la cookie de sesion).
 app.set("trust proxy", true);
 
 // ---------- registro de lo que anda mal ----------
@@ -48,7 +51,7 @@ function rutaDe(req: express.Request) {
   return (req.originalUrl || req.url).split("?")[0];
 }
 
-// Avisos que se pueden repetir mucho (ej: un intento de clave, el dolar caido): como mucho uno
+// Avisos que se pueden repetir mucho (ej: una cuenta no autorizada, el dolar caido): como mucho uno
 // cada tantos minutos por cada clave, para no llenar los Logs con lo mismo.
 const ultimoAviso = new Map<string, number>();
 function puedeAvisar(clave: string, cadaMs: number) {
@@ -60,70 +63,67 @@ function puedeAvisar(clave: string, cadaMs: number) {
 }
 
 // ---------- autenticacion ----------
-// El HTML/CSS/JS estatico se sirve libre (no tiene datos, es solo la pantalla). La propia
-// pagina pide la clave con un formulario propio y la manda como header Authorization en
-// cada llamada a la API; solo /api/* exige esa clave.
-
-// Freno contra probar claves a lo loco: despues de MAX_INTENTOS_FALLIDOS claves incorrectas
-// desde una misma IP, esa IP queda bloqueada hasta que pasen 15 minutos desde el primer fallo.
-// (En Vercel esto vive en la memoria de cada instancia, asi que no es perfecto, pero igual
-// vuelve impractico probar miles de claves.)
-const MAX_INTENTOS_FALLIDOS = 10;
-const VENTANA_INTENTOS_MS = 15 * 60 * 1000;
-const intentosFallidos = new Map<string, { cantidad: number; desde: number }>();
-
-function intentosVigentes(ip: string) {
-  const registro = intentosFallidos.get(ip);
-  if (registro && Date.now() - registro.desde > VENTANA_INTENTOS_MS) {
-    intentosFallidos.delete(ip);
-    return undefined;
-  }
-  return registro;
-}
-
-function anotarIntentoFallido(ip: string) {
-  // Para que el mapa no crezca sin limite si llegan intentos desde muchisimas IPs distintas.
-  if (intentosFallidos.size > 5000) intentosFallidos.clear();
-  const registro = intentosVigentes(ip);
-  if (registro) registro.cantidad++;
-  else intentosFallidos.set(ip, { cantidad: 1, desde: Date.now() });
-}
-
-// El header es "Basic base64(usuario:clave)". Se corta en el PRIMER ":" (el usuario no tiene),
-// asi una clave que tenga ":" adentro no se rompe.
-function claveDelHeader(header: string | undefined): string | null {
-  if (!header?.startsWith("Basic ")) return null;
-  const decodificado = Buffer.from(header.slice(6), "base64").toString("utf8");
-  const dosPuntos = decodificado.indexOf(":");
-  return dosPuntos === -1 ? null : decodificado.slice(dosPuntos + 1);
-}
-
+// El HTML/CSS/JS estatico se sirve libre (no tiene datos, es solo la pantalla). Para usar la
+// API hay que haber entrado con una cuenta de Google permitida (ver sesion.ts): el navegador
+// manda solo la cookie de sesion en cada pedido.
 app.use("/api", (req, res, next) => {
-  // El webhook de Telegram (registrado aparte, en api/index.ts) no manda esta clave: Telegram
-  // se autentica solo con su propio secretToken, verificado por grammy en su propio handler.
+  // El webhook de Telegram (registrado aparte, en api/index.ts) no usa la sesion: Telegram se
+  // autentica solo con su propio secretToken, verificado por grammy en su propio handler.
   if (req.path === "/telegram-webhook") return next();
-  // El chequeo automatico del webhook (GitHub Actions, cada 30 min) tampoco tiene la clave del
-  // panel: se autentica con su propio CRON_SECRET, verificado en api/index.ts.
+  // El chequeo automatico del webhook (GitHub Actions, cada 30 min) tampoco: se autentica con su
+  // propio CRON_SECRET, verificado en api/index.ts.
   if (req.path === "/cron/verificar-webhook") return next();
   // El catalogo y sus fotos son publicos a proposito (son para clientes): solo devuelven lo
   // que un cliente puede ver, ver listarCatalogo en repo.ts.
   if (req.path === "/catalogo" || req.path.startsWith("/catalogo/")) return next();
+  // Entrar y salir (y preguntar si hay sesion) obviamente no pueden exigir sesion.
+  if (req.path === "/sesion" || req.path.startsWith("/sesion/")) return next();
+  const actual = sesion.leerSesion(req.headers.cookie);
+  if (actual) {
+    res.locals.usuario = actual.email;
+    return next();
+  }
+  res.status(401).json({ ok: false, error: "Tenés que entrar con tu cuenta de Google." });
+});
+
+// ---------- sesion (login con Google) ----------
+// La pagina pregunta al cargar: si ya hay sesion entra directo; si no, muestra el login.
+app.get("/api/sesion", (req, res) => {
+  const actual = sesion.leerSesion(req.headers.cookie);
+  res.json({ ok: true, email: actual?.email ?? null, nombre: actual?.nombre ?? null, googleClientId: sesion.googleClientId(), faltaConfigurar: sesion.faltaConfigurar() });
+});
+
+// Recibe el codigo de un solo uso que Google le dio a la pagina y, si la cuenta esta permitida,
+// deja la cookie de sesion.
+app.post("/api/sesion/google", async (req, res) => {
+  // Google pide este header en el modo popup: un formulario de otro sitio no lo puede mandar.
+  if (req.headers["x-requested-with"] !== "XMLHttpRequest") return res.status(400).json({ ok: false, error: "Pedido inválido." });
+  const faltan = sesion.faltaConfigurar();
+  if (faltan.length) return res.status(503).json({ ok: false, error: `Falta configurar el login con Google en el servidor (${faltan.join(", ")}).` });
+  const codigo = req.body?.code;
+  if (typeof codigo !== "string" || !codigo) return res.status(400).json({ ok: false, error: "Falta el código de Google." });
   const ip = req.ip ?? "desconocida";
-  if ((intentosVigentes(ip)?.cantidad ?? 0) >= MAX_INTENTOS_FALLIDOS) {
-    if (puedeAvisar(`bloqueo:${ip}`, VENTANA_INTENTOS_MS)) {
-      void repo.registrarEvento({ nivel: "error", origen: "seguridad", evento: `IP bloqueada 15 minutos por ${MAX_INTENTOS_FALLIDOS} claves incorrectas`, detalle: `IP: ${ip}\nNavegador: ${req.headers["user-agent"] ?? "-"}`, ruta: `${req.method} ${rutaDe(req)}` });
+  let cuenta;
+  try {
+    cuenta = await sesion.cuentaDesdeCodigoGoogle(codigo);
+  } catch (e) {
+    await repo.registrarEvento({ nivel: "aviso", origen: "seguridad", evento: "Google no confirmó una cuenta al entrar al panel", detalle: e, ruta: "POST /api/sesion/google" });
+    return res.status(401).json({ ok: false, error: "Google no confirmó la cuenta. Probá de nuevo." });
+  }
+  if (!cuenta.verificado || !sesion.emailPermitido(cuenta.email)) {
+    if (puedeAvisar(`cuenta:${cuenta.email}`, 10 * 60 * 1000)) {
+      void repo.registrarEvento({ nivel: "aviso", origen: "seguridad", evento: `Intento de entrar al panel con una cuenta no autorizada: ${cuenta.email}`, detalle: `IP: ${ip}\nNavegador: ${req.headers["user-agent"] ?? "-"}`, ruta: "POST /api/sesion/google" });
     }
-    return res.status(429).json({ ok: false, error: "Demasiados intentos con clave incorrecta. Esperá 15 minutos y probá de nuevo." });
+    return res.status(403).json({ ok: false, error: `La cuenta ${cuenta.email} no tiene permiso para entrar al panel.` });
   }
-  const clave = claveDelHeader(req.headers.authorization);
-  if (clave !== null && claveCoincide(clave, PANEL_PASSWORD)) return next();
-  anotarIntentoFallido(ip);
-  // Solo si mandaron una clave (y estaba mal): los pedidos sin clave son casi siempre robots
-  // que prueban direcciones y no aportan nada.
-  if (clave !== null && puedeAvisar(`clave:${ip}`, 10 * 60 * 1000)) {
-    void repo.registrarEvento({ nivel: "aviso", origen: "seguridad", evento: "Clave incorrecta al entrar al panel", detalle: `IP: ${ip}\nNavegador: ${req.headers["user-agent"] ?? "-"}`, ruta: `${req.method} ${rutaDe(req)}` });
-  }
-  res.status(401).json({ ok: false, error: "Clave incorrecta o faltante." });
+  res.setHeader("Set-Cookie", sesion.crearCookieSesion(cuenta, req.secure));
+  void repo.registrarEvento({ nivel: "info", origen: "seguridad", evento: `Entró al panel: ${cuenta.email}`, detalle: `IP: ${ip}\nNavegador: ${req.headers["user-agent"] ?? "-"}`, usuario: cuenta.email, ruta: "POST /api/sesion/google" });
+  res.json({ ok: true, email: cuenta.email, nombre: cuenta.nombre });
+});
+
+app.post("/api/sesion/salir", (req, res) => {
+  res.setHeader("Set-Cookie", sesion.cookieBorrada(req.secure));
+  res.json({ ok: true });
 });
 
 // Errores que no son "dato mal cargado" sino algo roto (la base no responde, un bug): van a Logs
@@ -144,6 +144,7 @@ function envolver(handler: (req: express.Request) => any) {
         origen: "panel",
         evento: `${interna ? "Falló" : "Rechazado"}: ${req.method} ${rutaDe(req)} — ${String(e?.message ?? e).slice(0, 200)}`,
         detalle: interna ? e : req.body && Object.keys(req.body).length ? `Datos enviados: ${JSON.stringify(req.body).slice(0, 1500)}` : null,
+        usuario: res.locals.usuario ?? null, // el mail de quien estaba en el panel
         ruta: `${req.method} ${rutaDe(req)}`,
       });
       res.status(interna ? 500 : 400).json({ ok: false, error: e.message ?? String(e) });
@@ -250,6 +251,8 @@ app.get("/api/catalogo", async (_req, res) => {
     res.json({
       tienda: {
         whatsapp: (process.env.CATALOGO_WHATSAPP || "").replace(/\D/g, "") || null,
+        // usuario de Instagram sin la @ (ni la direccion entera, si la pegaron asi)
+        instagram: (process.env.CATALOGO_INSTAGRAM || "").trim().replace(/^.*instagram\.com\//i, "").replace(/^@/, "").replace(/[/?#].*$/, "") || null,
       },
       dolar_blue_venta: dolar?.blue?.venta ?? null,
       productos,

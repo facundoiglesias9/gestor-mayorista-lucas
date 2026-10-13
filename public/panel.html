@@ -11,25 +11,66 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
 <link rel="stylesheet" href="/styles.css" />
+<!-- Google Identity Services: la ventanita de "Continuar con Google" del login -->
+<script src="https://accounts.google.com/gsi/client" async></script>
 </head>
 <body>
 <div id="login-overlay" class="verificando">
   <div class="login-fondo" aria-hidden="true"><span></span><span></span></div>
   <form id="form-login">
     <div class="login-marca">
-      <div class="marca-icono marca-icono-grande">
-        <img src="/img/logo-lv.png" alt="LV" />
+      <div class="login-lampara">
+        <div class="marca-icono marca-icono-grande">
+          <img src="/img/logo-lv.png" alt="LV" />
+        </div>
       </div>
       <h1>Gestor Mayorista</h1>
-      <p>Panel interno de gestión</p>
+      <p>Entrá con tu cuenta de Google</p>
     </div>
     <div class="login-campos">
-      <label class="campo-con-icono">
-        <svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-        <input id="login-clave" type="password" placeholder="Clave del panel" autocomplete="current-password" required />
-      </label>
-      <button type="submit" class="btn-primario btn-bloque">Entrar</button>
-      <p id="login-error" class="oculto" role="alert">Clave incorrecta.</p>
+      <!-- boton "metal liquido": la forma la dibuja app.js en el svg (se estrangula mientras se
+           verifica la cuenta, y al entrar se corta y gotea) -->
+      <button type="submit" id="btn-login" class="btn-liquido">
+        <svg class="liquido-svg" aria-hidden="true">
+          <defs>
+            <linearGradient id="liq-metal" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#fbfdff" />
+              <stop offset="0.36" stop-color="#e6eef3" />
+              <stop offset="0.62" stop-color="#bfccd6" />
+              <stop offset="0.86" stop-color="#e2eaef" />
+              <stop offset="1" stop-color="#f5f9fb" />
+            </linearGradient>
+            <radialGradient id="liq-reflejo" cx="0.32" cy="0.12" r="0.42" fx="0.32" fy="0.12">
+              <stop offset="0" stop-color="#fff" stop-opacity="0.9" />
+              <stop offset="0.45" stop-color="#fff" stop-opacity="0.25" />
+              <stop offset="1" stop-color="#fff" stop-opacity="0" />
+            </radialGradient>
+            <linearGradient id="liq-borde" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#fff" stop-opacity="0.95" />
+              <stop offset="0.5" stop-color="#fff" stop-opacity="0.15" />
+              <stop offset="1" stop-color="#8a99a6" stop-opacity="0.7" />
+            </linearGradient>
+            <radialGradient id="liq-sombra">
+              <stop offset="0" stop-color="#000" stop-opacity="0.55" />
+              <stop offset="1" stop-color="#000" stop-opacity="0" />
+            </radialGradient>
+          </defs>
+          <ellipse class="liquido-sombra" fill="url(#liq-sombra)" />
+          <path class="liquido-cuerpo" fill="url(#liq-metal)" />
+          <path class="liquido-brillo" fill="url(#liq-reflejo)" />
+          <path class="liquido-borde" fill="none" stroke="url(#liq-borde)" stroke-width="1" />
+          <g class="liquido-gotas"></g>
+        </svg>
+        <span class="liquido-texto">
+          <svg class="logo-google" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+          Continuar con Google
+        </span>
+        <span class="liquido-ok" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+          Sesión iniciada
+        </span>
+      </button>
+      <p id="login-error" class="oculto" role="alert"></p>
     </div>
   </form>
 </div>

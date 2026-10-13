@@ -7,8 +7,8 @@ import "dotenv/config";
 //
 // Uso: npm run panel
 
+// (Las variables del login con Google no se exigen aca: si faltan, la pantalla de login dice cuales.)
 for (const [nombre, valor] of Object.entries({
-  PANEL_PASSWORD: process.env.PANEL_PASSWORD,
   TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL,
 })) {
   if (!valor) {
