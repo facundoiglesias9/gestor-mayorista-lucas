@@ -408,6 +408,9 @@ app.delete("/api/fotos-catalogo/:id", envolver((req) => repo.eliminarFotoCatalog
 // que no se rompan los links que ya se hayan pasado. (En Vercel lo mismo lo hace vercel.json.)
 app.get("/panel", (_req, res) => res.sendFile(path.join(__dirname, "..", "public", "panel.html")));
 app.get("/catalogo", (_req, res) => res.redirect(302, "/"));
+// Paginas legales del catalogo (los links estan al pie)
+app.get("/terminos", (_req, res) => res.sendFile(path.join(__dirname, "..", "public", "terminos.html")));
+app.get("/privacidad", (_req, res) => res.sendFile(path.join(__dirname, "..", "public", "privacidad.html")));
 app.use(express.static(path.join(__dirname, "..", "public")));
 
 export function iniciarPanel() {

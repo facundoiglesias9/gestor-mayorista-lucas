@@ -832,6 +832,31 @@ html.ficha-abierta { overflow: hidden; }
 .pie-marca { display: inline-flex; align-items: center; gap: 10px; font-weight: 650; }
 .pie-marca .marca-logo { width: 28px; height: 28px; border-radius: 8px; }
 .pie-texto { margin: 0; font-size: 0.8rem; color: var(--texto-tenue); }
+.pie-links { display: flex; flex-wrap: wrap; gap: 6px 22px; }
+.pie-links a { font-size: 0.74rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--texto-tenue); text-decoration: none; transition: color var(--dur-rapida) var(--ease); }
+.pie-links a:hover, .pie-links a[aria-current="page"] { color: var(--texto); }
+
+/* ---------- paginas legales (/terminos y /privacidad) ---------- */
+/* una columna angosta para leer comodo: ceja, titulo grande, fecha y secciones cortas */
+main.legal { max-width: 768px; padding-top: 88px; padding-bottom: 112px; }
+.legal > .ceja { margin: 0 0 14px; font-size: 0.74rem; font-weight: 650; letter-spacing: 0.16em; text-transform: uppercase; color: var(--acento); }
+.legal-titulo { margin: 0; font-size: clamp(2.2rem, 5.4vw, 3.6rem); font-weight: 800; letter-spacing: -0.045em; line-height: 1.02; }
+.legal-fecha { margin: 16px 0 0; font-size: 0.74rem; font-weight: 550; letter-spacing: 0.16em; text-transform: uppercase; color: var(--texto-tenue); }
+.legal-secciones { margin-top: 56px; display: flex; flex-direction: column; gap: 40px; }
+.legal-secciones h2 { margin: 0; font-size: 0.74rem; font-weight: 650; letter-spacing: 0.16em; text-transform: uppercase; color: var(--acento); }
+.legal-secciones p { margin: 12px 0 0; max-width: 68ch; font-size: 0.98rem; line-height: 1.7; color: var(--texto-suave); }
+.legal-secciones a { color: var(--texto); text-decoration: underline; text-decoration-color: var(--borde-fuerte); text-underline-offset: 3px; transition: text-decoration-color var(--dur-rapida) var(--ease); }
+.legal-secciones a:hover { text-decoration-color: currentColor; }
+/* al abrir, cada bloque llega desenfocado y se enfoca en su lugar, de a uno (como el catalogo) */
+@keyframes legal-entra { from { opacity: 0; filter: blur(8px); transform: translateY(18px); } to { opacity: 1; filter: none; transform: none; } }
+.legal > * { animation: legal-entra 900ms var(--ease-difuminado, var(--ease)) both; }
+.legal > :nth-child(2) { animation-delay: 70ms; }
+.legal > :nth-child(3) { animation-delay: 140ms; }
+.legal > :nth-child(4) { animation-delay: 210ms; }
+@media (max-width: 640px) {
+  main.legal { padding-top: 52px; padding-bottom: 80px; }
+  .legal-secciones { margin-top: 44px; gap: 34px; }
+}
 
 /* ---------- boton flotante de WhatsApp ---------- */
 .whatsapp-flotante {

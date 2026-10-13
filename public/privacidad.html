@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#f5f5f7" />
+<title>Política de privacidad</title>
+<meta name="description" content="Qué datos recibimos, para qué los usamos y cómo pedir que los corrijamos o borremos." />
+<link rel="icon" type="image/png" href="/img/logo-lv.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
+<link rel="stylesheet" href="/catalogo.css" />
+<script>
+  // Mismo tema que eligio la persona en el catalogo (ver index.html)
+  (function () {
+    var tema = null;
+    try { tema = localStorage.getItem("catalogo_tema"); } catch (e) {}
+    if (tema !== "claro" && tema !== "oscuro") tema = window.matchMedia("(prefers-color-scheme: dark)").matches ? "oscuro" : "claro";
+    document.documentElement.dataset.tema = tema;
+  })();
+</script>
+</head>
+<body>
+
+<header class="barra">
+  <div class="barra-contenido">
+    <a class="marca" href="/" aria-label="Ir al catálogo">
+      <img src="/img/logo-lv.png" alt="Logo" class="marca-logo" />
+    </a>
+    <div class="barra-botones">
+    <button type="button" class="btn-redondo" id="cambiar-tema" aria-label="Cambiar a fondo oscuro" title="Cambiar a fondo oscuro">
+      <svg class="icono-sol" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg>
+      <svg class="icono-luna" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z"/></svg>
+    </button>
+    <a class="btn btn-contorno btn-chico" href="/">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+      <span class="texto-boton">Volver al catálogo</span>
+    </a>
+    </div>
+  </div>
+</header>
+
+<!-- Pagina legal (mismo formato que la de terminos). Si el sitio empieza a guardar datos de
+     clientes (un formulario que llegue al servidor, cuentas, estadisticas de visitas), hay que
+     contarlo aca y actualizar la fecha. -->
+<main class="legal">
+  <p class="ceja">Legales</p>
+  <h1 class="legal-titulo">Política de privacidad</h1>
+  <p class="legal-fecha">Última actualización: 13 de octubre de 2026</p>
+
+  <div class="legal-secciones">
+    <section>
+      <h2>Datos que recopilamos</h2>
+      <p>Este sitio no tiene cuentas de clientes y no guarda lo que escribís: cuando consultás algo (como la cotización del Plan Canje), se abre tu WhatsApp con el mensaje armado y vos decidís si lo mandás. Recibimos únicamente los datos que nos compartas al escribirnos por WhatsApp o Instagram, como tu nombre, tu número, los datos de tu equipo o la dirección para un envío.</p>
+    </section>
+
+    <section>
+      <h2>En tu navegador</h2>
+      <p>Guardamos en tu navegador si elegiste el fondo claro o el oscuro, para recordarlo la próxima vez que entres. No usamos cookies de publicidad ni de seguimiento.</p>
+    </section>
+
+    <section>
+      <h2>Uso de la información</h2>
+      <p>Usamos tus datos solo para responder tus consultas, cotizar tu equipo, coordinar la compra, la entrega o el envío, y atender la garantía. No vendemos ni cedemos tu información a terceros.</p>
+    </section>
+
+    <section>
+      <h2>Servicios de terceros</h2>
+      <p>WhatsApp e Instagram tienen sus propias políticas de privacidad, que aplican cuando usás esos servicios. Este sitio está alojado en Vercel y usa tipografías de Google Fonts, que pueden registrar datos técnicos de la conexión, como la dirección IP.</p>
+    </section>
+
+    <section>
+      <h2>Tus derechos</h2>
+      <p>Podés pedirnos en cualquier momento ver, corregir o borrar los datos que nos compartiste, <a href="/#contacto">escribiéndonos por WhatsApp</a>. Según la Ley 25.326 de Protección de Datos Personales, podés acceder a tus datos en forma gratuita cada seis meses, salvo que acredites un interés legítimo para hacerlo antes.</p>
+    </section>
+
+    <section>
+      <h2>Autoridad de control</h2>
+      <p>La Agencia de Acceso a la Información Pública, órgano de control de la Ley 25.326, atiende las denuncias y los reclamos de quienes consideren afectados sus derechos sobre sus datos personales.</p>
+    </section>
+  </div>
+</main>
+
+<footer class="pie">
+  <div class="pie-contenido">
+    <a class="pie-marca" href="/" aria-label="Ir al catálogo">
+      <img src="/img/logo-lv.png" alt="Logo" class="marca-logo" />
+    </a>
+    <nav class="pie-links" aria-label="Legales">
+      <a href="/terminos">Términos y condiciones</a>
+      <a href="/privacidad" aria-current="page">Política de privacidad</a>
+    </nav>
+    <p class="pie-texto">Precios sujetos a cambio sin previo aviso.</p>
+  </div>
+</footer>
+
+<script src="/legales.js"></script>
+</body>
+</html>

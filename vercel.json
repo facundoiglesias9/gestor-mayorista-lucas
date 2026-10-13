@@ -1,7 +1,9 @@
 {
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api" },
-    { "source": "/panel", "destination": "/panel.html" }
+    { "source": "/panel", "destination": "/panel.html" },
+    { "source": "/terminos", "destination": "/terminos.html" },
+    { "source": "/privacidad", "destination": "/privacidad.html" }
   ],
   "redirects": [
     { "source": "/catalogo", "destination": "/", "permanent": false }

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#f5f5f7" />
+<title>Términos y condiciones</title>
+<meta name="description" content="Términos y condiciones de compra: productos, precios, Plan Canje, garantía y arrepentimiento." />
+<link rel="icon" type="image/png" href="/img/logo-lv.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
+<link rel="stylesheet" href="/catalogo.css" />
+<script>
+  // Mismo tema que eligio la persona en el catalogo (ver index.html)
+  (function () {
+    var tema = null;
+    try { tema = localStorage.getItem("catalogo_tema"); } catch (e) {}
+    if (tema !== "claro" && tema !== "oscuro") tema = window.matchMedia("(prefers-color-scheme: dark)").matches ? "oscuro" : "claro";
+    document.documentElement.dataset.tema = tema;
+  })();
+</script>
+</head>
+<body>
+
+<header class="barra">
+  <div class="barra-contenido">
+    <a class="marca" href="/" aria-label="Ir al catálogo">
+      <img src="/img/logo-lv.png" alt="Logo" class="marca-logo" />
+    </a>
+    <div class="barra-botones">
+    <button type="button" class="btn-redondo" id="cambiar-tema" aria-label="Cambiar a fondo oscuro" title="Cambiar a fondo oscuro">
+      <svg class="icono-sol" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg>
+      <svg class="icono-luna" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z"/></svg>
+    </button>
+    <a class="btn btn-contorno btn-chico" href="/">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+      <span class="texto-boton">Volver al catálogo</span>
+    </a>
+    </div>
+  </div>
+</header>
+
+<!-- Pagina legal (mismo formato que la de privacidad): ceja, titulo, fecha y secciones cortas con
+     un subtitulo chico y un parrafo. Al cambiar el texto, actualizar la fecha. -->
+<main class="legal">
+  <p class="ceja">Legales</p>
+  <h1 class="legal-titulo">Términos y condiciones</h1>
+  <p class="legal-fecha">Última actualización: 13 de octubre de 2026</p>
+
+  <div class="legal-secciones">
+    <section>
+      <h2>Productos</h2>
+      <p>Vendemos celulares nuevos (sellados, en su caja original y sin uso), celulares usados seleccionados, vapers y otros productos. En cada usado indicamos su estado y el porcentaje de batería que tenía al revisarlo.</p>
+    </section>
+
+    <section>
+      <h2>Precios y stock</h2>
+      <p>Cada precio está en dólares (USD) o en pesos argentinos (ARS), según se indica en el producto. El valor en pesos de los precios en dólares es una referencia calculada con el dólar blue del día. Los precios y el stock se actualizan todos los días y pueden cambiar sin previo aviso: vale el precio que te confirmemos al cerrar la compra.</p>
+    </section>
+
+    <section>
+      <h2>Compras</h2>
+      <p>Este sitio es un catálogo: desde acá no se compra ni se paga. La consulta, la reserva, el pago y la entrega o el envío se coordinan por WhatsApp. La compra queda confirmada cuando acordamos el producto, el precio y la forma de pago.</p>
+    </section>
+
+    <section>
+      <h2>Plan Canje</h2>
+      <p>Podés entregar tu celular usado como parte de pago de otro equipo. La cotización que te pasamos por WhatsApp es estimada según los datos que nos das; el valor final se confirma cuando revisamos el equipo en persona (estado, batería y funcionamiento). El equipo tiene que ser tuyo, estar libre de cuentas vinculadas (como iCloud) y no tener reporte de robo o extravío.</p>
+    </section>
+
+    <section>
+      <h2>Vapers</h2>
+      <p>La venta de vapers y de productos con nicotina es solo para mayores de 18 años. Antes de entregarlos podemos pedirte un documento para confirmar tu edad.</p>
+    </section>
+
+    <section>
+      <h2>Garantía</h2>
+      <p>Todos los productos tienen la garantía legal de la Ley 24.240 de Defensa del Consumidor: 6 meses los nuevos y 3 meses los usados, contados desde la entrega. Si algo falla, escribinos por WhatsApp y lo resolvemos. La garantía no cubre daños causados por golpes, humedad, mal uso o reparaciones hechas por terceros.</p>
+    </section>
+
+    <section>
+      <h2>Arrepentimiento</h2>
+      <p>Si compraste a distancia o fuera de un local (por ejemplo, la arreglaste por WhatsApp), tenés 10 días corridos desde que recibís el producto para arrepentirte, sin dar explicaciones, como indican el artículo 34 de la Ley 24.240 y el artículo 1110 del Código Civil y Comercial. Avisanos por WhatsApp, coordinamos la devolución sin costo para vos y te devolvemos lo que pagaste.</p>
+    </section>
+
+    <section>
+      <h2>Imágenes</h2>
+      <p>Las fotos muestran el modelo y pueden no ser de la unidad exacta. Los colores pueden verse un poco distintos según la pantalla. Si querés ver fotos del equipo que te interesa, pedínoslas por WhatsApp.</p>
+    </section>
+
+    <section>
+      <h2>Consultas</h2>
+      <p>Ante cualquier duda sobre un producto, el stock, la garantía o el Plan Canje, <a href="/#contacto">escribinos por WhatsApp</a>.</p>
+    </section>
+  </div>
+</main>
+
+<footer class="pie">
+  <div class="pie-contenido">
+    <a class="pie-marca" href="/" aria-label="Ir al catálogo">
+      <img src="/img/logo-lv.png" alt="Logo" class="marca-logo" />
+    </a>
+    <nav class="pie-links" aria-label="Legales">
+      <a href="/terminos" aria-current="page">Términos y condiciones</a>
+      <a href="/privacidad">Política de privacidad</a>
+    </nav>
+    <p class="pie-texto">Precios sujetos a cambio sin previo aviso.</p>
+  </div>
+</footer>
+
+<script src="/legales.js"></script>
+</body>
+</html>
