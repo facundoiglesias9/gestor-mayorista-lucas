@@ -78,7 +78,15 @@ app.use("/api", async (req, res, next) => {
   if (req.path === "/catalogo" || req.path.startsWith("/catalogo/")) return next();
   // Entrar y salir (y preguntar si hay sesion) obviamente no pueden exigir sesion.
   if (req.path === "/sesion" || req.path.startsWith("/sesion/")) return next();
-  const actual = await sesion.leerSesion(req.headers.cookie);
+  let actual;
+  try {
+    actual = await sesion.leerSesion(req.headers.cookie);
+  } catch (e) {
+    // La base no contesto y esta instancia no sabe todavia quien es quien: 503 (no 401, que en la
+    // pagina significa "volve a entrar" y echaria a la persona sin motivo).
+    if (e instanceof sesion.BaseSinResponder) return res.status(503).json({ ok: false, error: e.message });
+    throw e;
+  }
   if (actual) {
     res.locals.usuario = actual.email;
     res.locals.rol = actual.rol;
@@ -90,7 +98,13 @@ app.use("/api", async (req, res, next) => {
 // ---------- sesion (login con Google) ----------
 // La pagina pregunta al cargar: si ya hay sesion entra directo; si no, muestra el login.
 app.get("/api/sesion", async (req, res) => {
-  const actual = await sesion.leerSesion(req.headers.cookie);
+  let actual;
+  try {
+    actual = await sesion.leerSesion(req.headers.cookie);
+  } catch (e) {
+    if (e instanceof sesion.BaseSinResponder) return res.status(503).json({ ok: false, error: e.message });
+    throw e;
+  }
   res.json({
     ok: true,
     email: actual?.email ?? null,
@@ -102,6 +116,33 @@ app.get("/api/sesion", async (req, res) => {
   });
 });
 
+// Freno contra los que prueban entrar a lo loco (codigos falsos o cuentas no autorizadas): despues
+// de MAX_INTENTOS_FALLIDOS fallos desde una misma IP, esa IP no puede intentar de nuevo hasta que
+// pasen 15 minutos desde el primer fallo. Asi tampoco se llena Logs ni se le pega sin fin a Google.
+// (En Vercel vive en la memoria de cada instancia: no es perfecto, pero corta el abuso.)
+const MAX_INTENTOS_FALLIDOS = 10;
+const VENTANA_INTENTOS_MS = 15 * 60 * 1000;
+const intentosFallidos = new Map<string, { cantidad: number; desde: number }>();
+
+function intentosVigentes(ip: string) {
+  const registro = intentosFallidos.get(ip);
+  if (registro && Date.now() - registro.desde > VENTANA_INTENTOS_MS) {
+    intentosFallidos.delete(ip);
+    return undefined;
+  }
+  return registro;
+}
+
+function anotarIntentoFallido(ip: string) {
+  // Para que el mapa no crezca sin limite si llegan intentos desde muchisimas IPs distintas.
+  if (intentosFallidos.size > 5000) intentosFallidos.clear();
+  const registro = intentosVigentes(ip);
+  if (registro) registro.cantidad++;
+  else intentosFallidos.set(ip, { cantidad: 1, desde: Date.now() });
+}
+
+const datosDelPedido = (req: express.Request) => `IP: ${req.ip ?? "desconocida"}\nNavegador: ${req.headers["user-agent"] ?? "-"}`;
+
 // Recibe el codigo de un solo uso que Google le dio a la pagina y, si la cuenta esta permitida,
 // deja la cookie de sesion.
 app.post("/api/sesion/google", async (req, res) => {
@@ -112,22 +153,40 @@ app.post("/api/sesion/google", async (req, res) => {
   const codigo = req.body?.code;
   if (typeof codigo !== "string" || !codigo) return res.status(400).json({ ok: false, error: "Falta el código de Google." });
   const ip = req.ip ?? "desconocida";
+  if ((intentosVigentes(ip)?.cantidad ?? 0) >= MAX_INTENTOS_FALLIDOS) {
+    if (puedeAvisar(`bloqueo:${ip}`, VENTANA_INTENTOS_MS)) {
+      void repo.registrarEvento({ nivel: "error", origen: "seguridad", evento: `IP bloqueada 15 minutos por ${MAX_INTENTOS_FALLIDOS} intentos fallidos de entrar al panel`, detalle: datosDelPedido(req), ruta: "POST /api/sesion/google" });
+    }
+    return res.status(429).json({ ok: false, error: "Demasiados intentos fallidos. Esperá 15 minutos y probá de nuevo." });
+  }
   let cuenta;
   try {
     cuenta = await sesion.cuentaDesdeCodigoGoogle(codigo);
-  } catch (e) {
-    await repo.registrarEvento({ nivel: "aviso", origen: "seguridad", evento: "Google no confirmó una cuenta al entrar al panel", detalle: e, ruta: "POST /api/sesion/google" });
+  } catch (e: any) {
+    anotarIntentoFallido(ip);
+    // como mucho un aviso cada 10 minutos por IP: un robot mandando codigos falsos no llena Logs
+    if (puedeAvisar(`google:${ip}`, 10 * 60 * 1000)) {
+      void repo.registrarEvento({ nivel: "aviso", origen: "seguridad", evento: "Google no confirmó una cuenta al entrar al panel", detalle: `${datosDelPedido(req)}\n\n${String(e?.message ?? e)}`, ruta: "POST /api/sesion/google" });
+    }
     return res.status(401).json({ ok: false, error: "Google no confirmó la cuenta. Probá de nuevo." });
   }
-  const rol = cuenta.verificado ? await sesion.rolDe(cuenta.email) : null;
+  let rol;
+  try {
+    rol = cuenta.verificado ? await sesion.rolDe(cuenta.email) : null;
+  } catch (e) {
+    if (e instanceof sesion.BaseSinResponder) return res.status(503).json({ ok: false, error: e.message });
+    throw e;
+  }
   if (!rol) {
+    anotarIntentoFallido(ip);
     if (puedeAvisar(`cuenta:${cuenta.email}`, 10 * 60 * 1000)) {
-      void repo.registrarEvento({ nivel: "aviso", origen: "seguridad", evento: `Intento de entrar al panel con una cuenta no autorizada: ${cuenta.email}`, detalle: `IP: ${ip}\nNavegador: ${req.headers["user-agent"] ?? "-"}`, ruta: "POST /api/sesion/google" });
+      void repo.registrarEvento({ nivel: "aviso", origen: "seguridad", evento: `Intento de entrar al panel con una cuenta no autorizada: ${cuenta.email}`, detalle: datosDelPedido(req), ruta: "POST /api/sesion/google" });
     }
     return res.status(403).json({ ok: false, error: `La cuenta ${cuenta.email} no tiene permiso para entrar al panel.` });
   }
+  intentosFallidos.delete(ip); // entro bien: se le perdonan los fallos anteriores
   res.setHeader("Set-Cookie", sesion.crearCookieSesion(cuenta, req.secure));
-  void repo.registrarEvento({ nivel: "info", origen: "seguridad", evento: `Entró al panel: ${cuenta.email}`, detalle: `IP: ${ip}\nNavegador: ${req.headers["user-agent"] ?? "-"}`, usuario: cuenta.email, ruta: "POST /api/sesion/google" });
+  void repo.registrarEvento({ nivel: "info", origen: "seguridad", evento: `Entró al panel: ${cuenta.email}`, detalle: datosDelPedido(req), usuario: cuenta.email, ruta: "POST /api/sesion/google" });
   void repo.registrarIngresoPanel(cuenta.email, cuenta.nombre).catch(() => {}); // para la columna "Ultimo ingreso" de Usuarios
   res.json({ ok: true, email: cuenta.email, nombre: cuenta.nombre, rol, gestionaUsuarios: sesion.gestionaUsuarios(rol) });
 });

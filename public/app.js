@@ -111,6 +111,11 @@ async function iniciarLogin() {
   const estado = await fetch("/api/sesion")
     .then((r) => r.json())
     .catch(() => null);
+  if (estado && !estado.ok) {
+    // ej: la base no responde (503). No es "no tenés sesión": que recargue en un rato.
+    overlay.classList.remove("verificando");
+    return mostrarErrorLogin(`${estado.error ?? "El servidor no responde."} Recargá la página.`, false);
+  }
   if (estado?.email) {
     sesionActual = estado.email;
     mostrarSegunRol(estado);

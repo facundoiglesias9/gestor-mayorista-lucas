@@ -76,21 +76,30 @@ export function olvidarUsuariosEnCache() {
   cacheUsuarios = null;
 }
 
+// Si la base no contesta, se sigue con la ultima lista que se leyo (y se reintenta en unos
+// segundos): un tropiezo de Turso no tiene que echar a nadie. Si esta instancia todavia no leyo
+// nunca la lista, no se puede saber quien es quien: tira BaseSinResponder (no es "no autorizado").
+const REINTENTO_SIN_BASE_MS = 5 * 1000;
+
+export class BaseSinResponder extends Error {
+  constructor() {
+    super("La base de datos no responde. Probá de nuevo en unos segundos.");
+  }
+}
+
 export async function rolDe(email: string): Promise<Rol | null> {
   const normalizado = email.trim().toLowerCase();
   if (esDueno(normalizado)) return "dueno";
   if (!cacheUsuarios || cacheUsuarios.hasta < Date.now()) {
     try {
       cacheUsuarios = { roles: await repo.rolesUsuariosPanel(), hasta: Date.now() + CACHE_USUARIOS_MS };
-    } catch {
-      return null; // sin base no se puede saber: no entra (los duenos si, ver arriba)
+    } catch (e) {
+      if (!cacheUsuarios) throw new BaseSinResponder();
+      console.warn("No se pudo leer usuarios_panel, sigo con la lista anterior:", e);
+      cacheUsuarios.hasta = Date.now() + REINTENTO_SIN_BASE_MS;
     }
   }
   return cacheUsuarios.roles.get(normalizado) ?? null;
-}
-
-export async function emailPermitido(email: string) {
-  return (await rolDe(email)) !== null;
 }
 
 const base64url = (texto: string) => Buffer.from(texto).toString("base64url");

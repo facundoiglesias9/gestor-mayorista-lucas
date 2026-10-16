@@ -1935,8 +1935,13 @@ export async function agregarUsuarioPanel(args: { email: unknown; nombre?: unkno
   if (!FORMATO_EMAIL.test(email)) throw new Error("Ese mail no es válido.");
   const nombre = String(args.nombre ?? "").trim().slice(0, 80) || null;
   const rol = validarRolPanel(args.rol);
-  if (await get(`SELECT email FROM usuarios_panel WHERE email = ?`, [email])) throw new Error("Ese mail ya puede entrar al panel.");
-  await run(`INSERT INTO usuarios_panel (email, nombre, rol, agregado_por, creado_en) VALUES (?, ?, ?, ?, ${sqlAhora()})`, [email, nombre, rol, args.agregado_por]);
+  // ON CONFLICT en vez de fijarse antes: si dos lo agregan a la vez, el segundo tambien recibe este
+  // mensaje (y no un error de la base).
+  const { changes } = await run(
+    `INSERT INTO usuarios_panel (email, nombre, rol, agregado_por, creado_en) VALUES (?, ?, ?, ?, ${sqlAhora()}) ON CONFLICT(email) DO NOTHING`,
+    [email, nombre, rol, args.agregado_por]
+  );
+  if (!changes) throw new Error("Ese mail ya puede entrar al panel.");
   return { ok: true, email, rol };
 }
 
