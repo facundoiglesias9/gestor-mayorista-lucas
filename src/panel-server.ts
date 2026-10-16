@@ -325,8 +325,12 @@ app.put("/api/objetivos", envolver((req) => repo.guardarObjetivos(req.body)));
 app.get("/api/catalogo", async (_req, res) => {
   try {
     const [productos, dolar] = await Promise.all([repo.listarCatalogo(), obtenerDolar().catch(() => null)]);
-    // Que Vercel lo guarde 60 s: si muchos clientes entran a la vez, no le pegan todos a la base.
-    res.setHeader("Cache-Control", "public, max-age=30, s-maxage=60, stale-while-revalidate=300");
+    // Que Vercel lo guarde un ratito: si muchos clientes entran a la vez (ej: desde una publicidad),
+    // no le pegan todos a la base. Corto a proposito: lo que se cambia en el panel (ocultar una
+    // publicacion, un precio) tiene que verse en el catalogo enseguida. Con estos valores, a mas
+    // tardar en 30 s (10 de copia fresca + 20 sirviendo la vieja mientras se renueva). El navegador
+    // no guarda nada (max-age=0): al recargar siempre pregunta.
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=10, stale-while-revalidate=20");
     res.json({
       tienda: {
         whatsapp: (process.env.CATALOGO_WHATSAPP || "").replace(/\D/g, "") || null,
